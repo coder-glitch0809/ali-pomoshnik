@@ -1,0 +1,23 @@
+# Asosiy
+anthropic>=1.13
+python-dotenv
+psutil
+httpx
+pillow
+
+# Veb-sayt
+fastapi
+uvicorn[standard]
+python-multipart
+edge-tts
+python-telegram-bot
+
+# Super miya (ixtiyoriy)
+openai
+google-genai
+
+# Terminal ovoz rejimi (main.py --voice, ixtiyoriy)
+SpeechRecognition
+sounddevice
+numpy
+pygame-ce

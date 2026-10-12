@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#04070d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Ali</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name" id="brandName">ALI</span>
+    </div>
+    <div class="status-pills" id="pills">
+      <span class="pill" data-model="claude"><i></i>Claude</span>
+      <span class="pill" data-model="openai"><i></i>GPT</span>
+      <span class="pill" data-model="gemini"><i></i>Gemini</span>
+    </div>
+    <button class="icon-btn" id="menuBtn" aria-label="Menyu">
+      <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+    </button>
+  </header>
+
+  <main class="stage" id="stage">
+    <section class="hero" id="hero">
+      <canvas id="reactor" width="400" height="400" aria-hidden="true"></canvas>
+      <div class="hero-state" id="stateLabel">Ulanmoqda…</div>
+      <div class="hero-sub" id="liveTranscript"></div>
+      <div class="suggestions" id="suggestions">
+        <button>Bugun ob-havo qanday?</button>
+        <button>Ekranimda nima bor?</button>
+        <button>Instagramimni tahlil qil</button>
+        <button>Menga sun'iy intellektni o'rgat</button>
+      </div>
+    </section>
+
+    <section class="feed" id="feed" aria-live="polite"></section>
+  </main>
+
+  <footer class="dock">
+    <div class="modes">
+      <button class="mode" data-mode="deep" title="Chuqur fikrlash">
+        <svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6c0 2.2 1.2 3.6 2 4.5V17h8v-3.5c.8-.9 2-2.3 2-4.5a6 6 0 0 0-6-6zM9 20h6"/></svg>
+        Chuqur
+      </button>
+      <button class="mode" data-mode="super" title="Claude + GPT + Gemini">
+        <svg viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>
+        Super miya
+      </button>
+      <button class="mode" data-mode="voice" title="Javobni ovoz bilan o'qish">
+        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
+        Ovoz
+      </button>
+      <button class="mode" data-mode="wake" title="'Ali' deb chaqirishni doim tinglash">
+        <svg viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/></svg>
+        Doim tinglash
+      </button>
+    </div>
+
+    <div class="attachments" id="attachments"></div>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <label class="icon-btn" title="Rasm yoki kamera">
+        <input type="file" id="fileInput" accept="image/*" multiple hidden>
+        <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      </label>
+      <textarea id="input" rows="1" placeholder="Ali'ga yozing yoki gapiring…" enterkeyhint="send"></textarea>
+      <button type="button" class="mic" id="micBtn" aria-label="Gapirish">
+        <svg class="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        <svg class="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/></svg>
+      </button>
+    </form>
+  </footer>
+
+  <!-- Menyu -->
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <span>Boshqaruv paneli</span>
+      <button class="icon-btn" id="closeDrawer" aria-label="Yopish"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <button class="drawer-btn" id="newSession">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Yangi suhbat
+    </button>
+    <label class="drawer-toggle">
+      <span>Joylashuvni ulashish</span>
+      <input type="checkbox" id="geoToggle"><i></i>
+    </label>
+    <div class="drawer-note" id="installNote">
+      Telefonda: brauzer menyusidan <b>"Bosh ekranga qo'shish"</b> — Ali oddiy ilova kabi ochiladi.
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- Tasdiqlash -->
+  <div class="sheet" id="confirmSheet" aria-hidden="true">
+    <div class="sheet-card">
+      <div class="sheet-title">
+        <svg viewBox="0 0 24 24"><path d="M12 3l9 16H3zM12 10v4M12 17v.5"/></svg>
+        Ruxsat so'ralmoqda
+      </div>
+      <div class="sheet-name" id="confirmName"></div>
+      <pre class="sheet-code" id="confirmArgs"></pre>
+      <div class="sheet-actions">
+        <button class="btn ghost" id="denyBtn">Rad etish</button>
+        <button class="btn primary" id="allowBtn">Ruxsat berish</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <audio id="player" playsinline></audio>
+  <script src="/static/app.js"></script>
+</body>
+</html>

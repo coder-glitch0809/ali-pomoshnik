@@ -1,0 +1,12 @@
+{
+  "name": "Ali — shaxsiy yordamchi",
+  "short_name": "Ali",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#04070d",
+  "theme_color": "#04070d",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

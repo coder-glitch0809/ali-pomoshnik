@@ -1,0 +1,82 @@
+"""Sozlamalar: .env faylidan o'qiladi, standart qiymatlar shu yerda."""
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(ROOT / ".env")
+
+
+def _env(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    return _env(name, str(default)).lower() in ("1", "true", "yes", "ha")
+
+
+@dataclass
+class Config:
+    # Yordamchi shaxsiyati
+    assistant_name: str = field(default_factory=lambda: _env("ASSISTANT_NAME", "Ali"))
+    user_name: str = field(default_factory=lambda: _env("USER_NAME", "Ser"))
+
+    # Asosiy miya (Claude)
+    model: str = field(default_factory=lambda: _env("CLAUDE_MODEL", "claude-opus-5-5"))
+    effort: str = field(default_factory=lambda: _env("CLAUDE_EFFORT", "medium"))
+    deep_effort: str = field(default_factory=lambda: _env("CLAUDE_DEEP_EFFORT", "xhigh"))
+    max_tokens: int = field(default_factory=lambda: int(_env("CLAUDE_MAX_TOKENS", "32000")))
+    web_search: bool = field(default_factory=lambda: _env_bool("WEB_SEARCH", True))
+    # Suhbat shuncha xabardan oshsa, yangi suhbat boshlanadi (uzoq xotira saqlanadi)
+    max_history_messages: int = field(default_factory=lambda: int(_env("MAX_HISTORY_MESSAGES", "80")))
+
+    # Maslahatchi modellar ("super miya")
+    openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
+    openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5"))
+    openai_transcribe_model: str = field(default_factory=lambda: _env("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-transcribe"))
+    gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY"))
+    gemini_model: str = field(default_factory=lambda: _env("GEMINI_MODEL", "gemini-pro-latest"))
+    gemini_fast_model: str = field(default_factory=lambda: _env("GEMINI_FAST_MODEL", "gemini-flash-latest"))
+
+    # Telegram bot
+    telegram_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))
+    telegram_allowed: set[int] = field(default_factory=lambda: {
+        int(x) for x in _env("TELEGRAM_ALLOWED_USERS").replace(" ", "").split(",") if x.isdigit()
+    })
+
+    # Shaxsiy ovoz (ElevenLabs klonlash)
+    elevenlabs_api_key: str = field(default_factory=lambda: _env("ELEVENLABS_API_KEY"))
+    elevenlabs_voice_id: str = field(default_factory=lambda: _env("ELEVENLABS_VOICE_ID"))
+    elevenlabs_model: str = field(default_factory=lambda: _env("ELEVENLABS_MODEL", "eleven_v3"))
+
+    # Instagram (Graph API): IG_ACCOUNTS="brend=17841400000000000,shaxsiy=1784..."
+    ig_access_token: str = field(default_factory=lambda: _env("IG_ACCESS_TOKEN"))
+    ig_accounts: dict[str, str] = field(default_factory=lambda: dict(
+        pair.split("=", 1) for pair in _env("IG_ACCOUNTS").split(",") if "=" in pair
+    ))
+    ig_graph_version: str = field(default_factory=lambda: _env("IG_GRAPH_VERSION", "v23.0"))
+
+    # Veb-server
+    host: str = field(default_factory=lambda: _env("HOST", "0.0.0.0"))
+    port: int = field(default_factory=lambda: int(_env("PORT", "8000")))
+    access_password: str = field(default_factory=lambda: _env("ACCESS_PASSWORD"))
+
+    # Ovoz
+    wake_words: list[str] = field(
+        default_factory=lambda: [w.strip().lower() for w in _env("WAKE_WORDS", "ali,али,jarvis").split(",") if w.strip()]
+    )
+    stt_language: str = field(default_factory=lambda: _env("STT_LANGUAGE", "uz-UZ"))
+    tts_backend: str = field(default_factory=lambda: _env("TTS_BACKEND", "edge"))  # edge | pyttsx3 | none
+    tts_voice: str = field(default_factory=lambda: _env("TTS_VOICE", "uz-UZ-SardorNeural"))
+
+    # Fayllar
+    data_dir: Path = ROOT / "data"
+    db_path: Path = ROOT / "data" / "ali.db"
+    log_path: Path = ROOT / "logs" / "ali.log"
+
+
+config = Config()
+config.data_dir.mkdir(exist_ok=True)
+config.log_path.parent.mkdir(exist_ok=True)
