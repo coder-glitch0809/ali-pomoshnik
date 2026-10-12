@@ -162,7 +162,10 @@ class TelegramBot(Listener):
             pass
         if not auth.check_password(password):
             await asyncio.sleep(1.5)
-            await update.effective_chat.send_message("Parol noto'g'ri.")
+            if wait := auth.locked_for():
+                await update.effective_chat.send_message(f"Ko'p xato urinish. {wait // 60 + 1} daqiqadan keyin qayta urinib ko'ring.")
+            else:
+                await update.effective_chat.send_message("Parol noto'g'ri.")
             return
         self.users.add(update.effective_user.id)
         self._save_users()

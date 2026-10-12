@@ -29,7 +29,10 @@
         body: JSON.stringify({password: document.getElementById('password').value}),
       });
       if (res.ok) location.href = '/';
-      else err.textContent = 'Parol noto‘g‘ri';
+      else {
+        const {locked} = await res.json().catch(() => ({}));
+        err.textContent = locked ? `Ko‘p xato urinish. ${Math.ceil(locked / 60)} daqiqadan keyin urinib ko‘ring` : 'Parol noto‘g‘ri';
+      }
     });
   </script>
 </body>
