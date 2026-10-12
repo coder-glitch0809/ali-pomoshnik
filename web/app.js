@@ -9,7 +9,7 @@
   const el = {
     stage: $('#stage'), feed: $('#feed'), state: $('#stateLabel'), live: $('#liveTranscript'),
     input: $('#input'), composer: $('#composer'), mic: $('#micBtn'), file: $('#fileInput'),
-    attachments: $('#attachments'), drawer: $('#drawer'), scrim: $('#scrim'), stats: $('#stats'),
+    attachments: $('#attachments'), sidebar: $('#sidebar'), scrim: $('#scrim'),
     sheet: $('#confirmSheet'), toast: $('#toast'), player: $('#player'), geo: $('#geoToggle'),
   };
 
@@ -20,7 +20,9 @@
   };
   const modes = { deep: store.get('deep', false), super: store.get('super', false), voice: store.get('voice', true), wake: false };
 
-  let status = { wake_words: ['ali'], stt_language: 'uz-UZ', server_stt: false, assistant: 'Ali', user: '' };
+  let agent = store.get('agent', ''); // tanlangan agent kaliti ('' = oddiy Ali)
+
+  let status = { wake_words: ['ali'], stt_language: 'uz-UZ', server_stt: false, assistant: 'Ali', user: '', agents: [] };
   let myDeviceId = null;
   let attachments = [];
   let busy = false;
@@ -55,8 +57,8 @@
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     function color(a) {
-      return (state === 'thinking' || state === 'working') ? `rgba(255,181,71,${a})`
-        : state === 'offline' ? `rgba(110,140,160,${a})` : `rgba(0,229,255,${a})`;
+      return (state === 'thinking' || state === 'working') ? `rgba(245,165,36,${a})`
+        : state === 'offline' ? `rgba(120,130,150,${a})` : `rgba(91,140,255,${a})`;
     }
     function arc(r, start, len, w, a) {
       ctx.beginPath(); ctx.arc(200, 200, r, start, start + len);
@@ -318,8 +320,18 @@
     open_website: 'Sayt ochish', instagram_analytics: 'Instagram analitika', instagram_competitor: 'Raqobatchi tahlili',
     instagram_comments: 'Izohlar', save_knowledge: 'Bilimni saqlash', search_knowledge: 'Bilimlar bazasi',
     remember_fact: 'Eslab qolish', set_reminder: 'Eslatma', phone_open_url: 'Telefonda ochish', phone_notify: 'Telefonga xabar',
-    system_status: 'Tizim holati', get_datetime: 'Vaqt',
+    system_status: 'Tizim holati', get_datetime: 'Vaqt', ask_agent: 'Agentga topshiriq', market_data: 'Bozor ma’lumotlari',
+    list_projects: 'Loyihalar', project_tree: 'Loyiha fayllari', read_project_file: 'Faylni o‘qish', search_projects: 'Kodda qidirish',
+    project_git_status: 'Git holati', write_project_file: 'Faylga yozish', run_in_project: 'Loyihada buyruq', open_in_vscode: 'VS Code’da ochish',
+    github_repos: 'GitHub repolar', github_repo: 'GitHub repo', github_read: 'GitHub fayl', github_issues: 'GitHub issue',
+    github_create_issue: 'Issue ochish', github_clone: 'Repo klonlash', vercel_projects: 'Vercel loyihalar', vercel_deployments: 'Vercel deploylar',
+    vercel_logs: 'Vercel loglar', vercel_redeploy: 'Qayta deploy', code_task: 'Claude Code / Codex', code_task_status: 'Kod vazifasi holati',
+    coding_tools_status: 'Kod agentlari', create_agent: 'Agent yaratish', delete_agent: 'Agent o‘chirish', list_agents: 'Agentlar',
+    list_available_tools: 'Vositalar ro‘yxati', learn_now: 'O‘z-o‘zini o‘qitish', check_trading_projects: 'Treyding loyihalari tekshiruvi',
+    instagram_accounts: 'Instagram akkauntlar', list_knowledge_topics: 'Bilim mavzulari', list_facts: 'Faktlar', forget_fact: 'Unutish',
+    list_reminders: 'Eslatmalar', cancel_reminder: 'Eslatmani bekor qilish',
   };
+  const agentInfo = (key) => (status.agents || []).find((a) => a.key === key);
 
   function scrollDown() { requestAnimationFrame(() => { el.stage.scrollTop = el.stage.scrollHeight; }); }
   function startChat() { el.stage.classList.add('chatting'); }
@@ -335,12 +347,13 @@
     el.feed.appendChild(div);
   }
 
-  function addTurn(id) {
+  function addTurn(id, agentKey) {
+    const a = agentInfo(agentKey);
     const div = document.createElement('div');
     div.className = 'msg ai';
     div.innerHTML = `
       <div class="card">
-        <div class="card-head">${esc(status.assistant || 'Ali')}<span class="spinner"></span></div>
+        <div class="card-head">${a ? `${esc(a.icon)} ${esc(a.name)}` : esc(status.assistant || 'Ali')}<span class="spinner"></span></div>
         <details class="thinking" hidden><summary><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>Fikrlash jarayoni</summary><div class="think-body"></div></details>
         <div class="tools"></div>
         <div class="extra"></div>
@@ -384,9 +397,10 @@
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/ws?device=${DEVICE}`);
-    ws.onopen = () => { retry = 0; idleState(); loadStatus(); sendLocationNow(); };
+    ws.onopen = () => { retry = 0; setLive(true); idleState(); loadStatus(); loadMonitor(); sendLocationNow(); };
     ws.onclose = (e) => {
       if (e.code === 4401) { location.href = '/login'; return; }
+      setLive(false);
       setState('offline', 'Qayta ulanmoqda…');
       setTimeout(connect, Math.min(1000 * 2 ** retry++, 15000));
     };
@@ -402,7 +416,7 @@
       case 'user':
         if (m.from === myDeviceId) break; // o'zimizniki allaqachon ko'rsatilgan
         addUser(m.text, m.images || [], false, m.from);
-        addTurn(m.id);
+        addTurn(m.id, m.agent);
         setState('thinking', '');
         break;
       case 'thinking': {
@@ -428,6 +442,16 @@
         chip.innerHTML = `<span class="dot"></span>${esc(TOOL_NAMES[m.data.name] || m.data.name)}`;
         turn.tools.appendChild(chip);
         setState('working', TOOL_NAMES[m.data.name] || m.data.name);
+        scrollDown();
+        break;
+      }
+      case 'agent': {
+        const turn = t || addTurn(m.id);
+        const chip = document.createElement('span');
+        chip.className = 'tool agent-chip';
+        chip.textContent = `${m.data.icon} ${m.data.name} ishlayapti`;
+        turn.tools.appendChild(chip);
+        setState('working', `${m.data.icon} ${m.data.name}`);
         scrollDown();
         break;
       }
@@ -462,6 +486,9 @@
         if (modes.voice) speak(m.text);
         break;
       case 'action': handleAction(m); break;
+      case 'monitor': loadMonitor(); break;
+      case 'agents_changed': loadStatus(); loadMonitor(); break;
+      case 'monitor_log': appendLog(m.entry); break;
       case 'session_reset': el.feed.innerHTML = ''; turns.clear(); el.stage.classList.remove('chatting'); toast('Yangi suhbat'); break;
     }
   }
@@ -491,10 +518,10 @@
     stopSpeaking();
     const id = Math.random().toString(36).slice(2, 10);
     const images = attachments.map((a) => ({ media_type: 'image/jpeg', data: a.data }));
-    if (!wsSend({ type: 'ask', id, text, images, deep: modes.deep, super: modes.super })) { toast('Server bilan aloqa yo‘q'); return; }
+    if (!wsSend({ type: 'ask', id, text, images, deep: modes.deep, super: modes.super, agent })) { toast('Server bilan aloqa yo‘q'); return; }
     busy = true;
     addUser(text, attachments.map((a) => a.src), true);
-    addTurn(id);
+    addTurn(id, agent);
     attachments = []; renderAttachments();
     el.input.value = ''; autosize();
     setState('thinking', '');
@@ -589,6 +616,31 @@
     });
   });
 
+  // ---------- Agentlar ----------
+  const agentBar = $('#agentBar');
+  function renderAgents() {
+    const list = status.agents || [];
+    if (agent && !agentInfo(agent)) { agent = ''; store.set('agent', ''); }
+    agentBar.hidden = !list.length;
+    const items = [{ key: '', icon: '🧠', name: status.assistant || 'Ali' }, ...list];
+    agentBar.innerHTML = items.map((a) => `<button type="button" class="agent${a.key === agent ? ' on' : ''}" role="radio"
+      aria-checked="${a.key === agent}" data-key="${esc(a.key)}" title="${esc(a.description || '')}"><span>${esc(a.icon)}</span>${esc(a.name)}</button>`).join('');
+    const cur = agentInfo(agent);
+    el.input.placeholder = cur ? `${cur.name}ga yozing…` : `${status.assistant || 'Ali'}'ga yozing yoki gapiring…`;
+  }
+  function selectAgent(key, silent) {
+    agent = key || '';
+    store.set('agent', agent);
+    renderAgents();
+    if (silent) return;
+    const cur = agentInfo(agent);
+    toast(cur ? `${cur.icon} ${cur.name} agenti tanlandi` : `Oddiy ${status.assistant || 'Ali'} rejimi`);
+  }
+  agentBar.addEventListener('click', (e) => {
+    const b = e.target.closest('.agent');
+    if (b) selectAgent(b.dataset.key);
+  });
+
   // ---------- Tasdiqlash ----------
   function openConfirm(m) {
     el.sheet.dataset.id = m.id;
@@ -604,16 +656,55 @@
   $('#allowBtn').onclick = () => answerConfirm(true);
   $('#denyBtn').onclick = () => answerConfirm(false);
 
-  // ---------- Menyu ----------
-  function openDrawer(open) {
-    el.drawer.classList.toggle('open', open); el.scrim.classList.toggle('show', open);
-    el.drawer.setAttribute('aria-hidden', String(!open));
-    if (open) loadStatus();
+  // ---------- Bo'limlar va menyu ----------
+  const VIEW_TITLES = { home: 'Bosh sahifa', chat: 'Chat', monitor: 'Monitoring', agents: 'Agentlar' };
+  let view = 'home';
+  function showView(name) {
+    if (!VIEW_TITLES[name]) name = 'home';
+    view = name;
+    document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== 'view-' + name; });
+    document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('on', b.dataset.view === name));
+    $('#mobileTitle').textContent = name === 'chat' ? `${status.assistant || 'Ali'} Chat` : VIEW_TITLES[name];
+    if (location.hash.slice(1) !== name) history.replaceState(null, '', '#' + name);
+    openSidebar(false);
+    if (name === 'monitor' || name === 'agents' || name === 'home') loadMonitor();
+    if (name === 'chat') { scrollDown(); if (!isPhone) el.input.focus(); }
   }
-  $('#menuBtn').onclick = () => openDrawer(true);
-  $('#closeDrawer').onclick = () => openDrawer(false);
-  el.scrim.onclick = () => openDrawer(false);
-  $('#newSession').onclick = () => { wsSend({ type: 'new_session' }); openDrawer(false); };
+  function openSidebar(open) { el.sidebar.classList.toggle('open', open); el.scrim.classList.toggle('show', open); }
+  document.querySelectorAll('.nav-item').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
+  document.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => showView(b.dataset.goto)));
+  $('#menuBtn').onclick = () => openSidebar(true);
+  el.scrim.onclick = () => openSidebar(false);
+  window.addEventListener('hashchange', () => showView(location.hash.slice(1)));
+
+  function newSession() { wsSend({ type: 'new_session' }); }
+  $('#newSession').onclick = newSession;
+  $('#homeNew').onclick = () => { newSession(); showView('chat'); };
+  $('#homeChat').onclick = () => showView('chat');
+  // Tez topshiriqlar: kerakli agentni tanlab, chatga o'tadi
+  document.querySelectorAll('#quick button').forEach((b) => b.addEventListener('click', () => {
+    unlockAudio();
+    selectAgent(agentInfo(b.dataset.agent) ? b.dataset.agent : '', true);
+    showView('chat');
+    send(b.dataset.ask);
+  }));
+
+  // Mavzu (qorong'i / yorug')
+  $('#themeBtn').onclick = () => {
+    const cur = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+    const next = cur === 'light' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = next;
+    store.set('theme', next);
+    document.querySelector('meta[name="theme-color"]').content = next === 'light' ? '#ffffff' : '#0b0f17';
+  };
+
+  function setLive(on) { document.querySelectorAll('.live').forEach((d) => d.classList.toggle('on', on)); }
+
+  function greeting() {
+    const h = new Date().getHours();
+    const part = h < 5 ? 'Xayrli tun' : h < 12 ? 'Xayrli tong' : h < 18 ? 'Xayrli kun' : 'Xayrli kech';
+    return `${part}${status.user ? ', ' + status.user : ''}!`;
+  }
 
   async function loadStatus() {
     try {
@@ -621,22 +712,216 @@
       if (res.status === 401) { location.href = '/login'; return; }
       status = await res.json();
     } catch { return; }
-    $('#brandName').textContent = (status.assistant || 'Ali').toUpperCase();
-    document.title = status.assistant || 'Ali';
+    const name = status.assistant || 'Ali';
+    $('#brandName').textContent = name.toUpperCase();
+    $('#navChat').textContent = `${name} Chat`;
+    document.title = name;
+    $('#greeting').textContent = greeting();
+    $('#homeSub').textContent = `${name} va ${(status.agents || []).length} ta agent xizmatingizda`;
+    $('#sideMeta').textContent = status.models.claude;
     for (const [k, v] of Object.entries(status.models)) document.querySelector(`.pill[data-model="${k}"]`)?.classList.toggle('on', !!v);
+    renderAgents();
     const d = status.devices || {};
-    el.stats.innerHTML = `
-      <div class="stat"><b>${d.phone || 0}</b><span>Telefon ulangan</span></div>
-      <div class="stat"><b>${d.desktop || 0}</b><span>Kompyuter ulangan</span></div>
-      <div class="stat"><b>${status.facts}</b><span>Eslab qolingan fakt</span></div>
-      <div class="stat"><b>${status.knowledge}</b><span>O‘rganilgan mavzu</span></div>
-      <div class="stat wide"><span>Asosiy miya</span><b>${esc(status.models.claude)}</b></div>
-      <div class="stat wide"><span>Maslahatchilar</span><b>${esc([status.models.openai, status.models.gemini].filter(Boolean).join(' · ') || 'ulanmagan')}</b></div>
-      <div class="stat wide"><span>Telegram bot</span><b>${status.telegram ? 'ulangan' : 'ulanmagan'}</b></div>
-      <div class="stat wide"><span>Ovoz</span><b>${esc(status.voice || '')}</b></div>
-      <div class="stat wide"><span>Instagram</span><b>${esc(status.instagram.join(', ') || 'ulanmagan')}</b></div>`;
+    const onOff = (v, on, off = 'ulanmagan') => `<b class="small ${v ? 'on' : 'off'}">${esc(v ? on : off)}</b>`;
+    $('#tiles').innerHTML = `
+      <div class="tile"><span>Telefon ulangan</span><b>${d.phone || 0}</b></div>
+      <div class="tile"><span>Kompyuter ulangan</span><b>${d.desktop || 0}</b></div>
+      <div class="tile"><span>Eslab qolingan fakt</span><b>${status.facts}</b></div>
+      <div class="tile"><span>O‘rganilgan mavzu</span><b>${status.knowledge}</b></div>
+      <div class="tile"><span>Asosiy miya</span><b class="small">${esc(status.models.claude)}</b></div>
+      <div class="tile"><span>Maslahatchilar</span>${onOff([status.models.openai, status.models.gemini].filter(Boolean).join(' · '), [status.models.openai, status.models.gemini].filter(Boolean).join(' · '))}</div>
+      <div class="tile"><span>Telegram bot</span>${onOff(status.telegram, 'ulangan')}</div>
+      <div class="tile"><span>Ovoz</span><b class="small">${esc(status.voice || '—')}</b></div>
+      <div class="tile"><span>Instagram</span>${onOff(status.instagram.length, status.instagram.join(', '))}</div>`;
     if (state === 'offline') idleState();
   }
+
+  // ---------- Monitoring va agentlar ----------
+  let mon = { agents: [], jobs: [], feed: [] };
+  const monFilter = $('#monFilter'), showThink = $('#showThink');
+  showThink.checked = store.get('showThink', false);
+
+  const fmtTime = (ts) => new Date(ts * 1000).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const fmtClock = (ts) => new Date(ts * 1000).toLocaleTimeString('uz-UZ', { hour12: false });
+  function fmtDur(sec) {
+    sec = Math.max(0, Math.round(sec));
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    return m < 60 ? `${m}m ${sec % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+  }
+  const memberOf = (key) => mon.agents.find((a) => a.key === key) || { key, name: key, icon: '🤖' };
+
+  let monTimer = 0;
+  function loadMonitor() {
+    clearTimeout(monTimer);
+    monTimer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/monitor');
+        if (!res.ok) return;
+        mon = await res.json();
+      } catch { return; }
+      renderMonitor();
+    }, 150);
+  }
+
+  function agentCard(a, opts = {}) {
+    const running = a.status === 'running';
+    const stateText = running ? `Ishlayapti · <span data-since="${a.since}">${fmtDur(Date.now() / 1000 - a.since)}</span>` : 'Bo‘sh';
+    const last = running ? a.current : a.last;
+    return `<div class="agent-card${running ? ' running' : ''}${opts.click ? ' clickable' : ''}" data-key="${esc(a.key)}">
+      <div class="ac-head"><span class="ico">${esc(a.icon)}</span><span class="nm">${esc(a.name)}</span></div>
+      <div class="ac-state"><i></i>${stateText}</div>
+      <div class="ac-last">${last ? (running ? '' : 'Oxirgi: ') + esc(last) : 'Hali ish yo‘q'}</div>
+      <div class="ac-stats"><span>Bugun: <b>${a.today}</b></span><span>Jami: <b>${a.total}</b></span></div>
+    </div>`;
+  }
+
+  function renderMonitor() {
+    const running = mon.agents.filter((a) => a.status === 'running');
+    const badge = $('#runBadge');
+    badge.hidden = !running.length;
+    badge.textContent = running.length;
+    $('#monSub').textContent = running.length ? `${running.length} ta ish bajarilmoqda` : 'Hozir ish yo‘q — hamma bo‘sh';
+
+    // filtr ro'yxati
+    const sel = monFilter.value;
+    monFilter.innerHTML = '<option value="">Barcha agentlar</option>' +
+      mon.agents.map((a) => `<option value="${esc(a.key)}">${esc(a.icon)} ${esc(a.name)}</option>`).join('');
+    monFilter.value = mon.agents.some((a) => a.key === sel) ? sel : '';
+
+    $('#monAgents').innerHTML = mon.agents.map((a) => agentCard(a)).join('');
+    $('#homeAgents').innerHTML = mon.agents.map((a) => agentCard(a, { click: true })).join('');
+    renderJobs();
+    renderLog();
+    renderAgentCards();
+  }
+
+  function renderJobs() {
+    const f = monFilter.value;
+    const jobs = mon.jobs.filter((j) => !f || j.agent === f);
+    const active = jobs.filter((j) => j.status === 'running').length;
+    $('#jobsCount').textContent = `${active} faol · ${jobs.length} jami`;
+    $('#jobs').innerHTML = jobs.map((j) => {
+      const a = memberOf(j.agent);
+      const dur = j.status === 'running' ? `<span data-since="${j.start}">${fmtDur(Date.now() / 1000 - j.start)}</span>` : fmtDur((j.end || j.start) - j.start);
+      const src = j.source === 'telegram' || j.source === 'avtopilot' ? j.source
+        : memberOf(j.source).name !== j.source ? `${memberOf(j.source).name} topshirdi` : 'ilova';
+      return `<div class="job ${j.status}"><span class="bar"></span><div class="job-main">
+        <div class="job-top"><span>${esc(a.icon)}</span><b>${esc(a.name)}</b><span class="src">${esc(src)}</span><time>${fmtTime(j.start)} · ${dur}</time></div>
+        <div class="job-text">${esc(j.text || '—')}${j.steps ? ` · ${j.steps} ta amal` : ''}</div></div></div>`;
+    }).join('') || '<div class="empty">Hali ishlar yo‘q. Chatda biror narsa so‘rang.</div>';
+  }
+
+  function logRow(e) {
+    const a = memberOf(e.agent);
+    const who = e.kind === 'user' ? '👤 Siz' : `${a.icon} ${a.name}`;
+    return `<div class="log ${e.kind}"><time>${fmtClock(e.t)}</time><div><span class="who">${esc(who)}</span> <span class="msg-t">${esc(e.text)}</span></div></div>`;
+  }
+  function visibleLog(e) { return (showThink.checked || e.kind !== 'think') && (!monFilter.value || e.agent === monFilter.value); }
+  function renderLog() {
+    const box = $('#liveLog');
+    const rows = mon.feed.filter(visibleLog).slice(-150).reverse();
+    box.innerHTML = rows.map(logRow).join('') || '<div class="empty">Lenta bo‘sh. Ali ishlay boshlasa, shu yerda jonli ko‘rinadi.</div>';
+  }
+  function appendLog(e) {
+    mon.feed.push(e);
+    if (mon.feed.length > 400) mon.feed.shift();
+    if (!visibleLog(e)) return;
+    const box = $('#liveLog');
+    box.querySelector('.empty')?.remove();
+    box.insertAdjacentHTML('afterbegin', logRow(e));
+    while (box.children.length > 150) box.lastElementChild.remove();
+  }
+  monFilter.addEventListener('change', () => { renderJobs(); renderLog(); });
+  showThink.addEventListener('change', () => { store.set('showThink', showThink.checked); renderLog(); });
+
+  function renderAgentCards() {
+    $('#agentCards').innerHTML = mon.agents.map((a) => `
+      <div class="agent-card${a.status === 'running' ? ' running' : ''}">
+        <div class="ac-head"><span class="ico">${esc(a.icon)}</span><div><div class="nm">${esc(a.name)}</div>
+          <div class="ac-state"><i></i>${a.status === 'running' ? 'Ishlayapti' : 'Bo‘sh'} · bugun ${a.today}, jami ${a.total}</div></div></div>
+        <div class="ac-desc">${esc(a.description || '')}</div>
+        ${a.tools?.length ? `<div class="ac-tools">${a.tools.map((t) => `<span>${esc(TOOL_NAMES[t] || t)}</span>`).join('')}</div>` : ''}
+        <div class="ac-actions">
+          <button class="btn primary" data-chat="${esc(a.key)}">Suhbat boshlash</button>
+          ${a.key !== 'ali' ? `<button class="btn ghost" data-edit="${esc(a.key)}">Tahrirlash</button>` : ''}
+        </div>
+      </div>`).join('');
+  }
+  $('#agentCards').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-chat]');
+    if (b) { selectAgent(b.dataset.chat === 'ali' ? '' : b.dataset.chat, true); showView('chat'); return; }
+    const ed = e.target.closest('[data-edit]');
+    if (ed) openAgentForm(ed.dataset.edit);
+  });
+
+  // ---------- Agent yaratish / tahrirlash ----------
+  const agentSheet = $('#agentSheet'), agentForm = $('#agentForm');
+  let editing = null;
+  async function openAgentForm(key) {
+    let data;
+    try { data = await (await fetch('/api/agents')).json(); } catch { toast('Server bilan aloqa yo‘q'); return; }
+    const a = key ? data.agents.find((x) => x.key === key) : null;
+    editing = a ? a.key : null;
+    $('#agentFormTitle').textContent = a ? `${a.icon} ${a.name} — tahrirlash` : 'Yangi agent';
+    const f = agentForm.elements;
+    f.icon.value = a?.icon || '🤖';
+    f.name.value = a?.name || '';
+    f.key.value = a?.key || '';
+    f.key.disabled = !!a;
+    f.description.value = a?.description || '';
+    f.prompt.value = a?.prompt || '';
+    f.learn.value = (a?.learn || []).join('\n');
+    const chosen = new Set(a?.tools || ['web_search', 'search_knowledge', 'save_knowledge', 'get_datetime']);
+    $('#toolPicks').innerHTML = data.tools.map((t) => `<label title="${esc(t.description)}">
+      <input type="checkbox" value="${esc(t.name)}"${chosen.has(t.name) ? ' checked' : ''}>
+      ${esc(TOOL_NAMES[t.name] || t.name)}${t.dangerous ? ' <span class="warn" title="Tasdiq so‘raladi">⚠</span>' : ''}</label>`).join('');
+    $('#agentDelete').hidden = !a;
+    agentSheet.classList.add('show');
+    agentSheet.setAttribute('aria-hidden', 'false');
+  }
+  function closeAgentForm() { agentSheet.classList.remove('show'); agentSheet.setAttribute('aria-hidden', 'true'); }
+  $('#newAgentBtn').onclick = () => openAgentForm(null);
+  $('#agentFormClose').onclick = closeAgentForm;
+  agentSheet.addEventListener('click', (e) => { if (e.target === agentSheet) closeAgentForm(); });
+  agentForm.elements.name.addEventListener('input', (e) => {
+    if (editing) return; // kalit faqat yangi agentda nomdan avtomatik yasaladi
+    const map = { 'ʻ': '', "'": '', '‘': '', 'ʼ': '', ' ': '-' };
+    agentForm.elements.key.value = e.target.value.toLowerCase().replace(/[ʻ'‘ʼ ]/g, (c) => map[c])
+      .replace(/[^a-z0-9_-]/g, '').slice(0, 30);
+  });
+  agentForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = agentForm.elements;
+    const body = {
+      key: editing || f.key.value.trim(), icon: f.icon.value.trim(), name: f.name.value.trim(),
+      description: f.description.value.trim(), prompt: f.prompt.value,
+      learn: f.learn.value.split('\n').map((x) => x.trim()).filter(Boolean),
+      tools: [...$('#toolPicks').querySelectorAll('input:checked')].map((i) => i.value),
+    };
+    const res = await fetch('/api/agents', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(out.error || 'Saqlanmadi'); return; }
+    closeAgentForm();
+    toast(`${out.agent.icon} ${out.agent.name} saqlandi`);
+  });
+  $('#agentDelete').onclick = async () => {
+    if (!editing || !confirm('Agent o‘chirilsinmi?')) return;
+    await fetch('/api/agents/' + encodeURIComponent(editing), { method: 'DELETE' });
+    closeAgentForm();
+    toast('Agent o‘chirildi');
+  };
+  $('#homeAgents').addEventListener('click', (e) => {
+    const c = e.target.closest('.agent-card');
+    if (c) { selectAgent(c.dataset.key === 'ali' ? '' : c.dataset.key, true); showView('chat'); }
+  });
+
+  // ishlayotgan vaqtni har soniyada yangilash
+  setInterval(() => {
+    if (document.hidden) return;
+    const now = Date.now() / 1000;
+    document.querySelectorAll('[data-since]').forEach((s) => { s.textContent = fmtDur(now - Number(s.dataset.since)); });
+  }, 1000);
 
   // ---------- Joylashuv ----------
   let geoWatch = null, lastGeoSent = 0, lastPos = null;
@@ -662,5 +947,6 @@
     setTimeout(() => toast('Mikrofon va joylashuv uchun HTTPS kerak — tunnel.bat havolasidan oching', 6000), 1200);
   }
 
+  showView(location.hash.slice(1) || 'home');
   connect();
 })();

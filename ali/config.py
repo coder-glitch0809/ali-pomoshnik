@@ -71,6 +71,22 @@ class Config:
     tts_backend: str = field(default_factory=lambda: _env("TTS_BACKEND", "edge"))  # edge | pyttsx3 | none
     tts_voice: str = field(default_factory=lambda: _env("TTS_VOICE", "uz-UZ-SardorNeural"))
 
+    # Dasturlash: GitHub, Vercel, kompyuterdagi loyihalar
+    github_token: str = field(default_factory=lambda: _env("GITHUB_TOKEN"))
+    vercel_token: str = field(default_factory=lambda: _env("VERCEL_TOKEN"))
+    vercel_team_id: str = field(default_factory=lambda: _env("VERCEL_TEAM_ID"))
+    projects_dirs: list[Path] = field(default_factory=lambda: [
+        Path(p.strip()) for p in (_env("PROJECTS_DIRS") or str(ROOT.parent)).split(";") if p.strip()
+    ])
+    # Claude Code / Codex CLI vazifasi uchun maksimal vaqt (daqiqa)
+    code_task_minutes: int = field(default_factory=lambda: int(_env("CODE_TASK_MINUTES", "30")))
+
+    # Avtopilot: o'z-o'zini o'rgatish va loyihalarni kuzatish
+    auto_learn: bool = field(default_factory=lambda: _env_bool("AUTO_LEARN", False))
+    auto_learn_hours: float = field(default_factory=lambda: float(_env("AUTO_LEARN_HOURS", "24")))
+    watch_projects: bool = field(default_factory=lambda: _env_bool("WATCH_PROJECTS", False))
+    watch_hours: float = field(default_factory=lambda: float(_env("WATCH_HOURS", "6")))
+
     # Fayllar
     data_dir: Path = ROOT / "data"
     db_path: Path = ROOT / "data" / "ali.db"

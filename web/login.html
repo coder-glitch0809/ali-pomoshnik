@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#04070d">
+  <meta name="theme-color" content="#0b0e14">
   <title>Ali — kirish</title>
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>try { const t = localStorage.getItem('ali.theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}</script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="login-page">
-  <div class="bg-grid" aria-hidden="true"></div>
   <form class="login-card" id="form">
     <div class="login-core"><span></span></div>
     <h1>ALI</h1>
-    <p>Shaxsiy yordamchi tizimi</p>
+    <p>Shaxsiy AI jamoa</p>
     <input type="password" id="password" placeholder="Kirish paroli" autocomplete="current-password" autofocus required>
     <button class="btn primary" type="submit">Kirish</button>
     <div class="login-error" id="error"></div>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-  <meta name="theme-color" content="#04070d">
+  <meta name="theme-color" content="#0b0f17">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Ali</title>
@@ -12,116 +12,253 @@
   <link rel="apple-touch-icon" href="/static/icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script>try { const t = localStorage.getItem('ali.theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}</script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="bg-grid" aria-hidden="true"></div>
+<div class="app">
 
-  <header class="topbar">
+  <!-- ===== Chap menyu ===== -->
+  <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <span class="brand-dot"></span>
-      <span class="brand-name" id="brandName">ALI</span>
-    </div>
-    <div class="status-pills" id="pills">
-      <span class="pill" data-model="claude"><i></i>Claude</span>
-      <span class="pill" data-model="openai"><i></i>GPT</span>
-      <span class="pill" data-model="gemini"><i></i>Gemini</span>
-    </div>
-    <button class="icon-btn" id="menuBtn" aria-label="Menyu">
-      <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
-    </button>
-  </header>
-
-  <main class="stage" id="stage">
-    <section class="hero" id="hero">
-      <canvas id="reactor" width="400" height="400" aria-hidden="true"></canvas>
-      <div class="hero-state" id="stateLabel">Ulanmoqda…</div>
-      <div class="hero-sub" id="liveTranscript"></div>
-      <div class="suggestions" id="suggestions">
-        <button>Bugun ob-havo qanday?</button>
-        <button>Ekranimda nima bor?</button>
-        <button>Instagramimni tahlil qil</button>
-        <button>Menga sun'iy intellektni o'rgat</button>
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <div class="brand-name" id="brandName">ALI</div>
+        <div class="brand-sub">Shaxsiy AI jamoa</div>
       </div>
-    </section>
-
-    <section class="feed" id="feed" aria-live="polite"></section>
-  </main>
-
-  <footer class="dock">
-    <div class="modes">
-      <button class="mode" data-mode="deep" title="Chuqur fikrlash">
-        <svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6c0 2.2 1.2 3.6 2 4.5V17h8v-3.5c.8-.9 2-2.3 2-4.5a6 6 0 0 0-6-6zM9 20h6"/></svg>
-        Chuqur
-      </button>
-      <button class="mode" data-mode="super" title="Claude + GPT + Gemini">
-        <svg viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>
-        Super miya
-      </button>
-      <button class="mode" data-mode="voice" title="Javobni ovoz bilan o'qish">
-        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
-        Ovoz
-      </button>
-      <button class="mode" data-mode="wake" title="'Ali' deb chaqirishni doim tinglash">
-        <svg viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/></svg>
-        Doim tinglash
-      </button>
     </div>
-
-    <div class="attachments" id="attachments"></div>
-
-    <form class="composer" id="composer" autocomplete="off">
-      <label class="icon-btn" title="Rasm yoki kamera">
-        <input type="file" id="fileInput" accept="image/*" multiple hidden>
-        <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
-      </label>
-      <textarea id="input" rows="1" placeholder="Ali'ga yozing yoki gapiring…" enterkeyhint="send"></textarea>
-      <button type="button" class="mic" id="micBtn" aria-label="Gapirish">
-        <svg class="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-        <svg class="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/></svg>
+    <nav class="nav">
+      <button class="nav-item" data-view="home">
+        <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg>Bosh sahifa
       </button>
-    </form>
-  </footer>
-
-  <!-- Menyu -->
-  <aside class="drawer" id="drawer" aria-hidden="true">
-    <div class="drawer-head">
-      <span>Boshqaruv paneli</span>
-      <button class="icon-btn" id="closeDrawer" aria-label="Yopish"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    </div>
-    <div class="stats" id="stats"></div>
-    <button class="drawer-btn" id="newSession">
-      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Yangi suhbat
-    </button>
-    <label class="drawer-toggle">
-      <span>Joylashuvni ulashish</span>
-      <input type="checkbox" id="geoToggle"><i></i>
-    </label>
-    <div class="drawer-note" id="installNote">
-      Telefonda: brauzer menyusidan <b>"Bosh ekranga qo'shish"</b> — Ali oddiy ilova kabi ochiladi.
+      <button class="nav-item" data-view="chat">
+        <svg viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 3V6a1 1 0 0 1 1-1z"/></svg><span id="navChat">Ali Chat</span>
+      </button>
+      <button class="nav-item" data-view="monitor">
+        <svg viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Monitoring<span class="badge" id="runBadge" hidden>0</span>
+      </button>
+      <button class="nav-item" data-view="agents">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 4.5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 6"/></svg>Agentlar
+      </button>
+    </nav>
+    <div class="side-foot">
+      <button class="theme-btn" id="themeBtn">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16a8 8 0 0 0 0-16z" fill="currentColor"/></svg>Mavzu
+      </button>
+      <div class="side-meta" id="sideMeta"></div>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
 
-  <!-- Tasdiqlash -->
-  <div class="sheet" id="confirmSheet" aria-hidden="true">
-    <div class="sheet-card">
-      <div class="sheet-title">
-        <svg viewBox="0 0 24 24"><path d="M12 3l9 16H3zM12 10v4M12 17v.5"/></svg>
-        Ruxsat so'ralmoqda
+  <main class="main">
+    <header class="mobile-bar">
+      <button class="icon-btn" id="menuBtn" aria-label="Menyu"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <span class="mobile-title" id="mobileTitle">Bosh sahifa</span>
+      <span class="live" id="liveDotMobile"><i></i>LIVE</span>
+    </header>
+
+    <!-- ===== Bosh sahifa ===== -->
+    <section class="view" id="view-home" hidden>
+      <div class="page">
+        <div class="page-head">
+          <div>
+            <h1 id="greeting">Salom!</h1>
+            <p class="page-sub" id="homeSub">Ali va agentlar jamoasi xizmatingizda</p>
+          </div>
+          <span class="live" id="liveDot"><i></i>LIVE</span>
+        </div>
+
+        <div class="hero-card">
+          <div class="hero-orb"><span></span></div>
+          <div class="hero-text">
+            <h2>Bugun nima qilamiz?</h2>
+            <p>Savol bering, vazifa topshiring yoki kerakli agentni tanlang.</p>
+            <div class="quick" id="quick">
+              <button data-ask="Bugun ob-havo qanday?">⛅ Ob-havo</button>
+              <button data-ask="Bitcoin hozir qanday holatda? Qisqa tahlil qil." data-agent="treyder">📈 BTC tahlili</button>
+              <button data-ask="Instagram uchun bu hafta 5 ta Reels g'oyasi ber." data-agent="kontent">🎬 Reels g'oyalari</button>
+              <button data-ask="Python'da sikllarni oddiy misollar bilan o'rgat." data-agent="informatika">💻 Python darsi</button>
+            </div>
+          </div>
+          <button class="btn primary" id="homeChat">Chatni ochish</button>
+        </div>
+
+        <h3 class="section-title">Holat</h3>
+        <div class="tiles" id="tiles"></div>
+
+        <h3 class="section-title">Agentlar <button class="link" data-goto="agents">Barchasi →</button></h3>
+        <div class="agent-grid compact" id="homeAgents"></div>
+
+        <h3 class="section-title">Sozlamalar</h3>
+        <div class="settings">
+          <label class="toggle-row">
+            <span><b>Joylashuvni ulashish</b><small>Ob-havo va yaqin joylar uchun</small></span>
+            <input type="checkbox" id="geoToggle"><i></i>
+          </label>
+          <button class="toggle-row" id="homeNew">
+            <span><b>Yangi suhbat</b><small>Tarixni tozalash (xotira saqlanadi)</small></span>
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+          <div class="toggle-row note" id="installNote">
+            <span><b>Telefonga o'rnatish</b><small>Brauzer menyusi → "Bosh ekranga qo'shish"</small></span>
+          </div>
+        </div>
       </div>
-      <div class="sheet-name" id="confirmName"></div>
-      <pre class="sheet-code" id="confirmArgs"></pre>
-      <div class="sheet-actions">
-        <button class="btn ghost" id="denyBtn">Rad etish</button>
-        <button class="btn primary" id="allowBtn">Ruxsat berish</button>
+    </section>
+
+    <!-- ===== Chat ===== -->
+    <section class="view chat-view" id="view-chat" hidden>
+      <header class="chat-head">
+        <div class="agents" id="agentBar" role="radiogroup" aria-label="Agent"></div>
+        <div class="status-pills" id="pills">
+          <span class="pill" data-model="claude"><i></i>Claude</span>
+          <span class="pill" data-model="openai"><i></i>GPT</span>
+          <span class="pill" data-model="gemini"><i></i>Gemini</span>
+        </div>
+        <button class="icon-btn" id="newSession" title="Yangi suhbat" aria-label="Yangi suhbat">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </header>
+
+      <div class="stage" id="stage">
+        <section class="hero" id="hero">
+          <canvas id="reactor" width="400" height="400" aria-hidden="true"></canvas>
+          <div class="hero-state" id="stateLabel">Ulanmoqda…</div>
+          <div class="hero-sub" id="liveTranscript"></div>
+          <div class="suggestions" id="suggestions">
+            <button>Bugun ob-havo qanday?</button>
+            <button>Ekranimda nima bor?</button>
+            <button>Instagramimni tahlil qil</button>
+            <button>Menga sun'iy intellektni o'rgat</button>
+          </div>
+        </section>
+        <section class="feed" id="feed" aria-live="polite"></section>
       </div>
+
+      <footer class="dock">
+        <div class="modes">
+          <button class="mode" data-mode="deep" title="Chuqur fikrlash">
+            <svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6c0 2.2 1.2 3.6 2 4.5V17h8v-3.5c.8-.9 2-2.3 2-4.5a6 6 0 0 0-6-6zM9 20h6"/></svg>Chuqur
+          </button>
+          <button class="mode" data-mode="super" title="Claude + GPT + Gemini">
+            <svg viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Super miya
+          </button>
+          <button class="mode" data-mode="voice" title="Javobni ovoz bilan o'qish">
+            <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>Ovoz
+          </button>
+          <button class="mode" data-mode="wake" title="'Ali' deb chaqirishni doim tinglash">
+            <svg viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/></svg>Doim tinglash
+          </button>
+        </div>
+        <div class="attachments" id="attachments"></div>
+        <form class="composer" id="composer" autocomplete="off">
+          <label class="icon-btn" title="Rasm yoki kamera">
+            <input type="file" id="fileInput" accept="image/*" multiple hidden>
+            <svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          </label>
+          <textarea id="input" rows="1" placeholder="Ali'ga yozing yoki gapiring…" enterkeyhint="send"></textarea>
+          <button type="button" class="mic" id="micBtn" aria-label="Gapirish">
+            <svg class="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            <svg class="i-send" viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z"/></svg>
+          </button>
+        </form>
+      </footer>
+    </section>
+
+    <!-- ===== Monitoring ===== -->
+    <section class="view" id="view-monitor" hidden>
+      <div class="page">
+        <div class="page-head">
+          <div>
+            <h1>Monitoring</h1>
+            <p class="page-sub" id="monSub">Hozir ish yo'q</p>
+          </div>
+          <div class="head-tools">
+            <select id="monFilter" aria-label="Agent filtri"><option value="">Barcha agentlar</option></select>
+            <span class="live" id="liveDot2"><i></i>LIVE</span>
+          </div>
+        </div>
+        <div class="agent-grid" id="monAgents"></div>
+        <div class="panels">
+          <div class="panel">
+            <div class="panel-head"><span>🗂 Ishlar</span><small id="jobsCount"></small></div>
+            <div class="panel-body" id="jobs"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span>📡 Jonli lenta</span>
+              <label class="check"><input type="checkbox" id="showThink"> o'ylashlarni ham ko'rsat</label>
+            </div>
+            <div class="panel-body feed-log" id="liveLog"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Agentlar ===== -->
+    <section class="view" id="view-agents" hidden>
+      <div class="page">
+        <div class="page-head">
+          <div>
+            <h1>Agentlar</h1>
+            <p class="page-sub">Har bir agent o'z sohasining mutaxassisi. Tanlang va suhbatni boshlang.</p>
+          </div>
+          <button class="btn primary" id="newAgentBtn">+ Yangi agent</button>
+        </div>
+        <div class="agent-grid big" id="agentCards"></div>
+        <div class="hint">
+          <b>Maslahat:</b> agentni chatda ham yaratish mumkin — masalan: <i>“Huquqshunos agent yarat: O'zbekiston qonunlari
+          bo'yicha maslahat bersin”</i>. Ali sohani o'zi o'rganib, ko'rsatma va bilimlarni to'ldiradi.
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Tasdiqlash -->
+<div class="sheet" id="confirmSheet" aria-hidden="true">
+  <div class="sheet-card">
+    <div class="sheet-title">
+      <svg viewBox="0 0 24 24"><path d="M12 3l9 16H3zM12 10v4M12 17v.5"/></svg>
+      Ruxsat so'ralmoqda
+    </div>
+    <div class="sheet-name" id="confirmName"></div>
+    <pre class="sheet-code" id="confirmArgs"></pre>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="denyBtn">Rad etish</button>
+      <button class="btn primary" id="allowBtn">Ruxsat berish</button>
     </div>
   </div>
+</div>
 
-  <div class="toast" id="toast"></div>
-  <audio id="player" playsinline></audio>
-  <script src="/static/app.js"></script>
+<!-- Agent yaratish / tahrirlash -->
+<div class="sheet" id="agentSheet" aria-hidden="true">
+  <form class="sheet-card agent-form" id="agentForm" autocomplete="off">
+    <div class="form-head">
+      <b id="agentFormTitle">Yangi agent</b>
+      <button type="button" class="icon-btn" id="agentFormClose" aria-label="Yopish"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="form-scroll">
+      <div class="row2">
+        <label class="fld ico-fld"><span>Belgi</span><input name="icon" maxlength="4" placeholder="🤖"></label>
+        <label class="fld"><span>Nomi</span><input name="name" required placeholder="Huquqshunos"></label>
+      </div>
+      <label class="fld"><span>Kalit (lotincha, o'zgarmaydi)</span><input name="key" required pattern="[a-z0-9][a-z0-9_\-]{1,30}" placeholder="huquqshunos"></label>
+      <label class="fld"><span>Qisqa tavsif — nima qiladi</span><input name="description" required placeholder="O'zbekiston qonunlari bo'yicha maslahat, ariza va shartnoma matnlari"></label>
+      <label class="fld"><span>Ko'rsatma (rol, ish tartibi, qoidalar, til)</span><textarea name="prompt" rows="8" required placeholder="Sen tajribali huquqshunossan..."></textarea></label>
+      <label class="fld"><span>Avtomatik o'rganish mavzulari (har biri yangi qatorda)</span><textarea name="learn" rows="3" placeholder="O'zbekiston qonunchiligidagi yangi o'zgarishlar"></textarea></label>
+      <div class="fld"><span>Vositalar</span><div class="tool-picks" id="toolPicks"></div></div>
+      <div class="form-note">Ko'rsatmani yozish qiyin bo'lsa — chatda Ali'dan so'rang: u sohani o'rganib, agentni o'zi to'ldiradi.</div>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" class="btn ghost danger" id="agentDelete" hidden>O'chirish</button>
+      <button type="submit" class="btn primary">Saqlash</button>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast"></div>
+<audio id="player" playsinline></audio>
+<script src="/static/app.js"></script>
 </body>
 </html>

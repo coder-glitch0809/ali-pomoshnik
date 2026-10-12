@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "ali", "runtimeExecutable": "python", "runtimeArgs": ["-X", "utf8", "server.py"], "port": 8000 }
+  ]
+}

@@ -33,11 +33,13 @@ TOOL_LABELS = {
     "get_my_location": "📍 Joylashuv", "open_application": "🚀 Ilova ochish", "open_website": "🔗 Sayt ochish",
     "instagram_analytics": "📊 Instagram analitika", "instagram_competitor": "🔍 Raqobatchi tahlili",
     "instagram_comments": "💬 Izohlar", "save_knowledge": "📚 Bilimni saqlash", "search_knowledge": "📚 Bilimlar bazasi",
-    "remember_fact": "🧠 Eslab qolish", "set_reminder": "⏰ Eslatma",
+    "remember_fact": "🧠 Eslab qolish", "set_reminder": "⏰ Eslatma", "ask_agent": "🧑‍💼 Agentga topshiriq",
+    "market_data": "📈 Bozor ma'lumotlari",
 }
 
 COMMANDS = [
     ("new", "Yangi suhbat"),
+    ("agent", "Agent tanlash (Treyder, Kontent-meyker, O'qituvchi...)"),
     ("chuqur", "Chuqur fikrlash: yoqish/o'chirish"),
     ("super", "Super miya (Claude + GPT + Gemini)"),
     ("ovozli", "Javoblarni ovoz bilan yuborish"),
@@ -98,7 +100,9 @@ class TelegramBot(Listener):
         a.add_handler(CommandHandler("ovoz_tayyor", self.cmd_clone))
         a.add_handler(CommandHandler("ovoz_standart", self.cmd_default_voice))
         a.add_handler(CommandHandler("holat", self.cmd_status))
+        a.add_handler(CommandHandler("agent", self.cmd_agent))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
+        a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
         a.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
         a.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
         a.add_handler(MessageHandler(filters.LOCATION, self.on_location))
@@ -142,7 +146,7 @@ class TelegramBot(Listener):
         return False
 
     def pref(self, chat_id: int) -> dict:
-        return self.prefs.setdefault(chat_id, {"deep": False, "super": False, "voice": True})
+        return self.prefs.setdefault(chat_id, {"deep": False, "super": False, "voice": True, "agent": None})
 
     # ---------- buyruqlar ----------
     async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -182,6 +186,40 @@ class TelegramBot(Listener):
         p[key] = not p[key]
         await update.message.reply_text(f"{label}: {'yoqildi ✅' if p[key] else 'o‘chirildi'}")
 
+    def _agent_label(self, key: str | None) -> str:
+        a = brain.agents.get(key or "")
+        return f"{a.icon} {a.name}" if a else f"🤖 {config.assistant_name}"
+
+    async def cmd_agent(self, update: Update, ctx):
+        """/agent - tugmalar bilan tanlash; /agent treyder - darhol tanlash; /agent ali - oddiy rejim."""
+        if not await self._guard(update):
+            return
+        p = self.pref(update.effective_chat.id)
+        if ctx.args:
+            key = ctx.args[0].lower()
+            p["agent"] = key if key in brain.agents else None
+            await update.message.reply_text(f"Tanlandi: {self._agent_label(p['agent'])}")
+            return
+        keys = [None, *brain.agents]
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
+            ("✅ " if p["agent"] == k else "") + self._agent_label(k), callback_data=f"ag:{k or ''}")] for k in keys])
+        await update.message.reply_text(f"Hozir: {self._agent_label(p['agent'])}\nKim bilan ishlaymiz?", reply_markup=keyboard)
+
+    async def on_agent_button(self, update: Update, ctx):
+        query = update.callback_query
+        if query.from_user.id not in self.users:
+            await query.answer("Ruxsat yo'q")
+            return
+        key = query.data.split(":", 1)[1]
+        p = self.pref(query.message.chat.id)
+        p["agent"] = key if key in brain.agents else None
+        label = self._agent_label(p["agent"])
+        await query.answer(label)
+        try:
+            await query.edit_message_text(f"Tanlandi: {label}")
+        except BadRequest:
+            pass
+
     async def cmd_status(self, update: Update, ctx):
         if not await self._guard(update):
             return
@@ -194,7 +232,8 @@ class TelegramBot(Listener):
             f"Ovoz: {voice.get('name') or voice.get('voice')} ({voice['provider']}), namunalar: {len(tts.samples())}\n"
             f"Ulangan qurilmalar: {hub.summary() or 'yo‘q'}\n"
             f"Rejimlar: chuqur={'ha' if p['deep'] else 'yo‘q'}, super={'ha' if p['super'] else 'yo‘q'}, "
-            f"ovozli={'ha' if p['voice'] else 'yo‘q'}"
+            f"ovozli={'ha' if p['voice'] else 'yo‘q'}\n"
+            f"Agent: {self._agent_label(p['agent'])}"
         )
 
     # ---------- shaxsiy ovoz ----------
@@ -294,6 +333,8 @@ class TelegramBot(Listener):
                 state["text"] += data
             elif kind == "tool_start":
                 state["tools"].append(TOOL_LABELS.get(data["name"], "🔧 " + data["name"]))
+            elif kind == "agent":
+                state["tools"].append(f"{data['icon']} {data['name']}")
             else:
                 return
             state["dirty"] = True
@@ -318,7 +359,8 @@ class TelegramBot(Listener):
 
         editor = asyncio.create_task(live_editor())
         try:
-            answer = await run_ask(text, images, p["deep"], p["super"], source="telegram", on_event=on_event)
+            answer = await run_ask(text, images, p["deep"], p["super"], source="telegram", on_event=on_event,
+                                   agent=p["agent"])
         except AskError as e:
             await status.edit_text(f"⚠️ {e}")
             return

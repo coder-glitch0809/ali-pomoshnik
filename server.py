@@ -16,11 +16,12 @@ from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisc
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from ali import auth, providers, scheduler, tts
+from ali import agents, auth, autopilot, providers, scheduler, tts
 from ali.config import ROOT, config
 from ali.hub import hub
 from ali.memory import memory
-from ali.service import AskError, brain, run_ask
+from ali.monitor import monitor
+from ali.service import AskError, brain, run_ask, team
 
 WEB = ROOT / "web"
 COOKIE = "ali_token"
@@ -41,6 +42,7 @@ def is_authed(cookies) -> bool:
 async def lifespan(_app):
     hub.loop = asyncio.get_running_loop()
     scheduler.start(hub.notify)
+    autopilot.start(brain)
     bot = None
     if config.telegram_token:
         from ali.telegram_bot import TelegramBot
@@ -102,6 +104,7 @@ async def status(request: Request):
             "gemini": config.gemini_model if config.gemini_api_key else None,
         },
         "devices": hub.summary(),
+        "agents": [a.summary() for a in brain.agents.values()],
         "telegram": bool(hub.listeners),
         "voice": voice.get("name") if voice["provider"] == "elevenlabs" else voice.get("voice"),
         "facts": len(memory.all_facts()),
@@ -111,6 +114,43 @@ async def status(request: Request):
         "stt_language": config.stt_language,
         "server_stt": providers.can_transcribe(),
     }
+
+
+@app.get("/api/monitor")
+async def monitor_state(request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    return monitor.snapshot(team())
+
+
+@app.get("/api/agents")
+async def agents_list(request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    tools = [{"name": "web_search", "description": "Internetdan qidirish", "dangerous": False}] + [
+        {"name": s.name, "description": s.description, "dangerous": s.dangerous} for s in brain.registry.values()]
+    return {"agents": [a.full() for a in agents.load().values()], "tools": tools}
+
+
+@app.post("/api/agents")
+async def agents_save(request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    b = await request.json()
+    try:
+        a = agents.save(str(b.get("key", "")), str(b.get("name", "")), str(b.get("icon", "")),
+                        str(b.get("description", "")), [str(t) for t in b.get("tools") or [] if str(t) in brain.registry or t == "web_search"],
+                        str(b.get("prompt", "")), [str(t) for t in b.get("learn") or []])
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True, "agent": a.full()}
+
+
+@app.delete("/api/agents/{key}")
+async def agents_delete(key: str, request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    return {"ok": agents.delete(key)}
 
 
 @app.post("/api/tts")
@@ -175,7 +215,7 @@ async def handle_ask(device_id: str, msg: dict):
         return
     try:
         await run_ask(text, images, bool(msg.get("deep")), bool(msg.get("super")),
-                      source=device_id, req_id=msg.get("id"))
+                      source=device_id, req_id=msg.get("id"), agent=str(msg.get("agent") or "") or None)
     except AskError:
         pass  # xato allaqachon ekranlarga yuborilgan
 
