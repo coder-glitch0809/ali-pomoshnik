@@ -423,41 +423,17 @@ class TelegramBot(PublicTelegram, Listener):
         chat = update.effective_chat
         p = self.pref(chat.id)
         status = await update.message.reply_text("⏳ O‘ylayapman…")
-        state = {"text": "", "tools": [], "dirty": False}
-
         files: list = []
 
         def on_event(kind, data):  # brain oqimidan chaqiriladi
             if kind == "files":
                 files.extend(data)
-                return
-            if kind == "text":
-                state["text"] += data
-            elif kind == "tool_start":
-                state["tools"].append(TOOL_LABELS.get(data["name"], "🔧 " + data["name"]))
-            elif kind == "agent":
-                state["tools"].append(f"{data['icon']} {data['name']}")
-            else:
-                return
-            state["dirty"] = True
 
         async def live_editor():
-            shown = ""
+            # Javob tayyor bo'lguncha faqat "⏳ O'ylayapman…" va "yozmoqda" belgisi: vosita va model nomlari ko'rsatilmaydi.
             while True:
-                await asyncio.sleep(1.5)
                 await ctx.bot.send_chat_action(chat.id, ChatAction.TYPING)
-                if not state["dirty"]:
-                    continue
-                state["dirty"] = False
-                head = " · ".join(dict.fromkeys(state["tools"]))
-                body = (f"{head}\n\n" if head else "") + (state["text"] or "⏳ O‘ylayapman…")
-                body = body[-LIMIT:]
-                if body != shown:
-                    try:
-                        await status.edit_text(body)
-                        shown = body
-                    except BadRequest:
-                        pass
+                await asyncio.sleep(4)
 
         editor = asyncio.create_task(live_editor())
         try:

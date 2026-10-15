@@ -96,7 +96,10 @@ def hint(text: str, team: dict) -> str:
                      f"berib, {'make_lesson_presentation' if lesson else 'make_presentation'} bilan professional, "
                      "mavzuga mos dizaynli taqdimot yaratishni topshir"
                      + (" (language ru)" if lang == "ru" else "") + ". Ikkala agentni ham albatta ishga tushir.")
-        rest = [k for k in kinds if k != "pptx"]
+        # Dars uchun Word = dars ishlanmasi: Dizayner uni make_lesson_presentation bilan o'zi yaratadi
+        rest = [k for k in kinds if k != "pptx" and not (lesson and k == "docx")]
+        if lesson and "docx" in kinds:
+            lines.append("Word so'ralgan: make_lesson_presentation with_lesson_plan=true - Word dars ishlanmasi ham yaratiladi.")
         if rest and OFFICE in team:
             lines.append(f"Qo'shimcha fayl: {', '.join(KIND_NAMES[k] for k in rest)} - '{OFFICE}' agentiga topshir.")
     elif teacher and office:

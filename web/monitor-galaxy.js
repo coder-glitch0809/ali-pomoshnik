@@ -69,21 +69,54 @@
     return { x: index % 2 ? w - left : left,
       y: rows <= 1 ? h / 2 : top + row * (bottom - top) / (rows - 1) };
   }
-  function beam(p) {
+  // Energy link Ali -> agent while the agent's task is running: glowing conduit, crackling
+  // lightning, energy packets flowing towards the agent and a pulsing impact at the agent.
+  const BOT_COLORS = { coder: '#79dfff', creator: '#d0a3ff', mentor: '#7ce5bc', analyst: '#ffc880' };
+  function noise(n) { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+  function bolt(x, y, ex, ey, jitter, key) {
+    const dx = ex - x, dy = ey - y, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+    const steps = Math.max(6, Math.round(len / 34)), frame = Math.floor(time * 14);
+    ctx.beginPath(); ctx.moveTo(x, y);
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps, off = (noise(frame * 31 + i * 7 + key) - .5) * jitter * Math.sin(t * Math.PI);
+      ctx.lineTo(x + dx * t + nx * off, y + dy * t + ny * off);
+    }
+    ctx.lineTo(ex, ey); ctx.stroke();
+  }
+  function beam(p, color, key) {
     const x = w / 2, y = h / 2;
+    const pulse = .75 + .25 * Math.sin(time * 6 + key);
     const grad = ctx.createLinearGradient(x, y, p.x, p.y);
-    grad.addColorStop(0, '#ffeabca0'); grad.addColorStop(.35, '#9de4ff90'); grad.addColorStop(1, '#71d7ffdd');
-    ctx.save(); ctx.globalCompositeOperation = 'screen'; ctx.strokeStyle = grad;
-    ctx.shadowColor = '#7bdfff'; ctx.shadowBlur = 16; ctx.lineWidth = 9;
-    ctx.globalAlpha = .13; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(p.x, p.y); ctx.stroke();
-    ctx.lineWidth = 1.6; ctx.globalAlpha = .85; ctx.stroke();
-    // Travelling light always flows from Ali towards the assigned agent.
-    for (let i = 0; i < 3; i++) {
-      const progress = (time * .19 + i / 3) % 1;
-      const tail = Math.max(0, progress - .08);
-      ctx.lineWidth = 2.5; ctx.strokeStyle = '#ddfaff'; ctx.globalAlpha = Math.sin(progress * Math.PI);
-      ctx.beginPath(); ctx.moveTo(x + (p.x - x) * tail, y + (p.y - y) * tail);
-      ctx.lineTo(x + (p.x - x) * progress, y + (p.y - y) * progress); ctx.stroke();
+    grad.addColorStop(0, '#ffe7a8'); grad.addColorStop(.45, '#bdf3ff'); grad.addColorStop(1, color);
+    ctx.save(); ctx.globalCompositeOperation = 'screen'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // 1. Wide glowing conduit
+    ctx.strokeStyle = grad; ctx.shadowColor = color; ctx.shadowBlur = 28;
+    ctx.lineWidth = 16; ctx.globalAlpha = .12 * pulse; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    ctx.lineWidth = 6; ctx.globalAlpha = .28 * pulse; ctx.stroke();
+    // 2. Bright core line
+    ctx.lineWidth = 1.6; ctx.globalAlpha = .95; ctx.stroke();
+    // 3. Crackling lightning around the core
+    ctx.shadowBlur = 14; ctx.strokeStyle = '#eafcff';
+    ctx.lineWidth = 1.3; ctx.globalAlpha = .75; bolt(x, y, p.x, p.y, 26, key);
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.globalAlpha = .55; bolt(x, y, p.x, p.y, 40, key + 50);
+    // 4. Energy packets flowing from Ali to the agent
+    for (let i = 0; i < 5; i++) {
+      const t = (time * .45 + i / 5) % 1, px = x + (p.x - x) * t, py = y + (p.y - y) * t;
+      const r = 2.5 + 2.5 * Math.sin(t * Math.PI);
+      const glow = ctx.createRadialGradient(px, py, 0, px, py, r * 4);
+      glow.addColorStop(0, '#ffffff'); glow.addColorStop(.3, color); glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = .9 * Math.sin(t * Math.PI); ctx.fillStyle = glow; ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(px, py, r * 4, 0, Math.PI * 2); ctx.fill();
+    }
+    // 5. Impact at the agent: charged halo and expanding rings
+    const halo = ctx.createRadialGradient(p.x, p.y, 10, p.x, p.y, 95);
+    halo.addColorStop(0, color); halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = .22 * pulse; ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(p.x, p.y, 95, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 12;
+    for (let i = 0; i < 2; i++) {
+      const t = (time * .8 + i / 2) % 1;
+      ctx.globalAlpha = (1 - t) * .7; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 55 + t * 45, 0, Math.PI * 2); ctx.stroke();
     }
     ctx.restore();
   }
@@ -100,7 +133,7 @@
     members.forEach((a, index) => {
       const p = position(index, members.length), node = nodes.get(a.key);
       node.style.left = `${p.x}px`; node.style.top = `${p.y}px`;
-      if (active.has(a.key) && online) beam(p);
+      if (active.has(a.key) && online) beam(p, BOT_COLORS[node.dataset.robot] || '#79dfff', index * 13.7);
     });
   }
   function tick(stamp) {

@@ -467,6 +467,11 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn("'informatika'", router.hint("Python bo'yicha taqdimot tayyorlab ber", team))
         self.assertEqual(router.hint("Salom, qalaysan?", team), "")
         self.assertEqual(router.hint("Сделай презентацию", {}), "")
+        lesson = router.hint("Сделай презентатцию про информации и ворд презентатция наш урок 50 минут",
+                             {"informatika": 1, "office": 1, "dizayner": 1})
+        self.assertIn("make_lesson_presentation", lesson)
+        self.assertIn("with_lesson_plan=true", lesson)
+        self.assertNotIn("'office'", lesson)
 
     def test_brain_prompt_gets_routing_hint_but_memory_keeps_user_text(self):
         from types import SimpleNamespace

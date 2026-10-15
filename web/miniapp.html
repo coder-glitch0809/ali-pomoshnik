@@ -1,6 +1,10 @@
 <!doctype html>
 <html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Ali · Abbos</title><script src="https://telegram.org/js/telegram-web-app.js"></script>
-<style>body{margin:0;background:#090e1d;color:#eff4ff;font:16px system-ui;min-height:100dvh;display:grid;place-items:center}main{text-align:center;padding:32px;max-width:400px}img{width:112px;height:112px;border-radius:28px;box-shadow:0 0 50px #7563ff33}p{color:#a5b2cc;line-height:1.7}button{padding:12px 22px;border:0;border-radius:12px;background:#7665ef;color:white;font:inherit;cursor:pointer}</style></head>
-<body><main><img src="/static/assets/ali-telegram-avatar.png" alt="Ali"><h1>ALI</h1><p id="status" role="status">Telegram hisobingiz tekshirilmoqda…</p><button id="retry" hidden>Qayta tekshirish</button></main>
-<script src="/static/miniapp.js"></script></body></html>
+<meta name="color-scheme" content="dark">
+<title>Ali · Abbos</title>
+<!-- Uslub skriptdan OLDIN: telegram.org sekin yoki yopiq bo'lsa ham sahifa darhol chiziladi (oq ekran bo'lmaydi). -->
+<style>html,body{background:#090e1d}body{margin:0;color:#eff4ff;font:16px system-ui;min-height:100dvh;display:grid;place-items:center}main{text-align:center;padding:32px;max-width:400px}img{width:112px;height:112px;border-radius:28px;box-shadow:0 0 50px #7563ff33}p{color:#a5b2cc;line-height:1.7}button{padding:12px 22px;border:0;border-radius:12px;background:#7665ef;color:white;font:inherit;cursor:pointer}.spin{width:28px;height:28px;margin:8px auto;border:3px solid #7665ef44;border-top-color:#7665ef;border-radius:50%;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(1turn)}}</style>
+<script src="https://telegram.org/js/telegram-web-app.js" async></script>
+</head>
+<body><main><img src="/static/assets/ali-telegram-avatar.png" alt="Ali"><h1>ALI</h1><div class="spin" id="spin"></div><p id="status" role="status">Telegram hisobingiz tekshirilmoqda…</p><button id="retry" hidden>Qayta urinish</button></main>
+<script src="/static/miniapp.js" defer></script></body></html>

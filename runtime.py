@@ -107,8 +107,10 @@ async def telegram_login(request: Request):
     if not auth.telegram_owner(body.get('init_data')):
         return JSONResponse({'ok':False,'error':'Mini App faqat Abbos uchun. Botdagi tugmadan qayta oching.'},status_code=403)
     response=JSONResponse({'ok':True,'name':'Abbos'},headers={'Cache-Control':'no-store'})
+    # Telegram Desktop/Web Mini App'ni iframe ichida ochadi: u yerda cookie faqat SameSite=None; Secure bilan yuboriladi.
+    secure=request.url.scheme=='https' or request.headers.get('x-forwarded-proto')=='https'
     response.set_cookie(COOKIE,auth.telegram_session(),max_age=8*3600,httponly=True,
-                        secure=request.url.scheme=='https',samesite='lax')
+                        secure=secure,samesite='none' if secure else 'lax')
     return response
 
 

@@ -48,7 +48,9 @@
 [data-robot="analyst"] .bot-eye { height:5px; top:11px; border-radius:2px; }
 .galaxy-agent-label { max-width:100%; min-height:32px; display:flex; align-items:center; justify-content:center; margin-top:10px; font-size:12px; line-height:1.35; font-weight:600; white-space:normal; overflow-wrap:anywhere; }
 .galaxy-agent-status { font:9px var(--mono); color:#8b9bb5; margin-top:5px; }
-.galaxy-agent.active { border-color:var(--bot-color); box-shadow:0 0 28px #6fbbe922,inset 0 0 25px #6fbbe911; }
+.galaxy-agent.active { border-color:var(--bot-color); animation:agent-charge 1.4s ease-in-out infinite; }
+.galaxy-agent.active .bot-eye { animation:bot-blink 6.5s infinite, eye-charge .7s ease-in-out infinite alternate; }
+.galaxy-agent.active .galaxy-agent-status::before { content:'⚡ '; }
 .galaxy-agent.active .galaxy-agent-label { color:var(--bot-color); }
 .galaxy-agent.active .bot-antenna::before { animation-duration:1s; }
 .galaxy-agent.active .galaxy-agent-status { color:#9ceefc; }
@@ -66,6 +68,9 @@
 .galaxy-agent-chip small { margin-left:auto; padding-left:10px; color:var(--muted); font-size:10px; }
 .galaxy-agent-chip.selected { border-color:var(--accent); }
 .galaxy-monitor.paused *,.galaxy-monitor.paused *::before,.galaxy-monitor.paused *::after { animation-play-state:paused!important; }
+@keyframes agent-charge { 0%,100% { box-shadow:0 0 18px color-mix(in srgb,var(--bot-color) 30%,transparent),inset 0 0 18px color-mix(in srgb,var(--bot-color) 12%,transparent); }
+  50% { box-shadow:0 0 46px color-mix(in srgb,var(--bot-color) 70%,transparent),inset 0 0 30px color-mix(in srgb,var(--bot-color) 30%,transparent); } }
+@keyframes eye-charge { from { filter:brightness(1); } to { filter:brightness(1.9); box-shadow:0 0 22px var(--bot-color); } }
 @keyframes bot-blink { 0%,42%,46%,100% { transform:scaleY(1); } 44% { transform:scaleY(.12); } }
 @keyframes bot-signal { 0%,100% { opacity:.5; } 50% { opacity:1; } }
 @keyframes galaxy-breathe { 0%,100% { transform:scale(.94); opacity:.85; } 50% { transform:scale(1.07); opacity:1; } }
