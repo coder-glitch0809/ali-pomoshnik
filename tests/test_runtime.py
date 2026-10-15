@@ -439,8 +439,10 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual((a.version, a.tools, a.learn), (2, ["a", "b"], ["x", "coach topic"]))
         self.assertEqual(agents.upgrade_defaults(source, target), [])
         repo = {k: agents._parse(k, (Path(__file__).resolve().parents[1] / "agents" / f"{k}.md").read_text(encoding="utf-8"))
-                for k in ("treyder",)}
+                for k in ("treyder", "dizayner", "office", "informatika")}
         from ali.skills import REGISTRY
+        for key in ("dizayner", "office", "informatika"):
+            self.assertTrue(set(repo[key].tools) - {"web_search"} <= set(REGISTRY), key)
         self.assertEqual(repo["treyder"].version, 2)
         self.assertTrue(set(repo["treyder"].tools) - {"web_search"} <= set(REGISTRY))
 
@@ -482,12 +484,12 @@ class RuntimeTests(unittest.TestCase):
 
     def test_office_documents_are_created_and_reopenable(self):
         from ali import outbox
-        from ali.skills import documents
+        from ali.skills import documents, presentation
         from docx import Document
         from openpyxl import load_workbook
         from pptx import Presentation
         start = outbox.mark()
-        result = documents.make_presentation("Алгоритмы", [
+        result = presentation.make_presentation("Алгоритмы", [
             {"type": "section", "title": "Введение"},
             {"type": "bullets", "title": "Много пунктов", "bullets": [f"Пункт {i}" for i in range(9)], "notes": "Заметка"},
             {"type": "two_column", "title": "Сравнение", "left": {"title": "A", "bullets": ["1"]}, "right": {"title": "B", "bullets": ["2"]}},
@@ -502,7 +504,7 @@ class RuntimeTests(unittest.TestCase):
         deck = Presentation(files[0])
         # title + section + 2 bullet slides (9 > 7) + two_column + table + chart + stats + quote + ending; bad chart skipped
         self.assertEqual(len(deck.slides), 10, result)
-        self.assertIn("(davomi)", " ".join(sh.text_frame.text for sh in deck.slides[3].shapes if sh.has_text_frame))
+        self.assertIn("(2)", " ".join(sh.text_frame.text for sh in deck.slides[3].shapes if sh.has_text_frame))
         self.assertEqual(deck.slides[2].notes_slide.notes_text_frame.text, "Заметка")
         documents.make_word("Реферат", [{"heading": "Введение", "paragraphs": ["Текст"], "bullets": ["a"],
                                          "table": [["A", "B"], ["1", "2"]]}], toc=True)
@@ -540,6 +542,40 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(client.get(url).status_code, 200)
                 client.cookies.clear()
                 self.assertEqual(client.get(url).status_code, 401)
+
+    def test_new_default_agent_added_once_and_deleted_stays_deleted(self):
+        source, target = Path(state.name) / "defaults-src", Path(state.name) / "defaults-dst"
+        source.mkdir(exist_ok=True); target.mkdir(exist_ok=True)
+        (source / "dizayner.md").write_text("---\nnom: D\n---\nPrompt\n", encoding="utf-8")
+        self.assertEqual(agents.add_new_defaults(source, target), ["dizayner"])
+        (target / "dizayner.md").unlink()
+        self.assertEqual(agents.add_new_defaults(source, target), [])
+        self.assertFalse((target / "dizayner.md").exists())
+
+    def test_lesson_presentation_has_five_timed_stages_homework_and_plan(self):
+        from ali import outbox
+        from ali.skills import presentation
+        from docx import Document
+        from pptx import Presentation
+        start = outbox.mark()
+        stage = lambda n: {"activity": "Действия", "slides": [{"type": "bullets", "title": f"Слайд {i}", "bullets": ["🔍 Пункт"]}
+                                                             for i in range(n)]}
+        result = presentation.make_lesson_presentation(
+            "Поиск информации и кодирование информации", {"organizational": stage(1), "homework_check": stage(1),
+             "new_topic": stage(2), "reinforcement": stage(1), "conclusion": stage(1)},
+            grade="7", language="ru", goals={"educational": "Цель"}, homework={"tasks": ["§5, вопросы 1-4"]})
+        self.assertIn("mazmun kam", result)  # 50 daqiqaga kam slayd haqida ogohlantiradi
+        pptx_file, docx_file = outbox.since(start)
+        deck = Presentation(pptx_file)
+        texts = [" ".join(sh.text_frame.text for sh in sl.shapes if sh.has_text_frame) for sl in deck.slides]
+        for name in ("Организационный момент", "Проверка домашнего задания", "Объяснение новой темы",
+                     "Закрепление новой темы", "Итог урока", "Домашнее задание", "План урока"):
+            self.assertTrue(any(name in t for t in texts), name)
+        self.assertTrue(any("Этап 3 · 15 мин" in t for t in texts))
+        self.assertEqual(presentation.choose_motif("Поиск информации и кодирование информации"), "binary")
+        table = Document(docx_file).tables[0]
+        self.assertEqual([table.cell(r, 3).text for r in range(1, 6)], ["5 мин", "10 мин", "15 мин", "15 мин", "5 мин"])
+        self.assertEqual(table.cell(1, 2).text, "Действия")
 
     def test_coach_agent_and_improve_skills_are_registered(self):
         from ali.skills import REGISTRY

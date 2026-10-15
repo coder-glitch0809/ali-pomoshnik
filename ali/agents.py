@@ -178,7 +178,34 @@ def upgrade_defaults(source_dir=None, target_dir=None) -> list[str]:
     return upgraded
 
 
+def add_new_defaults(source_dir=None, target_dir=None) -> list[str]:
+    """Repoga qo'shilgan YANGI standart agentni (masalan dizayner) doimiy diskka bir marta qo'shadi.
+    Egasi keyin o'chirgan agent qayta paydo bo'lmaydi (.defaults ro'yxati)."""
+    import json
+    source_dir, target_dir = source_dir or ROOT / "agents", target_dir or AGENTS_DIR
+    if source_dir.resolve() == target_dir.resolve():
+        return []
+    record = target_dir / ".defaults.json"
+    try:
+        known = set(json.loads(record.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        known = set()
+    added = []
+    for source in sorted(source_dir.glob("*.md")):
+        if source.name in known:
+            continue
+        known.add(source.name)
+        if not (target_dir / source.name).exists():
+            shutil.copy2(source, target_dir / source.name)
+            added.append(source.stem)
+            log.info("Yangi standart agent qo'shildi: %s", source.stem)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps(sorted(known)), encoding="utf-8")
+    return added
+
+
 if STATE_ROOT != ROOT:
+    add_new_defaults()
     upgrade_defaults()
 
 

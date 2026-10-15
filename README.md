@@ -195,6 +195,12 @@ redeploy kabi amallar har doim sizdan tasdiq so'raydi.
   Fayl Telegram'ga **hujjat** bo'lib keladi, saytda esa yuklab olish tugmasi chiqadi.
 - Ruscha + fayl (masalan "Сделай презентацию про алгоритмы") — ikkala agent ishlaydi: o'qituvchi mazmunni tayyorlaydi,
   Office ekspert faylni yasaydi.
+- **🎨 Dizayner** agenti taqdimotni professional darajada, mavzuga mos dizayn bilan yasaydi: qidiruv mavzusida lupa,
+  kodlashda ikkilik kod, tarmoqda tugunlar, algoritmda blok-sxema; ikonkali kartalar, jarayon, test (A/B/C/D),
+  amaliy topshiriq, "Bilasizmi?", kod bloki, jadval, diagramma.
+- **Dars taqdimoti** (`make_lesson_presentation`) dars ishlanmasi bo'yicha 50 daqiqa: Tashkiliy qism 5, Uy vazifasini
+  so'rash 10, Yangi mavzu 15, Mustahkamlash 15, Yakuniy qism 5 daqiqa; har slaydda bosqich va vaqt, uy vazifasi slaydi,
+  o'qituvchi uchun izohlar va javoblar. Qo'shimcha **Word dars ishlanmasi** (T/r, bosqich, nima qilinadi, vaqt jadvali).
 - Fayllar `data/outbox` da 14 kun saqlanadi. Hech qanday skript yoki tasdiq kerak emas, Render'da ham ishlaydi.
 
 ## Treyding: barcha timeframe'lar va MT5

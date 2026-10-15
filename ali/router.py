@@ -6,7 +6,7 @@ O'zbek tili kirillda ham yoziladi, shuning uchun til harfga emas, so'z va qo'shi
 """
 import re
 
-INFORMATIKA, OFFICE = "informatika", "office"
+INFORMATIKA, OFFICE, DESIGNER = "informatika", "office", "dizayner"
 
 _WORD = re.compile(r"[a-zа-яёўқғҳ']+", re.I)
 _UZ_LETTERS = set("ўқғҳЎҚҒҲ")
@@ -47,6 +47,8 @@ WEAK_KINDS = {
 _ACTION = ("tuz", "туз", "tayyorla", "тайёрла", "тайерла", "qilib ber", "килиб бер", "қилиб бер", "yarat", "ярат",
            "chiqar", "чиқар", "чикар", "fayl", "файл", "сделай", "создай", "составь", "подготовь", "оформи", "сделать",
            "создать", "составить", "make", "create")
+LESSON_WORDS = ("урок", "тема", "класс", "dars", "дарс", "mavzu", "мавзу", "sinf", "синф", "ученик", "o'quvchi",
+                "ўқувчи", "укувчи", "lesson")
 KIND_NAMES = {"pptx": "PowerPoint taqdimot (make_presentation)", "xlsx": "Excel jadval (make_excel)",
               "docx": "Word hujjat (make_word)"}
 
@@ -82,7 +84,22 @@ def hint(text: str, team: dict) -> str:
     if not teacher and not office:
         return ""
     lines = ["[Avtomatik yo'naltirish - tizim ko'rsatmasi, foydalanuvchi matni emas]"]
-    if teacher and office:
+    if "pptx" in kinds and DESIGNER in team:
+        lesson = any(w in text.lower() for w in LESSON_WORDS)
+        content = (f"1) ask_agent bilan '{INFORMATIKA}' agentidan to'liq mazmunni tayyorlat"
+                   + (" (RUS tilida)" if lang == "ru" else "") +
+                   (": 50 daqiqalik dars uchun 5 bosqich (Tashkiliy 5, Uy vazifasini so'rash 10, Yangi mavzu 15, "
+                    "Mustahkamlash 15, Yakuniy 5 daqiqa) - har bosqich slaydlari, savollar va javoblar, amaliy topshiriq, "
+                    "uy vazifasi. " if lesson else ". ") if INFORMATIKA in team else "")
+        lines.append(f"Taqdimot so'ralgan{' (DARS)' if lesson else ''}. {content}"
+                     f"{'2' if content else '1'}) ask_agent bilan '{DESIGNER}' (🎨 Dizayner) agentiga shu to'liq mazmunni "
+                     f"berib, {'make_lesson_presentation' if lesson else 'make_presentation'} bilan professional, "
+                     "mavzuga mos dizaynli taqdimot yaratishni topshir"
+                     + (" (language ru)" if lang == "ru" else "") + ". Ikkala agentni ham albatta ishga tushir.")
+        rest = [k for k in kinds if k != "pptx"]
+        if rest and OFFICE in team:
+            lines.append(f"Qo'shimcha fayl: {', '.join(KIND_NAMES[k] for k in rest)} - '{OFFICE}' agentiga topshir.")
+    elif teacher and office:
         lines.append(f"Xabar rus tilida va fayl so'ralgan: {', '.join(KIND_NAMES[k] for k in kinds)}. "
                      f"1) ask_agent bilan '{INFORMATIKA}' agentidan mazmunni RUS tilida tayyorlat (o'qituvchi metodikasi bilan). "
                      f"2) ask_agent bilan '{OFFICE}' agentiga shu to'liq mazmunni berib, faylni yaratishni topshir "
