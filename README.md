@@ -186,6 +186,17 @@ Keyin bir marta `claude` (kirish) va `codex login`. Shundan so'ng Dasturchi katt
 vazifa fonda ishlaydi, tugagach telefonga/Telegramga xabar keladi. Faylni yozish, buyruq bajarish, issue ochish,
 redeploy kabi amallar har doim sizdan tasdiq so'raydi.
 
+## Avtomatik agentlar: rus tili va Office fayllari
+
+- **Ruscha yozsangiz** (Telegram yoki sayt) — Ali so'rovni avtomatik **💻 Учитель информатики** agentiga beradi,
+  javob rus tilida keladi. O'zbekcha (lotin yoki kirill) yozsangiz — oddiy Ali.
+- **Taqdimot, Excel yoki Word** so'rasangiz — **📊 Office ekspert** haqiqiy faylni yaratadi
+  (`make_presentation`, `make_excel`, `make_word`): 16:9 chiroyli dizayn, bo'limlar, jadval, diagramma, izohlar.
+  Fayl Telegram'ga **hujjat** bo'lib keladi, saytda esa yuklab olish tugmasi chiqadi.
+- Ruscha + fayl (masalan "Сделай презентацию про алгоритмы") — ikkala agent ishlaydi: o'qituvchi mazmunni tayyorlaydi,
+  Office ekspert faylni yasaydi.
+- Fayllar `data/outbox` da 14 kun saqlanadi. Hech qanday skript yoki tasdiq kerak emas, Render'da ham ishlaydi.
+
 ## Treyding: barcha timeframe'lar va MT5
 
 - **📈 Treyder** agenti `mtf_signal` bilan bitta belgini 15m, 1h, 4h, 1d da birga tekshiradi va signalni faqat

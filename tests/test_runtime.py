@@ -444,6 +444,103 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(repo["treyder"].version, 2)
         self.assertTrue(set(repo["treyder"].tools) - {"web_search"} <= set(REGISTRY))
 
+    def test_router_detects_russian_and_office_requests(self):
+        from ali import router
+        cases = {
+            "Сделай презентацию про алгоритмы для 7 класса": ("ru", ["pptx"]),
+            "Объясни, что такое цикл for в Python": ("ru", []),
+            "Качонки али ботга русча йозсам учитель информатики ишга тушсин": ("uz", []),
+            "Менга эхзелда баҳолар жадвалини тузиб бер": ("uz", ["xlsx"]),
+            "Python bo'yicha taqdimot tayyorlab ber": ("other", ["pptx"]),
+            "dars jadvali qanaqa?": ("other", []),
+            "Напиши реферат о сетях в Word": ("ru", ["docx"]),
+        }
+        for text, (lang, kinds) in cases.items():
+            self.assertEqual((router.language(text), router.office_kinds(text)), (lang, kinds), text)
+        team = {"informatika": object(), "office": object()}
+        both = router.hint("Сделай презентацию про алгоритмы", team)
+        self.assertIn("'informatika'", both)
+        self.assertIn("'office'", both)
+        self.assertIn("'informatika'", router.hint("Объясни рекурсию", team))
+        self.assertNotIn("'informatika'", router.hint("Python bo'yicha taqdimot tayyorlab ber", team))
+        self.assertEqual(router.hint("Salom, qalaysan?", team), "")
+        self.assertEqual(router.hint("Сделай презентацию", {}), "")
+
+    def test_brain_prompt_gets_routing_hint_but_memory_keeps_user_text(self):
+        from types import SimpleNamespace
+        from ali.memory import memory
+        fake = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text="Готово")])
+        local = Brain()
+        local.agents = {"informatika": SimpleNamespace(prompt="x"), "office": SimpleNamespace(prompt="y")}
+        with patch.object(local, "_call", return_value=fake), patch("ali.brain._echo_content", side_effect=lambda c: c), \
+                patch.object(local, "_save_session"):
+            local.ask("Объясни рекурсию")
+        sent = local.messages[-2]["content"]
+        self.assertIn("Avtomatik yo'naltirish", sent)
+        self.assertTrue(sent.endswith("Объясни рекурсию"))
+        self.assertEqual(memory.recent_messages(local.session_id, 2)[0]["content"], "Объясни рекурсию")
+
+    def test_office_documents_are_created_and_reopenable(self):
+        from ali import outbox
+        from ali.skills import documents
+        from docx import Document
+        from openpyxl import load_workbook
+        from pptx import Presentation
+        start = outbox.mark()
+        result = documents.make_presentation("Алгоритмы", [
+            {"type": "section", "title": "Введение"},
+            {"type": "bullets", "title": "Много пунктов", "bullets": [f"Пункт {i}" for i in range(9)], "notes": "Заметка"},
+            {"type": "two_column", "title": "Сравнение", "left": {"title": "A", "bullets": ["1"]}, "right": {"title": "B", "bullets": ["2"]}},
+            {"type": "table", "title": "Таблица", "rows": [["A", "B"], ["1", "2"]]},
+            {"type": "chart", "title": "Диаграмма", "chart": {"type": "pie", "categories": ["x", "y"], "series": [{"name": "s", "values": [1, 2]}]}},
+            {"type": "stats", "title": "Цифры", "stats": [{"value": "45", "label": "минут"}]},
+            {"type": "quote", "text": "Цитата", "author": "Автор"},
+            {"type": "chart", "title": "bad chart", "chart": {}},
+        ], subtitle="7 класс", theme="green", ending="Спасибо за внимание!")
+        files = outbox.since(start)
+        self.assertEqual(len(files), 1)
+        deck = Presentation(files[0])
+        # title + section + 2 bullet slides (9 > 7) + two_column + table + chart + stats + quote + ending; bad chart skipped
+        self.assertEqual(len(deck.slides), 10, result)
+        self.assertIn("(davomi)", " ".join(sh.text_frame.text for sh in deck.slides[3].shapes if sh.has_text_frame))
+        self.assertEqual(deck.slides[2].notes_slide.notes_text_frame.text, "Заметка")
+        documents.make_word("Реферат", [{"heading": "Введение", "paragraphs": ["Текст"], "bullets": ["a"],
+                                         "table": [["A", "B"], ["1", "2"]]}], toc=True)
+        doc = Document(outbox.since(start)[1])
+        self.assertIn("Введение", [p.text for p in doc.paragraphs])
+        self.assertEqual(len(doc.tables), 1)
+        documents.make_excel("Оценки", [{"name": "7А", "columns": ["Ученик", "Оценка"], "rows": [["Аня", "5"], ["Боря", "4"],
+                                          ["Хак", "=cmd|' /C calc'!A0"]], "totals": True, "chart": {"type": "column", "y_cols": [2]}}])
+        ws = load_workbook(outbox.since(start)[2])["7А"]
+        self.assertEqual(ws["B2"].value, 5)
+        self.assertEqual(ws["B5"].value, "=SUM(B2:B4)")
+        self.assertFalse(str(ws["B4"].value).startswith("="))  # DDE formula neutralised
+        self.assertEqual(len(ws._charts), 1)
+        self.assertIsNone(outbox.resolve("../secret.key"))
+        self.assertEqual(outbox.resolve(files[0].name), files[0])
+
+    def test_created_file_reaches_web_and_download_requires_login(self):
+        from ali.skills import documents
+        def ask(*args, **kwargs):
+            documents.make_excel("Test file", [{"columns": ["A"], "rows": [["1"]]}])
+            return "Готово"
+        with patch("runtime.scheduler.start"), patch("runtime.autopilot.start"), patch.object(brain, "ask", side_effect=ask):
+            with TestClient(app) as client:
+                client.post("/api/login", json={"password": "test-password"})
+                with client.websocket_connect("/ws") as ws:
+                    ws.receive_json(); ws.receive_json()
+                    ws.send_json({"type": "ask", "id": "file-turn", "text": "Excel", "super": False})
+                    for _ in range(15):
+                        message = ws.receive_json()
+                        if message["type"] == "files":
+                            url = message["files"][0]["url"]
+                            break
+                    else:
+                        self.fail("No files event")
+                self.assertEqual(client.get(url).status_code, 200)
+                client.cookies.clear()
+                self.assertEqual(client.get(url).status_code, 401)
+
     def test_coach_agent_and_improve_skills_are_registered(self):
         from ali.skills import REGISTRY
         coach = agents._parse("murabbiy", (Path(__file__).resolve().parents[1] / "agents" / "murabbiy.md").read_text(encoding="utf-8"))

@@ -11,7 +11,7 @@ from typing import Callable
 
 import anthropic
 
-from . import agents
+from . import agents, outbox
 from .brain import Brain
 from .config import config
 from .hub import hub
@@ -120,6 +120,7 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
         if on_event:
             on_event(kind, data)
 
+    start = outbox.mark()
     try:
         async with ask_lock:
             answer = await asyncio.to_thread(brain.ask, text, emit, deep, super_mode, images, agent)
@@ -131,6 +132,12 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
         hub.broadcast({"type": "error", "id": req_id, "text": message})
         raise AskError(message) from e
     tracker.finish(answer)
+    files = outbox.since(start)
+    if files:  # agentlar yaratgan .pptx/.docx/.xlsx - saytda yuklab olish havolasi, Telegram'da hujjat
+        hub.broadcast({"type": "files", "id": req_id,
+                       "files": [{"name": f.name, "url": f"/api/outbox/{f.name}"} for f in files]})
+        if on_event:
+            on_event("files", files)
     hub.broadcast({"type": "done", "id": req_id, "text": answer, "speak_on": source})
     hub._each_listener("on_answer", text, answer, source)
     return answer

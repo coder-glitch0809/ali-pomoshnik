@@ -173,6 +173,18 @@ async def agents_list(request: Request):
     return {"agents": [a.full() for a in agents.load().values()], "tools": tools}
 
 
+@app.get("/api/outbox/{name}")
+async def outbox_file(name: str, request: Request):
+    """Agentlar yaratgan Office fayllari (faqat kirgan foydalanuvchiga)."""
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    from ali import outbox
+    path = outbox.resolve(name)
+    if path is None:
+        return JSONResponse({"error": "Fayl topilmadi"}, status_code=404)
+    return FileResponse(path, filename=path.name)
+
+
 @app.get("/api/vault")
 async def vault_list(request: Request, q: str = '', folder: str = '', offset: int = 0):
     if not is_authed(request.cookies):

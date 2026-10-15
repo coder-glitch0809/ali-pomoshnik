@@ -480,6 +480,15 @@
         if (turn) { turn.extra.insertAdjacentHTML('beforeend', `<img class="shot" src="${m.src}" alt="${esc(m.caption || '')}">`); scrollDown(); }
         break;
       }
+      case 'files': {
+        const turn = t || [...turns.values()].pop();
+        if (turn) {
+          turn.extra.insertAdjacentHTML('beforeend', m.files.map((f) =>
+            `<a class="file-link" href="${esc(f.url)}" download="${esc(f.name)}">📎 ${esc(f.name)}</a>`).join(''));
+          scrollDown();
+        }
+        break;
+      }
       case 'done':
         busy = false;
         if (t) finishTurn(t, m.text, false);

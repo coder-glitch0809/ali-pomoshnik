@@ -425,7 +425,12 @@ class TelegramBot(PublicTelegram, Listener):
         status = await update.message.reply_text("⏳ O‘ylayapman…")
         state = {"text": "", "tools": [], "dirty": False}
 
+        files: list = []
+
         def on_event(kind, data):  # brain oqimidan chaqiriladi
+            if kind == "files":
+                files.extend(data)
+                return
             if kind == "text":
                 state["text"] += data
             elif kind == "tool_start":
@@ -468,6 +473,13 @@ class TelegramBot(PublicTelegram, Listener):
         await self._edit_html(status, chunks[0])
         for chunk in chunks[1:]:
             await self._send_html(chat.id, chunk)
+        for path in files:  # Office ekspert yaratgan taqdimot / Excel / Word
+            try:
+                with open(path, "rb") as fh:
+                    await chat.send_document(document=fh, filename=path.name, caption=f"📎 {path.name}")
+            except Exception:
+                log.exception("Faylni yuborib bo'lmadi: %s", path)
+                await chat.send_message(f"⚠️ Fayl tayyor, lekin yuborilmadi: {path.name}. Saytdan yuklab oling.")
         if p["voice"] and answer:
             try:
                 audio = await tts.synthesize(answer)

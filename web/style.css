@@ -317,6 +317,7 @@ code { font: 12.5px var(--mono); padding: 1px 6px; border-radius: 6px; backgroun
 .answer pre code { padding: 0; background: none; }
 .answer.error { color: var(--red); }
 .card img.shot { display: block; width: 100%; border-radius: 10px; margin-top: 10px; border: 1px solid var(--line); }
+.card a.file-link { display: inline-block; margin: 10px 8px 0 0; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); text-decoration: none; color: inherit; font-weight: 600; }
 .card-actions { display: flex; gap: 8px; margin-top: 10px; }
 .speak-btn { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px; border-radius: 8px; }
 .speak-btn:hover { color: var(--text); background: var(--card-2); }

@@ -235,8 +235,8 @@ class Brain:
             self.new_session()
         agent = agent if agent in self.agents else None
 
-        prompt = self._mode_prefix(agent) + text
-        from . import permissions
+        from . import permissions, router
+        prompt = self._mode_prefix(agent) + router.hint(text, self.agents) + text
         experts_mode = permissions.mode('consult_experts')
         experts_allowed = experts_mode == 'auto'
         if super_mode and any(providers.available().values()) and experts_mode == 'ask':
