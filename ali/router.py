@@ -47,6 +47,12 @@ WEAK_KINDS = {
 _ACTION = ("tuz", "туз", "tayyorla", "тайёрла", "тайерла", "qilib ber", "килиб бер", "қилиб бер", "yarat", "ярат",
            "chiqar", "чиқар", "чикар", "fayl", "файл", "сделай", "создай", "составь", "подготовь", "оформи", "сделать",
            "создать", "составить", "make", "create")
+DESIGN_WORDS = ("dizayn", "дизайн", "интерьер", "interer", "интерер", "chizma", "чизма", "чертеж", "чертёж", "autocad",
+                "автокад", "3d", "3д", "3ds", "max", "макс", "photoshop", "фотошоп", "corel", "корел", "illustrator",
+                "иллюстратор", "after effect", "автор эффект", "афтер эффект", "reklama", "реклама", "bortma", "бортма",
+                "объемн", "объёмн", "hajmli harf", "ҳажмли", "вывеск", "lightbox", "лайтбокс", "banner", "баннер",
+                "logotip", "логотип", "promo", "промо", "ролик", "ta'mir", "таъмир", "ремонт", "kvadrat", "квадрат",
+                "планировк", "do'kon joy", "dokon joy", "жойлаштир", "joylashtir", "uy rejasi", "уй режаси")
 LESSON_WORDS = ("урок", "тема", "класс", "dars", "дарс", "mavzu", "мавзу", "sinf", "синф", "ученик", "o'quvchi",
                 "ўқувчи", "укувчи", "lesson")
 KIND_NAMES = {"pptx": "PowerPoint taqdimot (make_presentation)", "xlsx": "Excel jadval (make_excel)",
@@ -75,15 +81,30 @@ def office_kinds(text: str) -> list[str]:
             if any(r in low for r in roots) or (acting and any(r in low for r in WEAK_KINDS.get(kind, ())))]
 
 
+def is_design(text: str) -> bool:
+    low = text.lower()
+    short = {"3d", "3д", "3ds", "max", "макс", "promo", "промо"}  # qisqa so'zlar faqat alohida so'z bo'lsa
+    return any(re.search(r"(?<![a-zа-яё0-9])" + re.escape(w) + (r"(?![a-zа-яё])" if w in short else ""), low)
+               for w in DESIGN_WORDS)
+
+
 def hint(text: str, team: dict) -> str:
     """Ali'ga beriladigan yo'naltirish ko'rsatmasi ('' - maxsus yo'naltirish kerak emas)."""
     lang = language(text)
     kinds = office_kinds(text)
     teacher = INFORMATIKA in team and lang == "ru"
     office = OFFICE in team and bool(kinds)
-    if not teacher and not office:
+    design = DESIGNER in team and is_design(text)
+    if not teacher and not office and not design:
         return ""
     lines = ["[Avtomatik yo'naltirish - tizim ko'rsatmasi, foydalanuvchi matni emas]"]
+    if is_design(text) and DESIGNER in team and "pptx" not in kinds:
+        lines.append(f"Dizayn so'rovi (reja/3D, interer, do'kon joylashuvi, reklama/hajmli harflar, logotip yoki video): "
+                     f"ask_agent bilan '{DESIGNER}' (🎨 Dizayner) agentiga to'liq topshir. Foydalanuvchi rasm yuborgan bo'lsa, "
+                     "rasmlarni batafsil tasvirlab (o'lchamlar, devorlar, derazalar, uslub, ranglar) topshiriqqa qo'sh. "
+                     "Agent design_floor_plan / design_signage / make_promo_video bilan haqiqiy fayllar yaratsin.")
+        lines.append("Fayllar javob bilan birga foydalanuvchiga AVTOMATIK yuboriladi: havola to'qima, qisqa ayt nima tayyorlandi.")
+        return "\n".join(lines) + "\n\n"
     if "pptx" in kinds and DESIGNER in team:
         lesson = any(w in text.lower() for w in LESSON_WORDS)
         content = (f"1) ask_agent bilan '{INFORMATIKA}' agentidan to'liq mazmunni tayyorlat"

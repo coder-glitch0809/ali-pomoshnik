@@ -440,6 +440,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(agents.upgrade_defaults(source, target), [])
         repo = {k: agents._parse(k, (Path(__file__).resolve().parents[1] / "agents" / f"{k}.md").read_text(encoding="utf-8"))
                 for k in ("treyder", "dizayner", "office", "informatika")}
+        self.assertEqual(repo["dizayner"].version, 2)
         from ali.skills import REGISTRY
         for key in ("dizayner", "office", "informatika"):
             self.assertTrue(set(repo[key].tools) - {"web_search"} <= set(REGISTRY), key)
@@ -624,6 +625,58 @@ class RuntimeTests(unittest.TestCase):
         finally:
             agents.delete("lawyer-test")
             brain.reload_agents()
+
+    def test_design_floor_plan_home_and_shop_files(self):
+        import ezdxf
+        from ali import outbox
+        from ali.skills import design_floorplan as fp
+        start = outbox.mark()
+        result = fp.design_floor_plan("Uy 98", "home", area_m2=98)
+        files = {p.suffix + ("3d" if "_3d" in p.name else ""): p for p in outbox.since(start)}
+        self.assertEqual(set(files), {".png", ".png3d", ".dxf", ".obj3d", ".mtl3d"}, result)
+        doc = ezdxf.readfile(files[".dxf"])
+        layers = {e.dxf.layer for e in doc.modelspace()}
+        self.assertTrue({"A-DEVOR", "A-ESHIK", "A-DERAZA", "A-MEBEL", "A-MATN"} <= layers)
+        self.assertGreater(files[".obj3d"].read_text().count("\nv "), 100)
+        plan = fp.build_plan("Uy", "home", 98, 0, 0, [], "uz", "grocery", 2.8)
+        hall = next(r for r in plan.rooms if r.kind == "hall")
+        doors = [o for o in plan.openings if o.kind == "door"]
+        # yo'lakli reja: har bir xonaga eshik bor va hech bir xona 1.5 m dan tor emas
+        self.assertEqual({id(o.room) for o in doors}, {id(r) for r in plan.rooms if r is not hall})
+        self.assertTrue(all(min(r.w, r.h) >= 1.5 for r in plan.rooms if r is not hall))
+        self.assertGreaterEqual(min(hall.w, hall.h), 1.2)  # yo'lak me'yori
+        self.assertTrue(any(o.kind == "entrance" for o in plan.openings))
+        shop = fp.build_plan("Do'kon", "shop", 0, 14, 9, [], "uz", "grocery", 2.8)
+        kinds = [f[0] for r in shop.rooms for f in r.furniture]
+        self.assertIn("cashier", kinds)
+        self.assertGreater(kinds.count("gondola"), 2)
+        self.assertTrue(shop.flow and shop.zones)
+        for r in shop.rooms:  # jihozlar devordan chiqmaydi va bir-birini kesmaydi
+            for i, (_, a, b, c, d) in enumerate(r.furniture):
+                self.assertTrue(r.x0 <= a < c <= r.x1 and r.y0 <= b < d <= r.y1)
+                for _, a2, b2, c2, d2 in r.furniture[i + 1:]:
+                    self.assertFalse(a < c2 and c > a2 and b < d2 and d > b2)
+
+    def test_signage_and_video_outputs(self):
+        from ali import outbox
+        from ali.skills import design_media
+        start = outbox.mark()
+        text = design_media.design_signage("MARKET 24", "Oziq-ovqat", width_m=5, height_m=1.2, viewing_distance_m=120)
+        names = sorted(p.name for p in outbox.since(start))
+        self.assertEqual(len(names), 3)
+        self.assertTrue(any(n.endswith("_kun.png") for n in names) and any(n.endswith("_tun.png") for n in names))
+        svg = next(p for p in outbox.since(start) if p.suffix == ".svg").read_text()
+        self.assertIn('width="5000mm"', svg)
+        self.assertIn("harfni kamida", text)  # 120 m uchun 660 mm harf kam
+        start = outbox.mark()
+        result = design_media.make_promo_video("Test", [{"title": "Salom", "text": "Matn", "duration": 1.5}], "1:1")
+        made = outbox.since(start)
+        self.assertEqual(sorted(p.suffix for p in made), [".jsx", ".mp4"], result)
+        self.assertGreater(made[0].stat().st_size if made[0].suffix == ".mp4" else made[1].stat().st_size, 10000)
+        router_team = {"dizayner": 1, "informatika": 1, "office": 1}
+        from ali import router
+        self.assertIn("'dizayner'", router.hint("80 kvadrat uyimga dizayn qilib ber", router_team))
+        self.assertEqual(router.hint("Maximal narx qancha?", router_team), "")
 
     def test_coach_agent_and_improve_skills_are_registered(self):
         from ali.skills import REGISTRY

@@ -52,22 +52,22 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     draw();
   }
-  function agentLayout(count) {
-    const sideWidth = (w - (w < 700 ? 120 : 230)) / 2;
-    const columns = Math.max(1, Math.min(3, Math.floor((sideWidth - 24) / 72), Math.ceil(count / 8)));
-    return { columns, rows: Math.ceil(count / (columns * 2)), sideWidth };
+  // Agents sit on a ring (ellipse) around Ali, evenly spaced, starting at the top.
+  // Many agents (more than 10) use two rings, alternating inner and outer.
+  function ring(count) {
+    const card = w < 700 ? 64 : 92;
+    const rx = Math.max(140, w / 2 - card - 20), ry = Math.max(150, h / 2 - card - (w < 700 ? 60 : 30));
+    const two = count > 10;
+    return { rx, ry, two, inner: two ? .62 : 1 };
   }
   function fitAgents() {
-    const { rows } = agentLayout(members.length);
-    root.style.minHeight = `${Math.max(540, 250 + Math.max(0, rows - 1) * 82)}px`;
+    root.style.minHeight = `${members.length > 10 ? 760 : 600}px`;
   }
   function position(index, count) {
-    const { columns, rows, sideWidth } = agentLayout(count);
-    const slot = Math.floor(index / 2), row = Math.floor(slot / columns), col = slot % columns;
-    const left = columns === 1 ? w * .23 : 38 + col * (sideWidth - 76) / (columns - 1);
-    const top = 160, bottom = h - 95;
-    return { x: index % 2 ? w - left : left,
-      y: rows <= 1 ? h / 2 : top + row * (bottom - top) / (rows - 1) };
+    const { rx, ry, two, inner } = ring(count);
+    const angle = -Math.PI / 2 + index * Math.PI * 2 / Math.max(1, count);
+    const k = two && index % 2 ? inner : 1;
+    return { x: w / 2 + Math.cos(angle) * rx * k, y: h / 2 + 12 + Math.sin(angle) * ry * k };
   }
   // Energy link Ali -> agent while the agent's task is running: glowing conduit, crackling
   // lightning, energy packets flowing towards the agent and a pulsing impact at the agent.

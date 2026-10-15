@@ -203,6 +203,18 @@ redeploy kabi amallar har doim sizdan tasdiq so'raydi.
   o'qituvchi uchun izohlar va javoblar. Qo'shimcha **Word dars ishlanmasi** (T/r, bosqich, nima qilinadi, vaqt jadvali).
 - Fayllar `data/outbox` da 14 kun saqlanadi. Hech qanday skript yoki tasdiq kerak emas, Render'da ham ishlaydi.
 
+## 🎨 Dizayn studiyasi (Dizayner agenti)
+
+| So'rov | Natija (Telegram'ga fayl bo'lib keladi) |
+|---|---|
+| "80 m² uyimga reja va dizayn" (rasmlar bilan ham) | `design_floor_plan`: AutoCAD **.dxf** (mm, qatlamlar, o'lchamlar), reja **PNG**, 3ds Max/Blender uchun **.obj+.mtl**, **3D ko'rinish** PNG |
+| "120 m² do'konni joylashtir" / kafe / ofis | javonlar, gondolalar, kassa, 1.2 m+ yo'laklar, mijoz harakati yo'li, zonalar (dekompressiya, impuls tovar) |
+| "MARKET 24 uchun hajmli harflar, 5×1.2 m" | `design_signage`: haqiqiy o'lchamli **.svg** (Illustrator/CorelDraw), **kunduzgi va tungi maket**, harf balandligi va o'qilish masofasi, materiallar, LED va quvvat bloki |
+| "Ochilish uchun reklama video" | `make_promo_video`: **.mp4** (9:16 / 16:9 / 1:1) va After Effects **.jsx** (AE'da qatlamlar va kalit kadrlar bilan qayta yaratadi) |
+
+Agent Photoshop, CorelDraw, Illustrator, AutoCAD, 3ds Max va After Effects bo'yicha ish tartibini biladi va o'rgatadi.
+Rejalar - konsept: qurilishdan oldin joyida o'lchash va mutaxassis tekshiruvi kerak.
+
 ## Treyding: barcha timeframe'lar va MT5
 
 - **📈 Treyder** agenti `mtf_signal` bilan bitta belgini 15m, 1h, 4h, 1d da birga tekshiradi va signalni faqat
