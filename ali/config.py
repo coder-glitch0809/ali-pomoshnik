@@ -91,6 +91,8 @@ class Config:
     auto_learn_hours: float = field(default_factory=lambda: float(_env("AUTO_LEARN_HOURS", "24")))
     watch_projects: bool = field(default_factory=lambda: _env_bool("WATCH_PROJECTS", False))
     watch_hours: float = field(default_factory=lambda: float(_env("WATCH_HOURS", "6")))
+    self_improve: bool = field(default_factory=lambda: _env_bool("SELF_IMPROVE", False))
+    self_improve_hours: float = field(default_factory=lambda: float(_env("SELF_IMPROVE_HOURS", "24")))
 
     # Fayllar
     data_dir: Path = STATE_ROOT / "data"

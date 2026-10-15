@@ -17,6 +17,10 @@ services:
         value: Asia/Tashkent
       - key: TELEGRAM_BOT_NAME
         value: Ali Pomoshnik
+      - key: AUTO_LEARN
+        value: "true"
+      - key: SELF_IMPROVE
+        value: "true"
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: CLAUDE_MODEL

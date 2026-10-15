@@ -3,6 +3,7 @@
 Yoqish (.env):
   AUTO_LEARN=true        har bir agent "o'rganish" mavzulari bo'yicha AUTO_LEARN_HOURS da bir marta yangiliklarni
                          o'rganib, bilimlar bazasiga yozadi
+  SELF_IMPROVE=true      har kuni agentlar tekshiriladi, xatolari tuzatiladi va tajriba qo'shiladi (ali/evolution.py)
   WATCH_PROJECTS=true    Dasturchi agent WATCH_HOURS da bir marta treyding loyihalarini (kompyuter, GitHub, Vercel)
                          tekshiradi va muammo bo'lsa telefonga/Telegramga xabar beradi
 Avtopilot faqat tasdiq talab qilmaydigan (o'qish) vositalarini ishlatadi - siz yo'qligingizda hech narsa o'zgartirilmaydi.
@@ -50,9 +51,10 @@ def _load() -> dict:
             raise ValueError("Invalid state")
         state.setdefault("learn", {})
         state.setdefault("learning", {})
+        state.setdefault("improve", {})
         return state
     except (OSError, ValueError):
-        return {"learn": {}, "learning": {}, "watch": 0}
+        return {"learn": {}, "learning": {}, "improve": {}, "watch": 0}
 
 
 def _save(state: dict) -> None:
@@ -99,8 +101,11 @@ def learning_status(brain) -> dict:
         entry = state["learning"].get(key, {})
         result[key] = {**entry, "topics": a.learn or [a.description],
                        "knowledge": memory.agent_knowledge_summary(key),
+                       "improve": {k: v for k, v in state["improve"].get(key, {}).items()
+                                   if k in ("status", "score", "issues", "fixed", "summary", "last_success")},
                        "next_at": entry.get("next_at", state["learn"].get(key, 0) + config.auto_learn_hours * 3600 if state["learn"].get(key) else None)}
-    return {"enabled": config.auto_learn, "interval_hours": config.auto_learn_hours, "agents": result}
+    return {"enabled": config.auto_learn, "interval_hours": config.auto_learn_hours, "agents": result,
+            "self_improve": config.self_improve}
 
 
 def watch(brain) -> str:
@@ -111,9 +116,49 @@ def watch(brain) -> str:
                                   "vercel_projects", "vercel_deployments", "vercel_logs"))
 
 
+def _improve_tick(brain, state: dict, now: float) -> bool:
+    """Har SELF_IMPROVE_HOURS da bir marta: har bir agentni tekshir, tuzat, rivojlantir; oxirida hisobot.
+    Bir tikda bitta agent (Ali uzoq band bo'lmasin). Xato bo'lsa 1 soatdan keyin qayta uriniladi - tsikl to'xtamaydi.
+    False - Ali band, keyingi tikda davom etiladi."""
+    from . import evolution
+    cycle = state["improve"].setdefault("_cycle", {"started": 0, "done": []})
+    if now - cycle["started"] >= config.self_improve_hours * 3600:
+        cycle.update(started=now, done=[], reported=False)
+    pending = [k for k in brain.agents if k not in cycle["done"]
+               and state["improve"].get(k, {}).get("retry_at", 0) <= now]
+    if not pending:
+        if cycle["done"] and not cycle.get("reported") and all(k in cycle["done"] for k in brain.agents):
+            cycle["reported"] = True
+            _save(state)
+            hub.notify(evolution.daily_report({k: state["improve"].get(k, {}) for k in cycle["done"]}, brain.agents))
+        return True
+    key = pending[0]
+    if not brain.lock.acquire(blocking=False):
+        return False
+    try:
+        last = state["improve"].get(key, {})
+        try:
+            result = evolution.run_cycle_for(brain, key, last)
+            cycle["done"].append(key)
+            state["improve"][key] = {**result, "last_attempt": now, "last_success": time.time()}
+            log.info("Agent rivojlantirildi: %s -> %s", key, result["status"])
+        except Exception as e:
+            log.exception("Agentni rivojlantirib bo'lmadi: %s", key)
+            state["improve"][key] = {**last, "status": "error", "last_attempt": now, "retry_at": now + 3600,
+                                     "issues": [f"Tahlil bajarilmadi: {str(e)[:200]}"]}
+            if last.get("status") == "error":  # ikkinchi marta ham xato - bugunga o'tkazib yubor, hisobotda ko'rinadi
+                cycle["done"].append(key)
+        _save(state)
+    finally:
+        brain.lock.release()
+    return True
+
+
 def _tick(brain) -> None:
     state = _load()
     now = time.time()
+    if config.self_improve and not _improve_tick(brain, state, now):
+        return
     if config.auto_learn:
         for key, a in list(brain.agents.items()):
             entry = state["learning"].get(key, {})
@@ -157,8 +202,11 @@ def _tick(brain) -> None:
 
 
 def start(brain) -> None:
-    if not (config.auto_learn or config.watch_projects):
+    if not (config.auto_learn or config.watch_projects or config.self_improve):
         return
+    if config.self_improve:
+        from . import evolution
+        evolution.ensure_coach()
 
     def loop():
         time.sleep(60)  # server to'liq ishga tushsin
@@ -170,4 +218,5 @@ def start(brain) -> None:
             time.sleep(CHECK_EVERY)
 
     threading.Thread(target=loop, daemon=True, name="autopilot").start()
-    log.info("Avtopilot yoqildi (o'rganish=%s, kuzatish=%s)", config.auto_learn, config.watch_projects)
+    log.info("Avtopilot yoqildi (o'rganish=%s, kuzatish=%s, rivojlanish=%s)", config.auto_learn, config.watch_projects,
+             config.self_improve)

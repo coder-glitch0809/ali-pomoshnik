@@ -194,7 +194,18 @@ redeploy kabi amallar har doim sizdan tasdiq so'raydi.
 - `WATCH_PROJECTS=true` — Dasturchi `WATCH_HOURS` da bir marta treyding loyihalarini (git, GitHub Actions, Vercel) tekshiradi
   va muammo bo'lsa xabar beradi. Qo'lda: "Treyding loyihalarimni tekshir".
 
-Avtopilot faqat o'qiydigan vositalardan foydalanadi — siz yo'qligingizda hech narsa o'zgartirilmaydi.
+- `SELF_IMPROVE=true` — har kuni (`SELF_IMPROVE_HOURS`) har bir agent tekshiriladi va rivojlantiriladi:
+  1. sog'lik tekshiruvi (0-100 ball): mavjud bo'lmagan vositalar, so'nggi 7 kundagi xatolar, o'rganish xatolari, bo'sh bilim;
+  2. aniq xatolar darhol tuzatiladi (masalan mavjud bo'lmagan vosita olib tashlanadi);
+  3. muammosi yoki yangi ishi bo'lgan agentni **🧑‍🏫 Murabbiy** agent tahlil qilib, unga "Tajriba" saboqlari,
+     bilim bo'shlig'ini to'ldiradigan o'rganish mavzulari va kerakli (xavfsiz) vositalarni qo'shadi;
+  4. kunlik hisobot Telegram/telefonga keladi. Xato bo'lsa 1 soatdan keyin qayta uriniladi — tsikl to'xtamaydi.
+
+  Agentning asosiy ko'rsatmasi qayta yozilmaydi, har o'zgarishdan oldin nusxa `agents/_history` ga saqlanadi.
+  Qo'lda: "Agentlarni hozir rivojlantir", "Treyder holatini tekshir", "Treyderni oldingi holatiga qaytar".
+  `AUTO_LEARN` bilan birga yoqing: Murabbiy qo'shgan mavzularni agentlar har kuni o'rganadi.
+
+Avtopilot siz yo'qligingizda faqat tasdiq talab qilmaydigan vositalardan foydalanadi: loyihalar va fayllar o'zgartirilmaydi.
 Hammasi Monitoring bo'limida jonli ko'rinadi.
 
 **Eslatma:** Ali kompyuteringizda ishlaydi — kompyuter o'chiq bo'lsa Ali ham ishlamaydi. 24/7 ishlashi uchun uni

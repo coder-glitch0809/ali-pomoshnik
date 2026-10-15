@@ -900,7 +900,12 @@
       const l = learning.agents[a.key] || {}, k = l.knowledge || { count: 0, latest: [] };
       const date = t => t ? new Date(t * 1000).toLocaleString('uz-UZ', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Hali yo‘q';
       const labels = {running:'O‘rganmoqda',updated:'Bilim qo‘shildi',checked:'Tekshirildi',error:'O‘rganishda xato'};
-      return `<div class="agent-learning ${l.status === 'error' ? 'has-error' : ''}"><b>${labels[l.status] || 'Navbat kutilmoqda'}</b><span>${k.count} ta bilim</span><p>Oxirgi tekshiruv: ${date(l.last_attempt)}</p><details><summary>Bilimlar va mavzular</summary><p>${esc((l.topics || []).join(' · '))}</p><p>Keyingi urinish: ${learning.enabled ? (l.next_at ? date(l.next_at) : 'Navbatdagi tekshiruvda') : 'O‘chirilgan'}</p>${k.latest.map(n => `<p class="knowledge-topic">${esc(n.topic)} <small>${esc(n.created_at.slice(0,10))}</small></p>`).join('')}${l.summary ? `<p>${esc(l.summary)}</p>` : ''}</details></div>`;
+      return `<div class="agent-learning ${l.status === 'error' ? 'has-error' : ''}"><b>${labels[l.status] || 'Navbat kutilmoqda'}</b><span>${k.count} ta bilim</span><p>Oxirgi tekshiruv: ${date(l.last_attempt)}</p><details><summary>Bilimlar va mavzular</summary><p>${esc((l.topics || []).join(' · '))}</p><p>Keyingi urinish: ${learning.enabled ? (l.next_at ? date(l.next_at) : 'Navbatdagi tekshiruvda') : 'O‘chirilgan'}</p>${k.latest.map(n => `<p class="knowledge-topic">${esc(n.topic)} <small>${esc(n.created_at.slice(0,10))}</small></p>`).join('')}${l.summary ? `<p>${esc(l.summary)}</p>` : ''}${improveMarkup(l.improve)}</details></div>`;
+    };
+    const improveMarkup = (im) => {
+      if (!learning.self_improve || !im || im.score == null) return '';
+      const st = {improved:'Rivojlantirildi',healthy:'Sog‘lom',checked:'Kamchilik bor',error:'Tahlilda xato'}[im.status] || '';
+      return `<p><b>🌱 Rivojlanish: ${im.score}/100</b> · ${st}</p>${(im.fixed || []).map(f => `<p>✔ ${esc(f)}</p>`).join('')}${(im.issues || []).map(i => `<p>⚠ ${esc(i)}</p>`).join('')}${im.summary ? `<p>${esc(im.summary)}</p>` : ''}`;
     };
     const openKeys = new Set([...$('#agentCards').querySelectorAll('details[open]')].map(d => d.closest('[data-agent-card]').dataset.agentCard));
     $('#agentCards').innerHTML = mon.agents.map((a) => `

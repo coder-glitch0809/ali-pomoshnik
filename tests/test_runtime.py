@@ -306,6 +306,71 @@ class RuntimeTests(unittest.TestCase):
             autopilot._tick(fake)
             self.assertEqual(run.call_count, 1)
 
+    def test_self_improve_fixes_tools_adds_lessons_and_rolls_back(self):
+        from ali import evolution
+        from ali.skills import REGISTRY
+        agents.save("evo-test", "Evo", "E", "Testing", ["search_knowledge", "missing_tool"], "Base prompt", ["Topic"])
+        try:
+            report = evolution.health(REGISTRY, "evo-test")
+            self.assertIn("missing_tool", report["unknown_tools"])
+            self.assertLess(report["score"], 100)
+            self.assertEqual(evolution.auto_fix(REGISTRY, "evo-test"), ["Mavjud bo'lmagan vositalar olib tashlandi: missing_tool"])
+            self.assertEqual(agents.load()["evo-test"].tools, ["search_knowledge"])
+            self.assertIn("Qo'shib bo'lmaydi", evolution.improve(REGISTRY, "evo-test", add_tools=["write_project_file"]))
+            result = evolution.improve(REGISTRY, "evo-test", lessons=["Avval manbani tekshir", "Avval manbani tekshir"], learn=["New topic"])
+            self.assertIn("+1 saboq", result)
+            a = agents.load()["evo-test"]
+            self.assertTrue(a.prompt.startswith("Base prompt"))
+            self.assertEqual(evolution.split_lessons(a.prompt)[1], ["Avval manbani tekshir"])
+            self.assertEqual(a.learn, ["Topic", "New topic"])
+            self.assertIn("O'zgarish yo'q", evolution.improve(REGISTRY, "evo-test", lessons=["avval manbani tekshir"]))
+            evolution.rollback("evo-test")
+            self.assertEqual(agents.load()["evo-test"].prompt, "Base prompt")
+            evolution.rollback("evo-test")
+            self.assertIn("missing_tool", agents.load()["evo-test"].tools)
+        finally:
+            agents.delete("evo-test")
+
+    def test_self_improve_cycle_one_agent_per_tick_reports_and_retries(self):
+        from ali import autopilot, evolution
+        import threading
+        from types import SimpleNamespace
+        fake = SimpleNamespace(agents={"a1": SimpleNamespace(icon="A", name="One"), "a2": SimpleNamespace(icon="B", name="Two")},
+                               lock=threading.Lock(), registry={})
+        path = Path(state.name) / "improve-test.json"
+        calls = []
+        def cycle(brain, key, last):
+            calls.append(key)
+            if key == "a2" and calls.count("a2") == 1:
+                raise RuntimeError("API failed")
+            return {"status": "healthy", "score": 100, "issues": [], "fixed": [], "summary": "", "jobs_seen": 0}
+        with patch.object(autopilot, "STATE", path), patch.object(config, "auto_learn", False), \
+                patch.object(config, "watch_projects", False), patch.object(config, "self_improve", True), \
+                patch.object(evolution, "run_cycle_for", side_effect=cycle), patch.object(autopilot.hub, "notify") as notify:
+            autopilot._tick(fake)
+            autopilot._tick(fake)
+            self.assertEqual(calls, ["a1", "a2"])
+            self.assertEqual(autopilot._load()["improve"]["a2"]["status"], "error")
+            self.assertFalse(fake.lock.locked())
+            autopilot._tick(fake)  # a2 bir soat kutadi, hisobot hali yo'q
+            notify.assert_not_called()
+            data = autopilot._load(); data["improve"]["a2"]["retry_at"] = 0; autopilot._save(data)
+            autopilot._tick(fake)
+            autopilot._tick(fake)
+            self.assertEqual(calls, ["a1", "a2", "a2"])
+            notify.assert_called_once()
+            self.assertIn("100/100", notify.call_args[0][0])
+            autopilot._tick(fake)
+            self.assertEqual(len(calls), 3)
+            notify.assert_called_once()
+
+    def test_coach_agent_and_improve_skills_are_registered(self):
+        from ali.skills import REGISTRY
+        coach = agents._parse("murabbiy", (Path(__file__).resolve().parents[1] / "agents" / "murabbiy.md").read_text(encoding="utf-8"))
+        self.assertTrue(set(coach.tools) - {"web_search"} <= set(REGISTRY))
+        for name in ("agent_health", "improve_agent", "rollback_agent", "improve_agents_now"):
+            self.assertFalse(REGISTRY[name].dangerous)
+
     def test_restricted_agent_cannot_call_unlisted_tools(self):
         from types import SimpleNamespace
         block = SimpleNamespace(type="tool_use", name="write_project_file", input={}, id="blocked")
