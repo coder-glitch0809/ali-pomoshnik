@@ -11,11 +11,11 @@ from pathlib import Path
 
 import httpx
 
-from .config import ROOT, config
+from .config import STATE_ROOT, config
 
 log = logging.getLogger("ali.tts")
 
-SAMPLES_DIR = ROOT / "voices" / "samples"
+SAMPLES_DIR = STATE_ROOT / "voices" / "samples"
 VOICE_FILE = config.data_dir / "voice.json"
 ELEVEN = "https://api.elevenlabs.io/v1"
 AUDIO_EXT = {".ogg", ".oga", ".mp3", ".wav", ".m4a", ".webm", ".flac"}

@@ -392,3 +392,68 @@ def mt5_signals(limit: int = 10) -> str:
                      f"kirish {r['entry']} SL {r['sl']} TP1 {r['tp1']} TP3 {r['tp3']} | "
                      f"zona {r['zone_low']}-{r['zone_high']} | ball {r['score']}")
     return "\n".join(lines)
+
+
+def _journal_files() -> list[Path]:
+    env = os.environ.get("MT5_FILES_DIR", "").strip()
+    base = Path(env) if env else Path(os.environ.get("APPDATA", "")) / "MetaQuotes" / "Terminal"
+    pattern = "AZT_Journal_*.csv" if env else "*/MQL5/Files/AZT_Journal_*.csv"
+    return [Path(p) for p in glob.glob(str(base / pattern))]
+
+
+_OUTCOME = {"1": "TP1 ga yetdi", "-1": "SL urildi", "2": "vaqt tugadi/neytral", "0": "kutilmoqda"}
+
+
+@skill(
+    description=(
+        "EA signallarining HAQIQIY natijalari: har bir signal nima bo'ldi (TP1 yetdi / SL urildi / vaqt tugadi), R natija, "
+        "yutuq foizi, setup va AI kesimida, savdo qilingan va qilinmagan signallar. Telegramga yuborish uchun tayyor matn."
+    ),
+    params={
+        "limit": {"type": "integer", "description": "Oxirgi nechta signal ro'yxati (standart 10)"},
+        "symbol": {"type": "string", "description": "Belgi bo'yicha filtr (ixtiyoriy, masalan EURUSD)"},
+    },
+    required=[],
+)
+def signal_results(limit: int = 10, symbol: str = "") -> str:
+    files = _journal_files()
+    if not files:
+        return "Journal fayli topilmadi: EA hali signal yozmagan yoki MT5 Files papkasi noma'lum (MT5_FILES_DIR)."
+    rows: list[dict] = []
+    for f in files:
+        if symbol and symbol.upper() not in f.name.upper():
+            continue
+        with f.open(encoding="utf-8", errors="replace", newline="") as fh:
+            rows += list(csv.DictReader(fh, delimiter=";"))
+    if not rows:
+        return "Natija yo'q."
+    resolved = [r for r in rows if r.get("outcome") in ("1", "-1", "2")]
+    wins = [r for r in resolved if r["outcome"] == "1"]
+    traded = [r for r in rows if r.get("action") in ("AUTO", "APPROVED")]
+    traded_done = [r for r in traded if r.get("outcome") in ("1", "-1", "2")]
+
+    def _sum_r(items):
+        return sum(float(r.get("resultR") or 0) for r in items)
+
+    lines = [
+        f"Jami signal: {len(rows)} | hal bo'lgan: {len(resolved)} | kutilmoqda: {len(rows) - len(resolved)}",
+        f"TP1 ga yetdi: {len(wins)} ({(len(wins) / len(resolved) * 100 if resolved else 0):.0f}%) | "
+        f"SL urildi: {sum(1 for r in resolved if r['outcome'] == '-1')}",
+        f"Hammasi bo'yicha (agar kirilganda) jami R: {_sum_r(resolved):+.2f}",
+        f"Haqiqatda savdo qilingan: {len(traded)} ta, hal bo'lgan {len(traded_done)} ta, "
+        f"jami R: {_sum_r(traded_done):+.2f}",
+    ]
+    by_setup: dict[str, list[dict]] = {}
+    for r in resolved:
+        by_setup.setdefault(r.get("setup", "?"), []).append(r)
+    if by_setup:
+        lines.append("Setup bo'yicha:")
+        for name, items in sorted(by_setup.items(), key=lambda kv: -len(kv[1])):
+            w = sum(1 for r in items if r["outcome"] == "1")
+            lines.append(f"- {name}: {w}/{len(items)} ({w / len(items) * 100:.0f}%), R {_sum_r(items):+.2f}")
+    lines.append(f"So'nggi {min(limit, len(rows))} ta signal:")
+    for r in rows[-max(1, min(limit, 100)):][::-1]:
+        res = _OUTCOME.get(r.get("outcome", "0"), "?")
+        lines.append(f"- {r.get('time', '')} {r.get('side', '')} {r.get('setup', '')} | harakat: {r.get('action', '')} | "
+                     f"{res} | R {r.get('resultR', '') or '-'} | MFE {r.get('mfeR', '') or '-'}R MAE {r.get('maeR', '') or '-'}R")
+    return "\n".join(lines)

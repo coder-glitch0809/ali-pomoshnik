@@ -138,6 +138,40 @@ def github_create_issue(repo: str, title: str, body: str) -> str:
 
 @skill(
     description=(
+        "GitHub repozitoriydagi faylni yangilaydi yoki yangi fayl yaratib, to'g'ridan-to'g'ri commit/push qiladi. "
+        "Mavjud fayl uchun to'liq yangi mazmunni yubor. Asosiy branch'ga push qilinsa, deploy avtomatik ishga tushishi mumkin. "
+        "Foydalanuvchi tasdiqlaydi."
+    ),
+    params={
+        "repo": {"type": "string", "description": "egasi/nomi yoki nomi"},
+        "path": {"type": "string", "description": "Fayl yo'li, masalan: ali/brain.py"},
+        "content": {"type": "string", "description": "Faylning to'liq yangi mazmuni"},
+        "message": {"type": "string", "description": "Commit xabari"},
+        "branch": {"type": "string", "description": "Branch nomi (bo'sh bo'lsa - standart branch)"},
+    },
+    required=["repo", "path", "content", "message"],
+    dangerous=True,
+)
+def github_push_file(repo: str, path: str, content: str, message: str, branch: str = "") -> str:
+    full = _repo(repo)
+    path = path.strip().lstrip("/")
+    with _client() as c:
+        current = c.get(f"/repos/{full}/contents/{path}", params={"ref": branch} if branch else {})
+        body = {"message": message, "content": base64.b64encode(content.encode("utf-8")).decode()}
+        if branch:
+            body["branch"] = branch
+        if current.status_code == 200:
+            body["sha"] = current.json()["sha"]  # mavjud faylni yangilash uchun sha shart
+        elif current.status_code != 404:
+            current.raise_for_status()
+        r = c.put(f"/repos/{full}/contents/{path}", json=body)
+        r.raise_for_status()
+        commit = r.json()["commit"]["html_url"]
+    return f"Push qilindi: {path} -> {commit}"
+
+
+@skill(
+    description=(
         "GitHub repozitoriyni kompyuterga klonlaydi (PROJECTS_DIRS dagi birinchi papkaga), shundan keyin uni loyiha "
         "vositalari, Claude Code yoki Codex bilan o'zgartirish mumkin."
     ),

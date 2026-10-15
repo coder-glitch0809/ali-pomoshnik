@@ -1,0 +1,29 @@
+# Paid service: review Render pricing before applying this blueprint.
+services:
+  - type: web
+    name: ali-pomoshnik
+    runtime: docker
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /healthz
+    disk:
+      name: ali-memory
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: ALI_STATE_DIR
+        value: /var/data
+      - key: TZ
+        value: Asia/Tashkent
+      - key: TELEGRAM_BOT_NAME
+        value: Ali Pomoshnik
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: ACCESS_PASSWORD
+        sync: false
+      - key: TELEGRAM_ALLOWED_USERS
+        sync: false

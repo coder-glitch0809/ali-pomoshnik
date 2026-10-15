@@ -36,6 +36,12 @@ CREATE TABLE IF NOT EXISTS reminders (
     due_at     TEXT NOT NULL,
     done       INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS vault_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -79,7 +85,16 @@ class Memory:
         )
 
     # --- Bilimlar bazasi (o'rganilgan mavzular) ---
+    def recent_messages(self, session_id: str, limit: int = 80) -> list[dict]:
+        rows = self._exec("SELECT id, role, content FROM messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
+                          (session_id, limit)).fetchall()
+        return [dict(row) for row in reversed(rows)]
+
     def add_knowledge(self, topic: str, content: str) -> int:
+        existing = self._exec("SELECT id FROM knowledge WHERE topic=? AND content=? LIMIT 1",
+                              (topic.strip(), content.strip())).fetchone()
+        if existing:
+            return existing["id"]
         return self._exec(
             "INSERT INTO knowledge(topic, content, created_at) VALUES(?,?,?)", (topic.strip(), content.strip(), _now())
         ).lastrowid
@@ -93,6 +108,46 @@ class Memory:
 
     def knowledge_topics(self) -> list[str]:
         return [r["topic"] for r in self._exec("SELECT DISTINCT topic FROM knowledge ORDER BY id DESC").fetchall()]
+
+    def agent_knowledge_summary(self, key: str) -> dict:
+        prefix = f"[{key}] "
+        rows = self._exec("SELECT topic, created_at FROM knowledge WHERE substr(topic,1,?)=? ORDER BY id DESC",
+                          (len(prefix), prefix)).fetchall()
+        return {"count": len(rows), "latest": [dict(r) for r in rows[:3]]}
+
+    # Unified, read-only view over the original records; no copies of chat history.
+    VAULT_SQL = """
+        SELECT 'note:' || id AS id, 'inbox' AS folder, title, content, created_at AS updated_at FROM vault_notes
+        UNION ALL SELECT 'fact:' || key, 'identity', key, value, updated_at FROM facts
+        UNION ALL SELECT 'knowledge:' || id,
+          CASE WHEN topic LIKE '[yangiliklar] %' THEN 'news' ELSE 'knowledge' END,
+          topic, content, created_at FROM knowledge
+        UNION ALL SELECT 'message:' || id, 'chats', role || ' · ' || created_at,
+          content, created_at FROM messages
+        UNION ALL SELECT 'reminder:' || id, 'reminders', text,
+          text || char(10) || 'Vaqti: ' || due_at || char(10) || CASE WHEN done=1 THEN 'Bajarilgan' ELSE 'Kutilmoqda' END,
+          due_at FROM reminders
+    """
+
+    def vault_list(self, query: str = '', folder: str = '', offset: int = 0, limit: int = 80) -> dict:
+        pattern = '%' + query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        where = " WHERE (?='' OR folder=?) AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')"
+        args = (folder, folder, pattern, pattern)
+        base = f"FROM ({self.VAULT_SQL})"
+        total = self._exec('SELECT count(*) ' + base + where, args).fetchone()[0]
+        rows = self._exec('SELECT id,folder,title,updated_at ' + base + where + ' ORDER BY updated_at DESC,id DESC LIMIT ? OFFSET ?',
+                          (*args, limit, offset)).fetchall()
+        counts = self._exec('SELECT folder,count(*) AS n ' + base + ' GROUP BY folder').fetchall()
+        return {"items": [dict(r) for r in rows], "total": total, "counts": {r['folder']: r['n'] for r in counts}}
+
+    def vault_detail(self, record_id: str) -> dict | None:
+        row = self._exec(f"SELECT * FROM ({self.VAULT_SQL}) WHERE id=?", (record_id,)).fetchone()
+        return dict(row) if row else None
+
+    def add_vault_note(self, title: str, content: str) -> str:
+        row = self._exec('INSERT INTO vault_notes(title,content,created_at) VALUES(?,?,?)',
+                         (title.strip(), content.strip(), _now()))
+        return f"note:{row.lastrowid}"
 
     # --- Eslatmalar ---
     def add_reminder(self, text: str, due_at: datetime) -> int:

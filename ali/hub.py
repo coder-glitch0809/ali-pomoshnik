@@ -18,6 +18,7 @@ class Listener:
     def on_confirm(self, cid: str, name: str, args: dict) -> None: ...
     def on_confirm_closed(self, cid: str) -> None: ...
     def on_notify(self, text: str) -> None: ...
+    def on_answer(self, question: str, answer: str, source: str) -> None: ...
 
 
 @dataclass
@@ -59,7 +60,7 @@ class Hub:
         return len(targets)
 
     def _send(self, device: Device, payload: dict) -> None:
-        if not self.loop:
+        if not self.loop or self.loop.is_closed():
             return
         coro = device.ws.send_json(payload)
         try:

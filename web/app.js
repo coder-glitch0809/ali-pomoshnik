@@ -18,9 +18,10 @@
     get(k, d) { try { const v = localStorage.getItem('ali.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem('ali.' + k, JSON.stringify(v)); } catch { /* yo'q */ } },
   };
-  const modes = { deep: store.get('deep', false), super: store.get('super', false), voice: store.get('voice', true), wake: false };
+  const modes = { deep: store.get('deep', false), super: true, voice: store.get('voice', true), wake: false };
 
-  let agent = store.get('agent', ''); // tanlangan agent kaliti ('' = oddiy Ali)
+  let agent = '';
+  store.set('agent', ''); store.set('super', true); // tanlangan agent kaliti ('' = oddiy Ali)
 
   let status = { wake_words: ['ali'], stt_language: 'uz-UZ', server_stt: false, assistant: 'Ali', user: '', agents: [] };
   let myDeviceId = null;
@@ -35,6 +36,9 @@
   let state = 'offline';
   function setState(s, sub) {
     state = s;
+    $('#sidebarVoice').classList.toggle('listening', s === 'listening');
+    $('#sidebarVoice').setAttribute('aria-pressed', String(s === 'listening'));
+    $('#sidebarVoiceLabel').textContent = s === 'listening' ? 'Tinglashni to‘xtatish' : 'Ovozli suhbat';
     el.state.textContent = STATES[s] || s;
     if (sub !== undefined) el.live.textContent = sub;
   }
@@ -333,7 +337,7 @@
   };
   const agentInfo = (key) => (status.agents || []).find((a) => a.key === key);
 
-  function scrollDown() { requestAnimationFrame(() => { el.stage.scrollTop = el.stage.scrollHeight; }); }
+  function scrollDown() { requestAnimationFrame(() => { el.stage.scrollTop = el.stage.scrollHeight; el.feed.scrollTop = el.feed.scrollHeight; }); }
   function startChat() { el.stage.classList.add('chatting'); }
 
   function addUser(text, images, fromSelf, source) {
@@ -412,6 +416,16 @@
     const t = m.id ? turns.get(m.id) : null;
     switch (m.type) {
       case 'hello': myDeviceId = m.device_id; break;
+      case 'history':
+        if (!turns.size && !el.feed.children.length) {
+          for (const row of m.messages || []) {
+            if (row.role === 'user') addUser(row.content, [], false, 'history');
+            else if (row.role === 'assistant') {
+              finishTurn(addTurn(`history-${row.id}`), row.content, false);
+            }
+          }
+        }
+        break;
       case 'devices': loadStatus(); break;
       case 'user':
         if (m.from === myDeviceId) break; // o'zimizniki allaqachon ko'rsatilgan
@@ -598,6 +612,7 @@
 
   // ---------- Rejim tugmalari ----------
   function setMode(name, on) {
+    if (name === 'super') on = true;
     modes[name] = on;
     if (name !== 'wake') store.set(name, on);
     document.querySelector(`.mode[data-mode="${name}"]`)?.classList.toggle('on', on);
@@ -617,29 +632,15 @@
   });
 
   // ---------- Agentlar ----------
-  const agentBar = $('#agentBar');
   function renderAgents() {
-    const list = status.agents || [];
-    if (agent && !agentInfo(agent)) { agent = ''; store.set('agent', ''); }
-    agentBar.hidden = !list.length;
-    const items = [{ key: '', icon: '🧠', name: status.assistant || 'Ali' }, ...list];
-    agentBar.innerHTML = items.map((a) => `<button type="button" class="agent${a.key === agent ? ' on' : ''}" role="radio"
-      aria-checked="${a.key === agent}" data-key="${esc(a.key)}" title="${esc(a.description || '')}"><span>${esc(a.icon)}</span>${esc(a.name)}</button>`).join('');
-    const cur = agentInfo(agent);
-    el.input.placeholder = cur ? `${cur.name}ga yozing…` : `${status.assistant || 'Ali'}'ga yozing yoki gapiring…`;
+    el.input.placeholder = `${status.assistant || 'Ali'}ga yozing yoki gapiring…`;
   }
   function selectAgent(key, silent) {
-    agent = key || '';
-    store.set('agent', agent);
+    agent = '';
+    store.set('agent', '');
     renderAgents();
-    if (silent) return;
-    const cur = agentInfo(agent);
-    toast(cur ? `${cur.icon} ${cur.name} agenti tanlandi` : `Oddiy ${status.assistant || 'Ali'} rejimi`);
+    if (!silent) toast('Vazifani Aliga yozing — agentlarni Ali boshqaradi');
   }
-  agentBar.addEventListener('click', (e) => {
-    const b = e.target.closest('.agent');
-    if (b) selectAgent(b.dataset.key);
-  });
 
   // ---------- Tasdiqlash ----------
   function openConfirm(m) {
@@ -657,11 +658,14 @@
   $('#denyBtn').onclick = () => answerConfirm(false);
 
   // ---------- Bo'limlar va menyu ----------
-  const VIEW_TITLES = { home: 'Bosh sahifa', chat: 'Chat', monitor: 'Monitoring', agents: 'Agentlar' };
+  const VIEW_TITLES = { home: 'Bosh sahifa', chat: 'Chat', monitor: 'Monitoring', agents: 'Agentlar', vault: 'Vault · Xotira', permissions: 'Ruxsatlar' };
   let view = 'home';
   function showView(name) {
     if (!VIEW_TITLES[name]) name = 'home';
     view = name;
+    if (name === 'vault') window.AliVault?.refresh();
+    if (name === 'permissions') window.AliPermissions?.refresh();
+    document.body.classList.toggle('home-dashboard', name === 'home');
     document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== 'view-' + name; });
     document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('on', b.dataset.view === name));
     $('#mobileTitle').textContent = name === 'chat' ? `${status.assistant || 'Ali'} Chat` : VIEW_TITLES[name];
@@ -681,6 +685,16 @@
   $('#newSession').onclick = newSession;
   $('#homeNew').onclick = () => { newSession(); showView('chat'); };
   $('#homeChat').onclick = () => showView('chat');
+  $('#sidebarVoice').onclick = () => {
+    unlockAudio(); showView('chat'); setMode('voice', true);
+    if (recognizer.active) recognizer.stopOnce(); else { stopSpeaking(); recognizer.startOnce(); }
+  };
+  window.addEventListener('ali-home-ask', (event) => {
+    unlockAudio(); showView('chat');
+    el.input.value = event.detail;
+    el.input.dispatchEvent(new Event('input', { bubbles: true }));
+    el.input.focus();
+  });
   // Tez topshiriqlar: kerakli agentni tanlab, chatga o'tadi
   document.querySelectorAll('#quick button').forEach((b) => b.addEventListener('click', () => {
     unlockAudio();
@@ -695,10 +709,25 @@
     const next = cur === 'light' ? 'dark' : 'light';
     document.documentElement.dataset.theme = next;
     store.set('theme', next);
+    syncAppearance();
     document.querySelector('meta[name="theme-color"]').content = next === 'light' ? '#ffffff' : '#0b0f17';
   };
+  function syncAppearance() {
+    const light = document.documentElement.dataset.theme === 'light';
+    const label = light ? 'Tun rejimiga o‘tish' : 'Kun rejimiga o‘tish';
+    $('#themeBtn').setAttribute('aria-label', label); $('#themeBtn').title = label;
+    $('#glassBtn').setAttribute('aria-pressed', String(document.documentElement.dataset.glass === 'on'));
+  }
+  $('#glassBtn').onclick = () => {
+    const enabled = document.documentElement.dataset.glass !== 'on';
+    document.documentElement.dataset.glass = enabled ? 'on' : 'off'; store.set('glass', enabled); syncAppearance();
+  };
+  syncAppearance();
 
-  function setLive(on) { document.querySelectorAll('.live').forEach((d) => d.classList.toggle('on', on)); }
+  function setLive(on) {
+    document.querySelectorAll('.live').forEach((d) => d.classList.toggle('on', on));
+    window.AliGalaxy?.setOnline(on);
+  }
 
   function greeting() {
     const h = new Date().getHours();
@@ -717,6 +746,7 @@
     $('#navChat').textContent = `${name} Chat`;
     document.title = name;
     $('#greeting').textContent = greeting();
+    window.AliHome?.update(status);
     $('#homeSub').textContent = `${name} va ${(status.agents || []).length} ta agent xizmatingizda`;
     $('#sideMeta').textContent = status.models.claude;
     for (const [k, v] of Object.entries(status.models)) document.querySelector(`.pill[data-model="${k}"]`)?.classList.toggle('on', !!v);
@@ -777,6 +807,7 @@
   }
 
   function renderMonitor() {
+    window.AliHome?.update(null, mon);
     const running = mon.agents.filter((a) => a.status === 'running');
     const badge = $('#runBadge');
     badge.hidden = !running.length;
@@ -789,7 +820,9 @@
       mon.agents.map((a) => `<option value="${esc(a.key)}">${esc(a.icon)} ${esc(a.name)}</option>`).join('');
     monFilter.value = mon.agents.some((a) => a.key === sel) ? sel : '';
 
-    $('#monAgents').innerHTML = mon.agents.map((a) => agentCard(a)).join('');
+    window.AliGalaxy?.update(mon);
+    window.AliGalaxy?.select(monFilter.value);
+    $('#monAgents').innerHTML = mon.agents.map((a) => `<button type="button" class="galaxy-agent-chip${a.status === 'running' ? ' running' : ''}${monFilter.value === a.key ? ' selected' : ''}" data-key="${esc(a.key)}" aria-pressed="${monFilter.value === a.key}"><i></i><span>${esc(a.name)}</span><small>${a.status === 'running' ? 'Ishlayapti' : 'Kutmoqda'}</small></button>`).join('');
     $('#homeAgents').innerHTML = mon.agents.map((a) => agentCard(a, { click: true })).join('');
     renderJobs();
     renderLog();
@@ -797,6 +830,7 @@
   }
 
   function renderJobs() {
+    const box = $('#jobs'), scroll = box.scrollTop;
     const f = monFilter.value;
     const jobs = mon.jobs.filter((j) => !f || j.agent === f);
     const active = jobs.filter((j) => j.status === 'running').length;
@@ -806,10 +840,12 @@
       const dur = j.status === 'running' ? `<span data-since="${j.start}">${fmtDur(Date.now() / 1000 - j.start)}</span>` : fmtDur((j.end || j.start) - j.start);
       const src = j.source === 'telegram' || j.source === 'avtopilot' ? j.source
         : memberOf(j.source).name !== j.source ? `${memberOf(j.source).name} topshirdi` : 'ilova';
-      return `<div class="job ${j.status}"><span class="bar"></span><div class="job-main">
+      const jobState = j.status === 'running' ? 'Ishlayapti' : j.status === 'error' ? 'Xato' : 'Yakunlandi';
+      return `<div class="job ${esc(j.status)}"><span class="bar" title="${jobState}" aria-label="${jobState}"></span><div class="job-main">
         <div class="job-top"><span>${esc(a.icon)}</span><b>${esc(a.name)}</b><span class="src">${esc(src)}</span><time>${fmtTime(j.start)} · ${dur}</time></div>
         <div class="job-text">${esc(j.text || '—')}${j.steps ? ` · ${j.steps} ta amal` : ''}</div></div></div>`;
     }).join('') || '<div class="empty">Hali ishlar yo‘q. Chatda biror narsa so‘rang.</div>';
+    box.scrollTop = scroll;
   }
 
   function logRow(e) {
@@ -820,33 +856,65 @@
   function visibleLog(e) { return (showThink.checked || e.kind !== 'think') && (!monFilter.value || e.agent === monFilter.value); }
   function renderLog() {
     const box = $('#liveLog');
+    const scroll = box.scrollTop;
     const rows = mon.feed.filter(visibleLog).slice(-150).reverse();
     box.innerHTML = rows.map(logRow).join('') || '<div class="empty">Lenta bo‘sh. Ali ishlay boshlasa, shu yerda jonli ko‘rinadi.</div>';
+    box.scrollTop = scroll;
   }
   function appendLog(e) {
     mon.feed.push(e);
     if (mon.feed.length > 400) mon.feed.shift();
     if (!visibleLog(e)) return;
     const box = $('#liveLog');
+    const scroll = box.scrollTop, height = box.scrollHeight;
     box.querySelector('.empty')?.remove();
     box.insertAdjacentHTML('afterbegin', logRow(e));
+    if (scroll < 8) box.firstElementChild.classList.add('log-new');
+    else box.scrollTop = scroll + box.scrollHeight - height;
     while (box.children.length > 150) box.lastElementChild.remove();
   }
-  monFilter.addEventListener('change', () => { renderJobs(); renderLog(); });
+  function filterMonitoring(key) {
+    monFilter.value = key;
+    window.AliGalaxy?.select(key);
+    $('#monAgents').querySelectorAll('[data-key]').forEach((b) => {
+      b.classList.toggle('selected', b.dataset.key === key);
+      b.setAttribute('aria-pressed', String(b.dataset.key === key));
+    });
+    renderJobs(); renderLog();
+  }
+  monFilter.addEventListener('change', () => filterMonitoring(monFilter.value));
+  $('#galaxyMonitor').addEventListener('galaxy-select', (e) => filterMonitoring(monFilter.value === e.detail.key ? '' : e.detail.key));
+  $('#monAgents').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-key]');
+    if (chip) filterMonitoring(monFilter.value === chip.dataset.key ? '' : chip.dataset.key);
+  });
+  setInterval(() => { if ((view === 'monitor' || view === 'agents') && !document.hidden) loadMonitor(); }, 4000);
   showThink.addEventListener('change', () => { store.set('showThink', showThink.checked); renderLog(); });
 
   function renderAgentCards() {
+    const learning = mon.learning || { agents: {} };
+    $('#learningState').textContent = learning.enabled ? `Har ${learning.interval_hours} soatda bilim yangilash` : 'Avtomatik o‘rganish o‘chiq';
+    $('#learningInfo').textContent = learning.enabled ? 'Server ishlaganda tekshiradi · xatoda 1 soatdan keyin qayta urinadi · API sarfi mavjud' : 'Mavzularni agent sozlamalarida belgilash mumkin.';
+    const learningMarkup = (a) => {
+      if (a.key === 'ali') return '<div class="agent-learning"><b>Jamoaning markaziy yordamchisi</b><p>Vazifalarni taqsimlaydi va agentlar bilimidan foydalanadi.</p></div>';
+      const l = learning.agents[a.key] || {}, k = l.knowledge || { count: 0, latest: [] };
+      const date = t => t ? new Date(t * 1000).toLocaleString('uz-UZ', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Hali yo‘q';
+      const labels = {running:'O‘rganmoqda',updated:'Bilim qo‘shildi',checked:'Tekshirildi',error:'O‘rganishda xato'};
+      return `<div class="agent-learning ${l.status === 'error' ? 'has-error' : ''}"><b>${labels[l.status] || 'Navbat kutilmoqda'}</b><span>${k.count} ta bilim</span><p>Oxirgi tekshiruv: ${date(l.last_attempt)}</p><details><summary>Bilimlar va mavzular</summary><p>${esc((l.topics || []).join(' · '))}</p><p>Keyingi urinish: ${learning.enabled ? (l.next_at ? date(l.next_at) : 'Navbatdagi tekshiruvda') : 'O‘chirilgan'}</p>${k.latest.map(n => `<p class="knowledge-topic">${esc(n.topic)} <small>${esc(n.created_at.slice(0,10))}</small></p>`).join('')}${l.summary ? `<p>${esc(l.summary)}</p>` : ''}</details></div>`;
+    };
+    const openKeys = new Set([...$('#agentCards').querySelectorAll('details[open]')].map(d => d.closest('[data-agent-card]').dataset.agentCard));
     $('#agentCards').innerHTML = mon.agents.map((a) => `
-      <div class="agent-card${a.status === 'running' ? ' running' : ''}">
+      <div class="agent-card${a.status === 'running' ? ' running' : ''}" data-agent-card="${esc(a.key)}">
         <div class="ac-head"><span class="ico">${esc(a.icon)}</span><div><div class="nm">${esc(a.name)}</div>
           <div class="ac-state"><i></i>${a.status === 'running' ? 'Ishlayapti' : 'Bo‘sh'} · bugun ${a.today}, jami ${a.total}</div></div></div>
         <div class="ac-desc">${esc(a.description || '')}</div>
-        ${a.tools?.length ? `<div class="ac-tools">${a.tools.map((t) => `<span>${esc(TOOL_NAMES[t] || t)}</span>`).join('')}</div>` : ''}
+        ${learningMarkup(a)}
         <div class="ac-actions">
-          <button class="btn primary" data-chat="${esc(a.key)}">Suhbat boshlash</button>
+          <button class="btn primary" data-chat="${esc(a.key)}">Ali orqali buyruq →</button>
           ${a.key !== 'ali' ? `<button class="btn ghost" data-edit="${esc(a.key)}">Tahrirlash</button>` : ''}
         </div>
       </div>`).join('');
+    $('#agentCards').querySelectorAll('[data-agent-card]').forEach(card => { if (openKeys.has(card.dataset.agentCard) && card.querySelector('details')) card.querySelector('details').open = true; });
   }
   $('#agentCards').addEventListener('click', (e) => {
     const b = e.target.closest('[data-chat]');

@@ -32,3 +32,10 @@ def search_knowledge(query: str) -> str:
 @skill(description="Bilimlar bazasidagi barcha o'rganilgan mavzular ro'yxati.")
 def list_knowledge_topics() -> str:
     return "\n".join(memory.knowledge_topics()) or "Hali hech narsa o'rganilmagan."
+
+
+@skill(description="Vault xotirasidan oldingi suhbatlar, shaxsiy faktlar, yozuvlar va bilimlarni qidiradi. Oldin aytilgan ma'lumot haqida savolda foydalan.",
+       params={"query": {"type": "string", "description": "Qidiriladigan so'z yoki ibora"}})
+def search_memory(query: str) -> str:
+    rows = memory.vault_list(query[:300], limit=8)["items"]
+    return '\n\n'.join(f"[{r['id']}] {r['title']} ({r['updated_at']})\n{memory.vault_detail(r['id'])['content'][:2500]}" for r in rows) or "Xotirada topilmadi."

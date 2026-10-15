@@ -15,6 +15,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script>try { const t = localStorage.getItem('ali.theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}</script>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/monitor-galaxy.css">
+  <link rel="stylesheet" href="/static/home.css">
+  <link rel="stylesheet" href="/static/agents.css">
+  <link rel="stylesheet" href="/static/vault.css">
+  <link rel="stylesheet" href="/static/permissions.css">
+  <link rel="stylesheet" href="/static/glass.css">
+  <script>try { document.documentElement.dataset.glass = localStorage.getItem('ali.glass') !== 'false' ? 'on' : 'off'; } catch { document.documentElement.dataset.glass = 'on'; }</script>
 </head>
 <body>
 <div class="app">
@@ -22,12 +29,14 @@
   <!-- ===== Chap menyu ===== -->
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <span class="logo" aria-hidden="true"></span>
+      <span class="logo ali-emblem" aria-hidden="true"><svg viewBox="0 0 40 40"><path class="emblem-frame" d="M20 3 35 12v16L20 37 5 28V12Z"/><path class="emblem-a" d="m12 27 8-16 8 16M15 22h10"/><circle class="emblem-spark" cx="32" cy="9" r="3"/></svg></span>
       <div>
         <div class="brand-name" id="brandName">ALI</div>
         <div class="brand-sub">Shaxsiy AI jamoa</div>
       </div>
+      <button class="theme-btn" id="themeBtn" aria-label="Kun rejimiga o‘tish" title="Kun rejimiga o‘tish"><svg class="theme-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/></svg><svg class="theme-moon" viewBox="0 0 24 24"><path d="M20 15A8 8 0 0 1 9 4a8 8 0 1 0 11 11Z"/></svg></button>
     </div>
+    <button class="sidebar-voice" id="sidebarVoice" aria-pressed="false"><span class="voice-wave" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="sidebarVoiceLabel">Ovozli suhbat</span></button>
     <nav class="nav">
       <button class="nav-item" data-view="home">
         <svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg>Bosh sahifa
@@ -41,11 +50,11 @@
       <button class="nav-item" data-view="agents">
         <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 4.5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 6"/></svg>Agentlar
       </button>
+      <button class="nav-item" data-view="vault"><svg viewBox="0 0 24 24"><path d="M3 6h7l2 3h9v11H3z"/></svg>Vault · Xotira</button>
+      <button class="nav-item" data-view="permissions"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6"/></svg>Ruxsatlar</button>
     </nav>
     <div class="side-foot">
-      <button class="theme-btn" id="themeBtn">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16a8 8 0 0 0 0-16z" fill="currentColor"/></svg>Mavzu
-      </button>
+      <button id="glassBtn" class="glass-switch" aria-pressed="true"><span>◇ Glass mode</span><i aria-hidden="true"></i></button>
       <div class="side-meta" id="sideMeta"></div>
     </div>
   </aside>
@@ -63,17 +72,40 @@
       <div class="page">
         <div class="page-head">
           <div>
+            <div id="homeDate" class="home-date"></div>
             <h1 id="greeting">Salom!</h1>
             <p class="page-sub" id="homeSub">Ali va agentlar jamoasi xizmatingizda</p>
           </div>
-          <span class="live" id="liveDot"><i></i>LIVE</span>
+          <div class="home-head-actions"><span class="live" id="liveDot"><i></i>LIVE</span><button class="btn primary" id="dayPlan">+ Kun rejasi</button></div>
         </div>
 
-        <div class="hero-card">
+        <div class="home-metrics">
+          <div class="home-panel"><b id="dayCount">0/0</b><span>Bugungi vazifa</span></div>
+          <div class="home-panel"><b id="inboxCount">0</b><span>Inbox</span></div>
+          <div class="home-panel"><b id="activeCount">—</b><span>Hozir ishlayapti</span></div>
+          <div class="home-panel"><b id="memoryCount">—</b><span>Xotiradagi fakt</span></div>
+        </div>
+        <div class="home-columns">
+          <section class="home-panel home-plan"><header><h2>Kun rejasi</h2><button class="link" id="planWithAli">Ali bilan →</button></header><div id="planList"></div></section>
+          <section class="home-panel"><header><h2>Tezkor yozuv</h2><span id="inboxHint"></span></header>
+            <form id="noteForm"><textarea id="noteText" maxlength="2000" required placeholder="G‘oya, fikr yoki eslatma…" aria-label="Tezkor yozuv"></textarea>
+              <div class="note-controls"><fieldset><legend class="sr-only">Muhimlik darajasi</legend><label><input type="radio" name="priority" value="0">P0</label><label><input type="radio" name="priority" value="1">P1</label><label><input type="radio" name="priority" value="2" checked>P2</label><label><input type="radio" name="priority" value="3">P3</label></fieldset><button class="btn primary" type="submit">Saqlash</button></div>
+            </form><p class="home-local" id="noteFeedback" role="status">Yozuv va reja shu brauzerda saqlanadi.</p><div id="noteList"></div>
+          </section>
+          <section class="home-panel"><header><h2>Tezkor buyruqlar</h2></header><div class="home-commands">
+            <button data-home-ask="Menga haftalik reja tuzishda yordam ber."><span>▤</span>/hafta</button>
+            <button id="openInbox"><span>▣</span>/inbox</button>
+            <button data-goto="monitor"><span>♧</span>/jamoa</button>
+            <button data-home-ask="Kontent rejasini tuzishda yordam ber."><span>✎</span>/kontent</button>
+            <button data-home-ask="Bugungi kunimni rejalashtirishga yordam ber."><span>▦</span>/kun</button>
+            <button data-home-ask="Tadqiqot boshlaymiz. Mavzuni aniqlashga yordam ber."><span>⌕</span>/tadqiqot</button>
+          </div></section>
+        </div>
+        <div class="hero-card home-chat-card">
           <div class="hero-orb"><span></span></div>
           <div class="hero-text">
-            <h2>Bugun nima qilamiz?</h2>
-            <p>Savol bering, vazifa topshiring yoki kerakli agentni tanlang.</p>
+            <h2>Bitta markaz. Barcha imkoniyatlar.</h2>
+            <p>Ali bilan gaplashing — kerakli agentlarni o‘zi boshqaradi.</p>
             <div class="quick" id="quick">
               <button data-ask="Bugun ob-havo qanday?">⛅ Ob-havo</button>
               <button data-ask="Bitcoin hozir qanday holatda? Qisqa tahlil qil." data-agent="treyder">📈 BTC tahlili</button>
@@ -84,6 +116,7 @@
           <button class="btn primary" id="homeChat">Chatni ochish</button>
         </div>
 
+        <details class="home-details"><summary>Tizim holati va sozlamalar</summary>
         <h3 class="section-title">Holat</h3>
         <div class="tiles" id="tiles"></div>
 
@@ -104,46 +137,49 @@
             <span><b>Telefonga o'rnatish</b><small>Brauzer menyusi → "Bosh ekranga qo'shish"</small></span>
           </div>
         </div>
+        </details>
       </div>
     </section>
 
+    <section class="view" id="view-vault" hidden>
+      <div class="page vault-page">
+        <div class="page-head"><div><h1>Vault</h1><p class="page-sub">Alining xotirasi va bilimlar kutubxonasi</p></div><button class="btn primary" id="vaultNew">+ Yozuv</button></div>
+        <p id="vaultStatus" role="status">Xotira yuklanmoqda…</p>
+        <div class="vault-layout"><aside class="vault-sidebar">
+          <input type="search" id="vaultSearch" placeholder="Vault bo‘yicha qidirish…" aria-label="Xotiradan qidirish">
+          <nav id="vaultFolders" aria-label="Xotira papkalari"></nav><div id="vaultList"></div><button id="vaultMore" class="link" hidden>Yana yuklash ↓</button>
+        </aside><article class="vault-reader" id="vaultReader"><div class="vault-placeholder">Chapdan yozuv tanlang</div></article></div>
+      </div>
+    </section>
+    <section class="view" id="view-permissions" hidden><div class="page">
+      <div class="page-head"><div><h1>Ruxsatlar</h1><p class="page-sub">Ali qaysi amallarni sizdan so‘ramasdan bajara olishini belgilang.</p></div><button class="btn primary" id="permissionsSave" disabled>Saqlash</button></div>
+      <p id="permissionsStatus" role="status">Sozlamalar yuklanmoqda…</p>
+      <section class="permission-connections"><h2>Ulanishlar</h2><div id="permissionConnections"></div></section>
+      <div class="permission-toolbar"><input id="permissionSearch" type="search" placeholder="Vosita yoki amalni qidirish…" aria-label="Ruxsatlarni qidirish"><span>Yangi vositalar ro‘yxatga avtomatik qo‘shiladi</span></div>
+      <div id="permissionGroups"></div>
+      <div class="permission-note"><b>Rejimlar qanday ishlaydi?</b><p>Avtomatik — Ali vazifa davomida qayta so‘ramasdan bajaradi. Tasdiq so‘rasin — sayt yoki Telegram orqali ruxsat kutiladi. Taqiqlangan — amal bajarilmaydi.</p><p>Ruxsat berish xizmatga akkaunt ulash o‘rnini bosmaydi. Fon o‘rganishi faqat avtomatik va xavfli deb belgilanmagan vositalardan foydalanadi. O‘zgarishlar “Saqlash”dan keyin sayt va Telegramdagi Ali uchun amal qiladi.</p></div>
+    </div></section>
     <!-- ===== Chat ===== -->
     <section class="view chat-view" id="view-chat" hidden>
-      <header class="chat-head">
-        <div class="agents" id="agentBar" role="radiogroup" aria-label="Agent"></div>
-        <div class="status-pills" id="pills">
-          <span class="pill" data-model="claude"><i></i>Claude</span>
-          <span class="pill" data-model="openai"><i></i>GPT</span>
-          <span class="pill" data-model="gemini"><i></i>Gemini</span>
-        </div>
-        <button class="icon-btn" id="newSession" title="Yangi suhbat" aria-label="Yangi suhbat">
-          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-      </header>
-
       <div class="stage" id="stage">
         <section class="hero" id="hero">
+          <div class="ali-identity">ALI</div>
           <canvas id="reactor" width="400" height="400" aria-hidden="true"></canvas>
           <div class="hero-state" id="stateLabel">Ulanmoqda…</div>
           <div class="hero-sub" id="liveTranscript"></div>
-          <div class="suggestions" id="suggestions">
-            <button>Bugun ob-havo qanday?</button>
-            <button>Ekranimda nima bor?</button>
-            <button>Instagramimni tahlil qil</button>
-            <button>Menga sun'iy intellektni o'rgat</button>
-          </div>
+
         </section>
         <section class="feed" id="feed" aria-live="polite"></section>
       </div>
 
       <footer class="dock">
+        <div class="ali-dock-meta"><span class="ali-super"><i></i> Super miya · doim yoqilgan</span><button type="button" class="ali-new" id="newSession" aria-label="Yangi suhbat">+ Yangi suhbat</button></div>
+        <details class="ali-options"><summary>Ovoz va fikrlash sozlamalari</summary>
         <div class="modes">
           <button class="mode" data-mode="deep" title="Chuqur fikrlash">
             <svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-6 6c0 2.2 1.2 3.6 2 4.5V17h8v-3.5c.8-.9 2-2.3 2-4.5a6 6 0 0 0-6-6zM9 20h6"/></svg>Chuqur
           </button>
-          <button class="mode" data-mode="super" title="Claude + GPT + Gemini">
-            <svg viewBox="0 0 24 24"><path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/></svg>Super miya
-          </button>
+
           <button class="mode" data-mode="voice" title="Javobni ovoz bilan o'qish">
             <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>Ovoz
           </button>
@@ -151,6 +187,7 @@
             <svg viewBox="0 0 24 24"><path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 11v2"/></svg>Doim tinglash
           </button>
         </div>
+        </details>
         <div class="attachments" id="attachments"></div>
         <form class="composer" id="composer" autocomplete="off">
           <label class="icon-btn" title="Rasm yoki kamera">
@@ -179,17 +216,25 @@
             <span class="live" id="liveDot2"><i></i>LIVE</span>
           </div>
         </div>
-        <div class="agent-grid" id="monAgents"></div>
+        <div class="galaxy-monitor" id="galaxyMonitor" aria-label="Ali va agentlar galaktikasi">
+          <canvas id="galaxyCanvas" aria-hidden="true"></canvas>
+          <div class="galaxy-heading"><span class="galaxy-eyebrow">ALI / MISSION CONTROL</span><h2>Intellekt galaktikasi</h2><p>Bir markaz. Bitta jamoa.</p></div>
+          <div class="galaxy-controls"><span class="galaxy-connection" id="galaxyConnection">Ulanmoqda</span><button type="button" id="galaxyMotion" aria-pressed="false" aria-label="Animatsiyani to‘xtatish">Ⅱ</button></div>
+          <div class="galaxy-orbits" id="galaxyAgents"></div>
+          <button type="button" class="galaxy-core" id="galaxyCore" aria-label="Ali vazifalarini ko‘rish"><span class="core-halo"></span><span class="core-orb"></span><strong>ALI</strong><small id="galaxyCoreState">Markaziy ong</small></button>
+          <div class="galaxy-caption"><span><i></i> <span id="galaxySummary">Agentlar yuklanmoqda…</span></span><span class="galaxy-legend"><b></b> Vazifa aloqasi</span></div>
+        </div>
+        <div class="galaxy-agent-list" id="monAgents" aria-label="Agentlar holati"></div>
         <div class="panels">
           <div class="panel">
             <div class="panel-head"><span>🗂 Ishlar</span><small id="jobsCount"></small></div>
-            <div class="panel-body" id="jobs"></div>
+            <div class="panel-body" id="jobs" tabindex="0" role="region" aria-label="Agentlar bajargan ishlar"></div>
           </div>
           <div class="panel">
             <div class="panel-head"><span>📡 Jonli lenta</span>
               <label class="check"><input type="checkbox" id="showThink"> o'ylashlarni ham ko'rsat</label>
             </div>
-            <div class="panel-body feed-log" id="liveLog"></div>
+            <div class="panel-body feed-log" id="liveLog" tabindex="0" role="region" aria-label="Jonli voqealar lentasi"></div>
           </div>
         </div>
       </div>
@@ -201,11 +246,21 @@
         <div class="page-head">
           <div>
             <h1>Agentlar</h1>
-            <p class="page-sub">Har bir agent o'z sohasining mutaxassisi. Tanlang va suhbatni boshlang.</p>
+            <p class="page-sub">Mutaxassislar o‘rganadi. Ali jamoani boshqaradi.</p>
           </div>
           <button class="btn primary" id="newAgentBtn">+ Yangi agent</button>
         </div>
+        <div class="learning-banner"><span class="learning-light"></span><div><b id="learningState">O‘rganish holati yuklanmoqda…</b><p id="learningInfo">Bilimlar, mavzular va oxirgi tekshiruv natijalari.</p></div><button class="link" data-goto="monitor">Monitoring →</button></div>
         <div class="agent-grid big" id="agentCards"></div>
+        <h3 class="section-title">BUYRUQLAR</h3>
+        <div class="agent-skills">
+          <article><b>/hafta</b><p>Haftalik natijalar, saboqlar va kelgusi hafta rejasini ko‘rib chiqing.</p><button data-home-ask="Haftalik tahlil o'tkazamiz: natijalarim, saboqlarim va keyingi hafta rejasini tuzishda yordam ber.">Ali bilan boshlash →</button></article>
+          <article><b>/inbox</b><p>G‘oya va vazifalarni yozing, muhimligini belgilang.</p><button data-goto="home">Yozuvlarni ochish →</button></article>
+          <article><b>/jamoa</b><p>Ali vazifani mutaxassislarga topshiradi va natijani birlashtiradi.</p><button data-home-ask="Jamoa bilan vazifa bajaramiz. Maqsadimni aniqlashtirib, kerakli agentlarga topshir.">Ali bilan boshlash →</button></article>
+          <article><b>/kontent</b><p>Post, Reels ssenariysi va kontent rejasini tayyorlash.</p><button data-home-ask="Kontent tayyorlaymiz. Auditoriya, platforma va maqsadimni aniqlashtir.">Ali bilan boshlash →</button></article>
+          <article><b>/kun</b><p>Bugungi vazifalarni tanlash va bajarilgan ishlarni belgilash.</p><button data-goto="home">Kun rejasini ochish →</button></article>
+          <article><b>/tadqiqot</b><p>Ma’lumotlarni manbalari bilan topish va bilimlar bazasiga saqlash.</p><button data-home-ask="Manbali tadqiqot o'tkazamiz. Mavzuni so'ra, yangi ma'lumotlarni tekshir va xulosalarni manbalari bilan saqla.">Ali bilan boshlash →</button></article>
+        </div>
         <div class="hint">
           <b>Maslahat:</b> agentni chatda ham yaratish mumkin — masalan: <i>“Huquqshunos agent yarat: O'zbekiston qonunlari
           bo'yicha maslahat bersin”</i>. Ali sohani o'zi o'rganib, ko'rsatma va bilimlarni to'ldiradi.
@@ -259,6 +314,10 @@
 
 <div class="toast" id="toast"></div>
 <audio id="player" playsinline></audio>
+<script src="/static/monitor-galaxy.js"></script>
+<script src="/static/home.js"></script>
+<script src="/static/vault.js"></script>
+<script src="/static/permissions.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

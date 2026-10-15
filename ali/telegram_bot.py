@@ -7,20 +7,22 @@ Faqat ruxsat berilgan foydalanuvchilar ishlata oladi (/login PAROL yoki TELEGRAM
 import asyncio
 import base64
 import html
+import hashlib
 import json
 import logging
 import re
 import time
 
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo, MenuButtonCommands, MenuButtonWebApp
 from telegram.constants import ChatAction, ParseMode
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TelegramError, RetryAfter
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from . import auth, providers, tts
 from .config import config
 from .hub import Listener, hub
 from .service import AskError, brain, run_ask
+from .telegram_public import PublicTelegram
 
 log = logging.getLogger("ali.telegram")
 
@@ -38,16 +40,24 @@ TOOL_LABELS = {
 }
 
 COMMANDS = [
+    ("start", "Ali Pomoshnik — bosh menyu"),
+    ("menu", "Xizmatlarni tanlash"),
+    ("ob_havo", "Hudud va kundalik ob-havo"),
+    ("sorovlar", "Administrator: kelgan so‘rovlar"),
+    ("stop", "Bildirishnomalarni o‘chirish"),
+    ("tozala", "Ommaviy suhbat tarixini tozalash"),
+    ("sayt", "To'liq boshqaruv panelini ochish"),
+    ("monitor", "Agentlar va vazifalar holati"),
     ("new", "Yangi suhbat"),
-    ("agent", "Agent tanlash (Treyder, Kontent-meyker, O'qituvchi...)"),
     ("chuqur", "Chuqur fikrlash: yoqish/o'chirish"),
-    ("super", "Super miya (Claude + GPT + Gemini)"),
+    ("super", "Super miya — doim yoqilgan"),
     ("ovozli", "Javoblarni ovoz bilan yuborish"),
     ("ovoz", "Shaxsiy ovoz namunalarini yuborish"),
     ("ovoz_tayyor", "Namunalardan Ali ovozini yaratish"),
     ("ovoz_standart", "Standart ovozga qaytish"),
     ("holat", "Tizim holati"),
 ]
+PUBLIC_COMMANDS = [(c,d) for c,d in COMMANDS if c in {'start','menu','ob_havo','stop','tozala'}]
 
 
 def md_to_html(text: str) -> str:
@@ -78,19 +88,44 @@ def split_text(text: str, size: int = LIMIT) -> list[str]:
     return chunks + [text] if text else chunks or [""]
 
 
-class TelegramBot(Listener):
+class TelegramBot(PublicTelegram, Listener):
     def __init__(self):
         self.app: Application | None = None
         self.users: set[int] = set(config.telegram_allowed) | self._load_users()
         self.prefs: dict[int, dict] = {}
         self.sampling: set[int] = set()
         self.confirm_msgs: dict[str, list[tuple[int, int]]] = {}
+        self.init_public()
 
     # ---------- ishga tushirish ----------
+    async def configure_bot(self, method, **kwargs):
+        """Cosmetic/menu rate limits must never prevent message polling."""
+        key=method+':'+str(kwargs.get('chat_id',kwargs.get('scope','default')))
+        fingerprint=hashlib.sha256(str(kwargs).encode()).hexdigest()
+        saved=self.public.meta('bot_setup') or {}
+        item=saved.get(key,{})
+        if item.get('fingerprint')==fingerprint or item.get('retry_at',0)>time.time():return
+        try:
+            await getattr(self.app.bot,method)(**kwargs)
+            saved[key]={'fingerprint':fingerprint}
+        except TelegramError as error:
+            delay=getattr(error,'retry_after',300)
+            if hasattr(delay,'total_seconds'):delay=delay.total_seconds()
+            saved[key]={'retry_at':time.time()+float(delay)}
+            log.warning('Telegram setup deferred: %s (%s); polling continues',method,type(error).__name__)
+        self.public.set_meta('bot_setup',saved)
+
     async def start(self) -> None:
-        self.app = Application.builder().token(config.telegram_token).build()
+        self.app = Application.builder().token(config.telegram_token).concurrent_updates(8).build()
         a = self.app
         a.add_handler(CommandHandler("start", self.cmd_start))
+        a.add_handler(CommandHandler("menu", self.cmd_start))
+        a.add_handler(CommandHandler("stop", self.public_stop))
+        a.add_handler(CommandHandler("tozala", self.clear_public))
+        a.add_handler(CommandHandler("sorovlar", self.owner_requests))
+        a.add_handler(CommandHandler("ob_havo", self.cmd_weather))
+        a.add_handler(CommandHandler("sayt", self.cmd_site))
+        a.add_handler(CommandHandler("monitor", self.cmd_monitor))
         a.add_handler(CommandHandler("login", self.cmd_login))
         a.add_handler(CommandHandler("new", self.cmd_new))
         a.add_handler(CommandHandler("chuqur", lambda u, c: self.toggle(u, "deep", "Chuqur fikrlash")))
@@ -103,20 +138,35 @@ class TelegramBot(Listener):
         a.add_handler(CommandHandler("agent", self.cmd_agent))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
+        a.add_handler(CallbackQueryHandler(self.public_button, pattern=r"^(pub:|own:)"))
         a.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
         a.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
         a.add_handler(MessageHandler(filters.LOCATION, self.on_location))
         a.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
         await a.initialize()
-        await a.bot.set_my_commands([BotCommand(c, d) for c, d in COMMANDS])
+        await self.configure_bot('set_my_commands',commands=[BotCommand(c, d) for c, d in PUBLIC_COMMANDS])
+        for uid in self.users:
+            await self.configure_bot('set_my_commands',commands=[BotCommand(c,d) for c,d in COMMANDS],scope=BotCommandScopeChat(uid))
+        await self.configure_bot('set_my_name',name=config.telegram_name)
+        await self.configure_bot('set_my_description',description="✨ Ali — AI yordamchingiz. Savol bering, kontent uchun ruxsat so‘rang, ob-havoni bilib oling va mutaxassis agentlardan foydalaning. Boshlash: /start")
+        await self.configure_bot('set_my_short_description',short_description="Ali Pomoshnik — shaxsiy yordamchingiz va AI jamoangiz.")
+        # Replace stale Mini App buttons pointing at a failed web deployment.
+        await self.configure_bot('set_chat_menu_button',menu_button=MenuButtonCommands())
+        for uid in self.users:
+            await self.configure_bot('set_chat_menu_button',chat_id=uid, menu_button=self.owner_menu())
         await a.start()
-        await a.updater.start_polling(drop_pending_updates=True)
+        await a.updater.start_polling(drop_pending_updates=False)
         hub.listeners.append(self)
+        self.public_task=asyncio.create_task(self.public_loop())
         me = await a.bot.get_me()
         log.info("Telegram bot ishga tushdi: @%s", me.username)
         print(f"  Telegram:    @{me.username}")
 
     async def stop(self) -> None:
+        if self.public_task:
+            self.public_task.cancel()
+            try: await self.public_task
+            except asyncio.CancelledError: pass
         if self in hub.listeners:
             hub.listeners.remove(self)
         if self.app:
@@ -135,30 +185,73 @@ class TelegramBot(Listener):
         USERS_FILE.write_text(json.dumps(sorted(self.users)), encoding="utf-8")
 
     async def _guard(self, update: Update) -> bool:
+        if not update.effective_chat or update.effective_chat.type != "private":
+            if update.effective_message:
+                await update.effective_message.reply_text("Shaxsiy boshqaruv uchun botning o'ziga yozing.")
+            return False
         user = update.effective_user
         if user and user.id in self.users:
             return True
         if update.effective_message:
             await update.effective_message.reply_text(
-                f"Salom! Men {config.assistant_name} - shaxsiy yordamchiman.\n"
-                f"Kirish uchun: /login PAROL\n(Sizning ID: {user.id if user else '?'})"
+                "Bu shaxsiy boshqaruv faqat administrator uchun. Xizmatlardan foydalanish uchun /start ni bosing."
             )
         return False
 
     def pref(self, chat_id: int) -> dict:
-        return self.prefs.setdefault(chat_id, {"deep": False, "super": False, "voice": True, "agent": None})
+        return self.prefs.setdefault(chat_id, {"deep": False, "super": True, "voice": True, "agent": None})
 
     # ---------- buyruqlar ----------
-    async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    def owner_menu(self):
+        if config.public_url.startswith('https://'):
+            return MenuButtonWebApp(text='Ali panel',web_app=WebAppInfo(url=config.public_url+'/miniapp'))
+        return MenuButtonCommands()
+
+    def site_keyboard(self):
+        if config.public_url.startswith("https://"):
+            return InlineKeyboardMarkup([[InlineKeyboardButton(
+                "🖥 Ali Pomoshnik — to'liq panel", web_app=WebAppInfo(url=config.public_url+'/miniapp'))]])
+        return None
+
+    async def cmd_site(self, update: Update, ctx):
         if not await self._guard(update):
             return
+        keyboard = self.site_keyboard()
+        if keyboard:
+            import httpx
+            try:
+                async with httpx.AsyncClient(timeout=8,follow_redirects=True) as client:
+                    response=await client.get(config.public_url+'/miniapp')
+                    if response.status_code!=200:keyboard=None
+            except httpx.HTTPError:keyboard=None
         await update.message.reply_text(
-            f"Xush kelibsiz, {config.user_name}. {config.assistant_name} tayyor.\n\n"
-            "Yozing, ovozli xabar yuboring, rasm yoki joylashuv tashlang.\n\n"
-            + "\n".join(f"/{c} - {d}" for c, d in COMMANDS)
-        )
+            "Abbos, shaxsiy panelingiz tayyor. Telegram ID’ingiz avtomatik tekshiriladi."
+            if keyboard else "Veb-panel hozir mavjud emas. Telegram menyusidagi xizmatlardan foydalaning. Kompyuterda http://localhost:8000 ishlaydi.",
+            reply_markup=keyboard)
+
+    async def cmd_monitor(self, update: Update, ctx):
+        if not await self._guard(update):
+            return
+        from .monitor import monitor
+        from .service import team
+        snapshot = monitor.snapshot(team())
+        jobs = snapshot.get("jobs", [])[:8]
+        lines = [f"{j.get('status', '')}: {j.get('text', '')[:180]}" for j in jobs]
+        await update.message.reply_text("📊 Monitoring\n\n" + ("\n".join(lines) or "Hozircha vazifalar yo'q."),
+                                        reply_markup=self.site_keyboard())
+
+    async def cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        await self.public_start(update, ctx)
+
+    async def cmd_weather(self, update, ctx):
+        if self.is_private(update): await self.weather_menu(update)
 
     async def cmd_login(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not update.effective_chat or update.effective_chat.type != "private":
+            return
+        if self.owner_id and update.effective_user.id != self.owner_id:
+            await update.message.reply_text('Shaxsiy boshqaruv administrator uchun. /start orqali xizmatlarni tanlang.')
+            return
         password = " ".join(ctx.args or [])
         try:
             await update.message.delete()  # parol chatda qolmasin
@@ -169,11 +262,18 @@ class TelegramBot(Listener):
             await update.effective_chat.send_message("Parol noto'g'ri.")
             return
         self.users.add(update.effective_user.id)
+        self.owner_id=update.effective_user.id
         self._save_users()
-        await update.effective_chat.send_message(f"Kirish tasdiqlandi. Salom, {config.user_name}! /start")
+        await update.effective_chat.send_message("Kirish tasdiqlandi. Salom, Abbos! /start")
 
     async def cmd_new(self, update: Update, ctx):
+        if self.is_private(update) and update.effective_user.id != self.owner_id:
+            await self.clear_public(update,ctx)
+            return
         if not await self._guard(update):
+            return
+        if brain.lock.locked():
+            await update.message.reply_text("Vazifa tugagach yangi suhbat boshlang.")
             return
         brain.new_session()
         hub.broadcast({"type": "session_reset"})
@@ -183,7 +283,7 @@ class TelegramBot(Listener):
         if not await self._guard(update):
             return
         p = self.pref(update.effective_chat.id)
-        p[key] = not p[key]
+        p[key] = True if key == "super" else not p[key]
         await update.message.reply_text(f"{label}: {'yoqildi ✅' if p[key] else 'o‘chirildi'}")
 
     def _agent_label(self, key: str | None) -> str:
@@ -191,34 +291,17 @@ class TelegramBot(Listener):
         return f"{a.icon} {a.name}" if a else f"🤖 {config.assistant_name}"
 
     async def cmd_agent(self, update: Update, ctx):
-        """/agent - tugmalar bilan tanlash; /agent treyder - darhol tanlash; /agent ali - oddiy rejim."""
         if not await self._guard(update):
             return
-        p = self.pref(update.effective_chat.id)
-        if ctx.args:
-            key = ctx.args[0].lower()
-            p["agent"] = key if key in brain.agents else None
-            await update.message.reply_text(f"Tanlandi: {self._agent_label(p['agent'])}")
-            return
-        keys = [None, *brain.agents]
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
-            ("✅ " if p["agent"] == k else "") + self._agent_label(k), callback_data=f"ag:{k or ''}")] for k in keys])
-        await update.message.reply_text(f"Hozir: {self._agent_label(p['agent'])}\nKim bilan ishlaymiz?", reply_markup=keyboard)
+        await update.message.reply_text("Topshiriqni Aliga yozing. Agentlarni Ali o'zi tanlaydi va boshqaradi.")
 
     async def on_agent_button(self, update: Update, ctx):
         query = update.callback_query
         if query.from_user.id not in self.users:
             await query.answer("Ruxsat yo'q")
             return
-        key = query.data.split(":", 1)[1]
-        p = self.pref(query.message.chat.id)
-        p["agent"] = key if key in brain.agents else None
-        label = self._agent_label(p["agent"])
-        await query.answer(label)
-        try:
-            await query.edit_message_text(f"Tanlandi: {label}")
-        except BadRequest:
-            pass
+        await query.answer("Agentlarni Ali boshqaradi")
+        await query.edit_message_text("Topshiriqni Aliga yozing. Super miya doim yoqilgan.")
 
     async def cmd_status(self, update: Update, ctx):
         if not await self._guard(update):
@@ -272,10 +355,17 @@ class TelegramBot(Listener):
 
     # ---------- xabarlar ----------
     async def on_text(self, update: Update, ctx):
-        if await self._guard(update):
+        if not self.is_private(update): return
+        if await self.menu_text(update,ctx,update.message.text):return
+        if update.effective_user.id==self.owner_id:
             await self.process(update, ctx, update.message.text)
+        else:
+            await self.public_process(update,ctx,update.message.text)
 
     async def on_voice(self, update: Update, ctx):
+        if self.is_private(update) and update.effective_user.id!=self.owner_id:
+            await update.message.reply_text('Hozircha savolingizni matn qilib yuboring. Ovozli xizmat administrator uchun yoqilgan.',reply_markup=self.keyboard())
+            return
         if not await self._guard(update):
             return
         media = update.message.voice or update.message.audio
@@ -307,6 +397,9 @@ class TelegramBot(Listener):
         await self.process(update, ctx, text)
 
     async def on_photo(self, update: Update, ctx):
+        if self.is_private(update) and update.effective_user.id!=self.owner_id:
+            await self.send_request(update,'image',update.message.caption or 'Foydalanuvchi rasm yubordi; topshiriqni aniqlashtiring.')
+            return
         if not await self._guard(update):
             return
         file = await update.message.photo[-1].get_file()
@@ -314,12 +407,13 @@ class TelegramBot(Listener):
         await self.process(update, ctx, update.message.caption or "", [{"media_type": "image/jpeg", "data": data}])
 
     async def on_location(self, update: Update, ctx):
-        if not await self._guard(update):
+        if not self.is_private(update):
             return
         loc = update.message.location
-        hub.last_location = {"lat": loc.latitude, "lon": loc.longitude, "accuracy": loc.horizontal_accuracy,
-                             "device": "telegram", "time": time.strftime("%H:%M:%S")}
-        await update.message.reply_text("📍 Joylashuv qabul qilindi. Endi “yaqin atrofda nima bor?” deb so‘rashingiz mumkin.")
+        if update.effective_user.id==self.owner_id:
+            hub.last_location = {"lat": loc.latitude, "lon": loc.longitude, "accuracy": loc.horizontal_accuracy,
+                                 "device": "telegram", "time": time.strftime("%H:%M:%S")}
+        await self.save_location(update,{'lat':loc.latitude,'lon':loc.longitude,'name':'Sizning hududingiz'})
 
     # ---------- asosiy jarayon ----------
     async def process(self, update: Update, ctx, text: str, images: list[dict] | None = None):
@@ -402,8 +496,10 @@ class TelegramBot(Listener):
         await query.answer("Ruxsat berildi" if ok == "1" else "Rad etildi")
 
     def _run(self, coro) -> None:
-        if hub.loop:
+        if hub.loop and not hub.loop.is_closed():
             asyncio.run_coroutine_threadsafe(coro, hub.loop)
+        else:
+            coro.close()
 
     def on_confirm(self, cid: str, name: str, args: dict) -> None:
         detail = args.get("command") or json.dumps(args, ensure_ascii=False, indent=1)
@@ -443,4 +539,16 @@ class TelegramBot(Listener):
                 except Exception:
                     log.exception("Xabar yuborilmadi: %s", uid)
 
+        self._run(send())
+
+    def on_answer(self, question: str, answer: str, source: str) -> None:
+        if source == "telegram":
+            return
+        async def send():
+            for uid in self.users:
+                try:
+                    for chunk in split_text(f"🖥 Saytdagi suhbat\n\nSiz: {question}\n\n{config.assistant_name}: {answer}"):
+                        await self._send_html(uid, chunk)
+                except Exception:
+                    log.exception("Sayt javobini Telegramga yuborib bo'lmadi")
         self._run(send())

@@ -1,0 +1,52 @@
+/* Shared appearance: two palettes, optional translucent surfaces. */
+:root { --action:linear-gradient(115deg,#6c79ff,#9956ed); --action-text:#fff; --glass-side:rgba(15,18,36,.76); --glass-card:rgba(19,23,42,.66); --glass-border:rgba(177,183,225,.2); --emblem:#ae9aff; }
+:root[data-theme="light"] { --bg:#eef3fa; --side:#f8faff; --card:#fff; --card-2:#edf2fa; --line:#d9e1f0; --line-strong:#c1cfe6; --accent:#2563be; --accent-soft:#3174d318; --violet:#5574c9; --muted:#5b6a84; --action:linear-gradient(115deg,#2563ba,#16889c); --action-text:#fff; --glass-side:rgba(249,252,255,.76); --glass-card:rgba(255,255,255,.65); --glass-border:rgba(125,150,186,.3); --emblem:#3177b7; }
+html[data-glass="on"] body { background:radial-gradient(ellipse at 0% 5%,#6962e527,transparent 43%),radial-gradient(ellipse at 96% 90%,#6c35931c,transparent 50%),var(--bg); }
+html[data-theme="light"][data-glass="on"] body { background:radial-gradient(ellipse at 0% 5%,#9cd9ee66,transparent 48%),radial-gradient(ellipse at 96% 90%,#c9c5ff55,transparent 55%),var(--bg); }
+.sidebar { width:222px; margin:10px 0 10px 10px; padding:20px 12px 14px; border:1px solid var(--line-strong); border-radius:24px; gap:12px; box-shadow:inset 0 1px 0 #ffffff10; overflow-y:auto; scrollbar-width:thin; }
+.brand { gap:9px; padding:0 3px; margin-bottom:9px; }
+.brand > div { min-width:0; flex:1; }
+.brand-name { font-size:13px; letter-spacing:.1em; }
+.brand-sub { font-size:9px; white-space:nowrap; }
+.brand .theme-btn { flex:none; width:30px; height:30px; padding:7px; background:var(--accent-soft); border:1px solid var(--line); border-radius:10px; color:var(--muted); }
+.theme-btn svg { width:16px; height:16px; }
+.theme-moon { display:none; }
+[data-theme="light"] .theme-sun { display:none; }
+[data-theme="light"] .theme-moon { display:block; }
+.logo.ali-emblem { width:37px; height:42px; display:block; border-radius:0; color:var(--emblem); background:none; box-shadow:none; filter:drop-shadow(0 0 8px #8b6cff55); }
+.ali-emblem svg { width:100%; height:100%; fill:none; stroke:currentColor; stroke-width:1.4; overflow:visible; }
+.emblem-frame { fill:var(--accent-soft); animation:emblem-breathe 5s ease-in-out infinite; transform-origin:center; }
+.emblem-a { stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
+.emblem-spark { fill:var(--emblem); stroke:var(--side); stroke-width:2; animation:emblem-spark 3s ease-in-out infinite; }
+@keyframes emblem-breathe { 0%,100% { opacity:.65;transform:scale(.94); } 50% { opacity:1;transform:scale(1); } }
+@keyframes emblem-spark { 0%,100% { opacity:.5; } 50% { opacity:1;filter:drop-shadow(0 0 4px currentColor); } }
+.sidebar-voice { display:flex; align-items:center; gap:10px; min-height:40px; padding:9px 12px; flex-shrink:0; border:1px solid var(--glass-border); border-radius:13px; color:var(--text); background:linear-gradient(120deg,#8b6cff20,#657fff10); font-size:12px; font-weight:600; }
+.sidebar-voice:hover { border-color:var(--accent); }
+.voice-wave { display:flex; align-items:center; justify-content:center; gap:2px; width:23px; height:23px; border-radius:50%; color:var(--emblem); background:var(--accent-soft); }
+.voice-wave i { width:2px; height:8px; border-radius:2px; background:currentColor; }
+.voice-wave i:nth-child(2) { height:14px; }.voice-wave i:nth-child(3) { height:11px; }
+.listening .voice-wave i { animation:voice-wave .7s ease-in-out infinite alternate; }
+.listening .voice-wave i:nth-child(2) { animation-delay:-.2s; }.listening .voice-wave i:nth-child(3) { animation-delay:-.4s; }
+@keyframes voice-wave { to { transform:scaleY(.35); } }
+.sidebar .nav { gap:5px; }
+.sidebar .nav-item { min-height:40px; padding:9px 11px; font-size:12px; border:1px solid transparent; border-radius:12px; gap:10px; }
+.sidebar .nav-item svg { width:16px; height:16px; }
+body .sidebar .nav-item.on,body.home-dashboard .sidebar .nav-item.on { background:var(--accent-soft); border-color:var(--emblem); box-shadow:inset 0 0 0 2px #8b6cff09,0 3px 16px #00000008; }
+.side-foot { padding-top:22px;gap:10px; }
+.side-meta { font-size:9px;opacity:.65; }
+.glass-switch { display:flex;align-items:center;justify-content:space-between;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:10px;color:var(--muted); }
+.glass-switch > i { width:26px;height:15px;padding:2px;border-radius:20px;background:var(--line-strong); }
+.glass-switch > i::after { content:'';display:block;width:11px;height:11px;border-radius:50%;background:var(--muted);transition:transform .2s; }
+.glass-switch[aria-pressed="true"] > i { background:var(--accent-soft); }.glass-switch[aria-pressed="true"] > i::after { transform:translateX(11px);background:var(--emblem); }
+html[data-glass="on"] .sidebar { background:var(--glass-side);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-color:var(--glass-border); }
+html[data-glass="on"] :is(.home-panel,.panel,.permission-card,.permission-connections,.permission-note,.vault-reader,#vaultList,.agent-skills article),html[data-glass="on"] #view-agents .agent-card { background:var(--glass-card);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-color:var(--glass-border); }
+html[data-glass="on"] #view-home { background:transparent; }
+body .btn.primary,body #view-home .btn.primary,body #permissionsSave { background:var(--action);color:var(--action-text);border-color:transparent; }
+[data-theme="light"] .sidebar-voice { background:linear-gradient(115deg,#337ec019,#26a4aa10); }
+[data-theme="light"] .home-commands button span { color:#3177b7; }
+[data-theme="light"] .mode.on,[data-theme="light"] .mic { background:var(--action);color:white; }
+[data-theme="light"] .ali-super { background:#177f9810;color:#246780;border-color:#247e9a30; }
+[data-theme="light"] #view-agents .ac-actions .primary { background:var(--action);color:white; }
+button:focus-visible { outline:2px solid var(--accent);outline-offset:3px; }
+@media(max-width:760px) { .sidebar { top:8px;bottom:8px;left:0;margin:0 0 0 8px;width:min(265px,84vw);transform:translateX(calc(-100% - 16px));padding-top:calc(20px + var(--safe-t)); }.sidebar.open { transform:none; } }
+@media(prefers-reduced-motion:reduce) { .ali-emblem *,.voice-wave i { animation:none!important; }.glass-switch > i::after { transition:none; } }

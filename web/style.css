@@ -244,6 +244,39 @@ code { font: 12.5px var(--mono); padding: 1px 6px; border-radius: 6px; backgroun
 .stage.chatting .suggestions { display: none; }
 .stage.chatting .hero-sub:empty { display: none; }
 
+/* Ali is the only conversation entry point; agents work behind the scenes. */
+#view-chat { background: radial-gradient(ellipse at 50% 36%, var(--accent-soft), transparent 58%), var(--bg); }
+#view-chat .stage { display:flex; flex-direction:column; overflow:hidden; }
+#view-chat .hero { flex:1; min-height:0; justify-content:center; padding:22px 16px 12px; }
+#view-chat #reactor { width:min(360px, 48vh, 70vw); filter:drop-shadow(0 0 32px #5b8cff20); }
+.ali-identity { order:1; margin-top:4px; font-size:22px; font-weight:600; letter-spacing:.4em; text-indent:.4em; color:var(--text); }
+#view-chat .hero-state { order:2; font-size:10px; margin-top:10px; letter-spacing:.18em; }
+#view-chat .hero-sub { order:3; font-size:12px; min-height:18px; }
+#view-chat .feed { flex:1; min-height:0; width:100%; overflow-y:auto; overscroll-behavior:contain; scroll-behavior:smooth; }
+#view-chat .feed:empty { display:none; }
+#view-chat .stage.chatting .hero { flex:none; padding:8px 16px; }
+#view-chat .stage.chatting #reactor { width:135px; }
+#view-chat .stage.chatting .ali-identity { font-size:14px; margin-top:-2px; }
+#view-chat .stage.chatting .hero-state { margin-top:4px; font-size:9px; }
+#view-chat .dock { border-top:0; background:transparent; padding-top:12px; }
+.ali-dock-meta { display:flex; justify-content:space-between; align-items:center; gap:12px; max-width:860px; margin:0 auto 12px; }
+.ali-super { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:11px; }
+.ali-super i { width:5px; height:5px; border-radius:50%; background:var(--violet); box-shadow:0 0 10px var(--violet); }
+.ali-new { color:var(--muted); font-size:11px; padding:5px 8px; border-radius:8px; }
+.ali-new:hover { color:var(--text); background:var(--accent-soft); }
+.ali-options { max-width:860px; margin:0 auto 10px; }
+.ali-options summary { width:fit-content; cursor:pointer; color:var(--muted); font-size:11px; padding:3px 0; }
+.ali-options .modes { margin-top:10px; }
+@media(max-height:700px) {
+  #view-chat .stage.chatting #reactor { width:90px; }
+  #view-chat .stage.chatting .hero-sub:empty { display:none; }
+}
+@media(max-width:540px) {
+  #view-chat #reactor { width:min(290px, 38vh, 75vw); }
+  .ali-dock-meta { gap:6px; }
+  .ali-super,.ali-new { font-size:10px; }
+}
+
 .feed { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px; max-width: 860px; margin: 0 auto; }
 .msg { animation: rise .3s ease both; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } }

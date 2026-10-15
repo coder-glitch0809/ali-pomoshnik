@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
+STATE_ROOT = Path(os.getenv("ALI_STATE_DIR", str(ROOT)))
 
 
 def _env(name: str, default: str = "") -> str:
@@ -42,6 +43,10 @@ class Config:
 
     # Telegram bot
     telegram_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))
+    public_url: str = field(default_factory=lambda: (_env("PUBLIC_URL") or _env("RENDER_EXTERNAL_URL")).rstrip("/"))
+    telegram_name: str = field(default_factory=lambda: _env("TELEGRAM_BOT_NAME", "Ali Pomoshnik"))
+    telegram_owner_id: int = field(default_factory=lambda: int(_env("TELEGRAM_OWNER_ID", "0") or 0))
+    telegram_payment_text: str = field(default_factory=lambda: _env("TELEGRAM_PAYMENT_TEXT", "Obuna narxi va to‘lov ma’lumoti hali e’lon qilinmagan. So‘rovni administratorga yuboring."))
     telegram_allowed: set[int] = field(default_factory=lambda: {
         int(x) for x in _env("TELEGRAM_ALLOWED_USERS").replace(" ", "").split(",") if x.isdigit()
     })
@@ -88,11 +93,11 @@ class Config:
     watch_hours: float = field(default_factory=lambda: float(_env("WATCH_HOURS", "6")))
 
     # Fayllar
-    data_dir: Path = ROOT / "data"
-    db_path: Path = ROOT / "data" / "ali.db"
-    log_path: Path = ROOT / "logs" / "ali.log"
+    data_dir: Path = STATE_ROOT / "data"
+    db_path: Path = STATE_ROOT / "data" / "ali.db"
+    log_path: Path = STATE_ROOT / "logs" / "ali.log"
 
 
 config = Config()
-config.data_dir.mkdir(exist_ok=True)
-config.log_path.parent.mkdir(exist_ok=True)
+config.data_dir.mkdir(parents=True, exist_ok=True)
+config.log_path.parent.mkdir(parents=True, exist_ok=True)

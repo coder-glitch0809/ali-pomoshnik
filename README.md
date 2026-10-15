@@ -23,6 +23,10 @@ Barcha kanallar **bitta suhbat**ni bo'lishadi: Telegram'da yozgan narsangiz komp
 
 ## O'rnatish
 
+Kompyuter o'chiq bo'lganda ham ishlaydigan sayt + Telegram uchun
+[24/7 joylashtirish yo'riqnomasi](DEPLOYMENT.md) va `render.yaml` tayyor.
+Telegram'da `/sayt` to'liq panelni, `/monitor` vazifalar holatini ochadi.
+
 ```bash
 pip install -r requirements.txt
 copy .env.example .env

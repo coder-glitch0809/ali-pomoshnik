@@ -20,6 +20,7 @@ from .monitor import monitor
 log = logging.getLogger("ali.service")
 
 brain = Brain(confirm=hub.confirm)
+ask_lock = asyncio.Lock()
 monitor.notify = hub.broadcast
 agents.on_change(lambda: hub.broadcast({"type": "agents_changed"}))
 
@@ -103,9 +104,11 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                   source: str = "web", req_id: str | None = None,
                   on_event: Callable[[str, object], None] | None = None, agent: str | None = None) -> str:
     """So'rovni bajaradi va jarayonni barcha ochiq ekranlarga uzatadi. Xatoda AskError."""
-    if brain.lock.locked():
+    if brain.lock.locked() or ask_lock.locked():
         raise AskError("Ali hozir boshqa vazifa ustida - biroz kuting.")
-    agent = agent if agent in brain.agents else None
+    # Every public channel talks to Ali. Specialists remain internal tools.
+    agent = None
+    super_mode = True
     req_id = req_id or secrets.token_hex(4)
     hub.broadcast({"type": "user", "id": req_id, "text": text, "from": source, "agent": agent,
                    "images": [f"data:{i['media_type']};base64,{i['data']}" for i in images or []]})
@@ -118,7 +121,8 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
             on_event(kind, data)
 
     try:
-        answer = await asyncio.to_thread(brain.ask, text, emit, deep, super_mode, images, agent)
+        async with ask_lock:
+            answer = await asyncio.to_thread(brain.ask, text, emit, deep, super_mode, images, agent)
     except Exception as e:
         if not isinstance(e, anthropic.APIError):
             log.exception("so'rov xatosi")
@@ -128,4 +132,5 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
         raise AskError(message) from e
     tracker.finish(answer)
     hub.broadcast({"type": "done", "id": req_id, "text": answer, "speak_on": source})
+    hub._each_listener("on_answer", text, answer, source)
     return answer

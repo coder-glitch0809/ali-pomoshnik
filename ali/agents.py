@@ -18,14 +18,23 @@ Agentdan ikki xil foydalaniladi:
 """
 import logging
 import re
+import shutil
 from dataclasses import dataclass, field
 from typing import Callable
 
-from .config import ROOT
+from .config import ROOT, STATE_ROOT
 
 log = logging.getLogger("ali.agents")
 
-AGENTS_DIR = ROOT / "agents"
+AGENTS_DIR = STATE_ROOT / "agents"
+if STATE_ROOT != ROOT:
+    AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+    marker = AGENTS_DIR / ".initialized"
+    if not marker.exists():
+        for source in (ROOT / "agents").glob("*.md"):
+            if not (AGENTS_DIR / source.name).exists():
+                shutil.copy2(source, AGENTS_DIR / source.name)
+        marker.touch()
 KEY_RE = re.compile(r"[a-z0-9][a-z0-9_-]{1,30}")
 
 
@@ -85,6 +94,8 @@ def save(key: str, name: str, icon: str, description: str, tools: list[str], pro
 
 
 def delete(key: str) -> bool:
+    if not KEY_RE.fullmatch(key.strip().lower()):
+        raise ValueError("Agent kaliti noto'g'ri")
     path = AGENTS_DIR / f"{key.strip().lower()}.md"
     if not path.exists():
         return False

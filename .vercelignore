@@ -1,0 +1,10 @@
+.env
+.env.*
+data
+logs
+voices
+.git
+.claude
+.codex
+.venv
+tests
