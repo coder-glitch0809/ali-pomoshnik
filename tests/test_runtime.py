@@ -349,7 +349,8 @@ class RuntimeTests(unittest.TestCase):
                 patch.object(evolution, "run_cycle_for", side_effect=cycle), patch.object(autopilot.hub, "notify") as notify:
             autopilot._tick(fake)
             autopilot._tick(fake)
-            self.assertEqual(calls, ["a1", "a2"])
+            autopilot._tick(fake)
+            self.assertEqual(calls, ["ali", "a1", "a2"])
             self.assertEqual(autopilot._load()["improve"]["a2"]["status"], "error")
             self.assertFalse(fake.lock.locked())
             autopilot._tick(fake)  # a2 bir soat kutadi, hisobot hali yo'q
@@ -357,12 +358,32 @@ class RuntimeTests(unittest.TestCase):
             data = autopilot._load(); data["improve"]["a2"]["retry_at"] = 0; autopilot._save(data)
             autopilot._tick(fake)
             autopilot._tick(fake)
-            self.assertEqual(calls, ["a1", "a2", "a2"])
+            self.assertEqual(calls, ["ali", "a1", "a2", "a2"])
             notify.assert_called_once()
             self.assertIn("100/100", notify.call_args[0][0])
+            self.assertIn("🧠", notify.call_args[0][0])
             autopilot._tick(fake)
-            self.assertEqual(len(calls), 3)
+            self.assertEqual(len(calls), 4)
             notify.assert_called_once()
+
+    def test_ali_self_improve_lessons_reach_system_prompt_and_roll_back(self):
+        from ali import evolution
+        from ali.brain import build_system_prompt
+        from ali.monitor import monitor
+        from ali.skills import REGISTRY
+        evolution.ALI_PATH.unlink(missing_ok=True)
+        job = monitor.start_job("ali", "Broken request", "test")
+        monitor.finish(job, False)
+        report = evolution.health(REGISTRY, "ali")
+        self.assertEqual(report["key"], "ali")
+        self.assertIn("Broken request", report["failed_tasks"])
+        self.assertIn("faqat lessons", evolution.improve(REGISTRY, "ali", learn=["x"]))
+        self.assertIn("+1 saboq", evolution.improve(REGISTRY, "ali", lessons=["Fayl so'ralsa avval list_projects ishlat"]))
+        self.assertIn("Fayl so'ralsa avval list_projects ishlat", build_system_prompt({}))
+        self.assertIn("O'zgarish yo'q", evolution.improve(REGISTRY, "ali", lessons=["fayl so'ralsa avval list_projects ishlat"]))
+        evolution.rollback("ali")
+        self.assertEqual(evolution.ali_lessons(), [])
+        self.assertNotIn("Tajriba (o'z xatolaringdan", build_system_prompt({}))
 
     def test_coach_agent_and_improve_skills_are_registered(self):
         from ali.skills import REGISTRY

@@ -896,7 +896,7 @@
     $('#learningState').textContent = learning.enabled ? `Har ${learning.interval_hours} soatda bilim yangilash` : 'Avtomatik o‘rganish o‘chiq';
     $('#learningInfo').textContent = learning.enabled ? 'Server ishlaganda tekshiradi · xatoda 1 soatdan keyin qayta urinadi · API sarfi mavjud' : 'Mavzularni agent sozlamalarida belgilash mumkin.';
     const learningMarkup = (a) => {
-      if (a.key === 'ali') return '<div class="agent-learning"><b>Jamoaning markaziy yordamchisi</b><p>Vazifalarni taqsimlaydi va agentlar bilimidan foydalanadi.</p></div>';
+      if (a.key === 'ali') return `<div class="agent-learning"><b>Jamoaning markaziy yordamchisi</b><p>Vazifalarni taqsimlaydi va agentlar bilimidan foydalanadi.</p>${improveMarkup((learning.agents.ali || {}).improve)}</div>`;
       const l = learning.agents[a.key] || {}, k = l.knowledge || { count: 0, latest: [] };
       const date = t => t ? new Date(t * 1000).toLocaleString('uz-UZ', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Hali yo‘q';
       const labels = {running:'O‘rganmoqda',updated:'Bilim qo‘shildi',checked:'Tekshirildi',error:'O‘rganishda xato'};

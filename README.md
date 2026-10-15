@@ -201,8 +201,11 @@ redeploy kabi amallar har doim sizdan tasdiq so'raydi.
      bilim bo'shlig'ini to'ldiradigan o'rganish mavzulari va kerakli (xavfsiz) vositalarni qo'shadi;
   4. kunlik hisobot Telegram/telefonga keladi. Xato bo'lsa 1 soatdan keyin qayta uriniladi — tsikl to'xtamaydi.
 
+  **Ali'ning o'zi ham** shu tsiklda: xato bilan tugagan so'rovlari, tez-tez buziladigan vositalar tahlil qilinadi,
+  saboqlar `data/ali-tajriba.md` ga yoziladi va Ali'ning tizim ko'rsatmasidagi "Tajriba" bo'limiga darhol qo'shiladi.
+
   Agentning asosiy ko'rsatmasi qayta yozilmaydi, har o'zgarishdan oldin nusxa `agents/_history` ga saqlanadi.
-  Qo'lda: "Agentlarni hozir rivojlantir", "Treyder holatini tekshir", "Treyderni oldingi holatiga qaytar".
+  Qo'lda: "Agentlarni hozir rivojlantir", "O'zingni tekshir", "Treyder holatini tekshir", "Treyderni oldingi holatiga qaytar".
   `AUTO_LEARN` bilan birga yoqing: Murabbiy qo'shgan mavzularni agentlar har kuni o'rganadi.
 
 Avtopilot siz yo'qligingizda faqat tasdiq talab qilmaydigan vositalardan foydalanadi: loyihalar va fayllar o'zgartirilmaydi.

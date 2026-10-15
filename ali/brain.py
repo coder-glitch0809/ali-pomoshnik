@@ -38,6 +38,15 @@ def _facts_text() -> str:
     return "\n".join(f"- {k}: {v}" for k, v in facts.items()) or "- (hozircha hech narsa)"
 
 
+def _lessons_text() -> str:
+    from . import evolution
+    lessons = evolution.ali_lessons()
+    if not lessons:
+        return ""
+    return ("\nTajriba (o'z xatolaringdan olingan saboqlar - ularga amal qil):\n"
+            + "\n".join(f"- {l}" for l in lessons) + "\n")
+
+
 def build_system_prompt(team: dict[str, agents.Agent] | None = None) -> str:
     facts_text = _facts_text()
     topics = ", ".join(memory.knowledge_topics()[:30]) or "(hali yo'q)"
@@ -78,7 +87,7 @@ Ishlash:
 - Hech bir vosita so'ralgan ishni qila olmasa, taxmin qilma - shunday deb ayt.
 
 Ilgari o'rganilgan mavzular: {topics}
-
+{_lessons_text()}
 {config.user_name} haqida eslab qolingan faktlar:
 {facts_text}"""
 

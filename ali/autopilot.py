@@ -104,6 +104,8 @@ def learning_status(brain) -> dict:
                        "improve": {k: v for k, v in state["improve"].get(key, {}).items()
                                    if k in ("status", "score", "issues", "fixed", "summary", "last_success")},
                        "next_at": entry.get("next_at", state["learn"].get(key, 0) + config.auto_learn_hours * 3600 if state["learn"].get(key) else None)}
+    result["ali"] = {"improve": {k: v for k, v in state["improve"].get("ali", {}).items()
+                                 if k in ("status", "score", "issues", "fixed", "summary", "last_success")}}
     return {"enabled": config.auto_learn, "interval_hours": config.auto_learn_hours, "agents": result,
             "self_improve": config.self_improve}
 
@@ -124,10 +126,11 @@ def _improve_tick(brain, state: dict, now: float) -> bool:
     cycle = state["improve"].setdefault("_cycle", {"started": 0, "done": []})
     if now - cycle["started"] >= config.self_improve_hours * 3600:
         cycle.update(started=now, done=[], reported=False)
-    pending = [k for k in brain.agents if k not in cycle["done"]
+    members = [evolution.ALI, *brain.agents]
+    pending = [k for k in members if k not in cycle["done"]
                and state["improve"].get(k, {}).get("retry_at", 0) <= now]
     if not pending:
-        if cycle["done"] and not cycle.get("reported") and all(k in cycle["done"] for k in brain.agents):
+        if cycle["done"] and not cycle.get("reported") and all(k in cycle["done"] for k in members):
             cycle["reported"] = True
             _save(state)
             hub.notify(evolution.daily_report({k: state["improve"].get(k, {}) for k in cycle["done"]}, brain.agents))

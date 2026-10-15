@@ -12,7 +12,8 @@ def _brain():
 @skill(
     description=(
         "Agent sog'lig'ini tekshiradi (API'siz): mavjud bo'lmagan/taqiqlangan vositalar, so'nggi 7 kundagi ishlar va "
-        "xatolar, o'rganish xatolari, bilimlar soni, tajriba saboqlari soni va 0-100 ball. key bo'sh bo'lsa - hamma agentlar."
+        "xatolar, o'rganish xatolari, bilimlar soni, tajriba saboqlari soni va 0-100 ball. key=\"ali\" - Ali'ning o'zi "
+        "(xato bilan tugagan so'rovlar, buzilgan vositalar). key bo'sh bo'lsa - Ali va hamma agentlar."
     ),
     params={"key": {"type": "string", "description": "Agent kaliti (ixtiyoriy)"}},
     required=[],
@@ -20,7 +21,7 @@ def _brain():
 def agent_health(key: str = "") -> str:
     from .. import agents, evolution
     team = agents.load()
-    keys = [key.strip().lower()] if key.strip() else list(team)
+    keys = [key.strip().lower()] if key.strip() else [evolution.ALI, *team]
     return json.dumps([evolution.health(REGISTRY, k, team) for k in keys], ensure_ascii=False, indent=1)
 
 
@@ -28,7 +29,8 @@ def agent_health(key: str = "") -> str:
     description=(
         "Agentni rivojlantiradi: 'Tajriba' bo'limiga o'rganilgan saboqlar (lessons, 1-3 ta), bilim bo'shlig'ini "
         "to'ldiradigan o'rganish mavzulari (learn, 0-2 ta) qo'shadi, vositalarni qo'shadi/olib tashlaydi (faqat tasdiqsiz "
-        "ishlaydigan vositalar). Asosiy ko'rsatma o'zgarmaydi, eski nusxa saqlanadi."
+        "ishlaydigan vositalar). key=\"ali\" - Ali'ning o'ziga faqat saboq qo'shiladi. Asosiy ko'rsatma o'zgarmaydi, "
+        "eski nusxa saqlanadi."
     ),
     params={
         "key": {"type": "string", "description": "Agent kaliti"},
@@ -56,7 +58,7 @@ def rollback_agent(key: str) -> str:
 
 @skill(
     description=(
-        "Hozir bitta agentni (yoki key bo'sh bo'lsa hammasini) tekshirib, xatosini tuzatib, Murabbiy orqali rivojlantiradi. "
+        "Hozir bitta agentni (key=\"ali\" - Ali'ning o'zini, key bo'sh bo'lsa Ali va hamma agentlarni) tekshirib, xatosini tuzatib, Murabbiy orqali rivojlantiradi. "
         "Bir necha daqiqa davom etadi va API sarflaydi."
     ),
     params={"key": {"type": "string", "description": "Agent kaliti (ixtiyoriy)"}},
@@ -65,7 +67,7 @@ def rollback_agent(key: str) -> str:
 def improve_agents_now(key: str = "") -> str:
     from .. import evolution
     brain = _brain()
-    keys = [key.strip().lower()] if key.strip() else list(brain.agents)
+    keys = [key.strip().lower()] if key.strip() else [evolution.ALI, *brain.agents]
     results = {}
     for k in keys:
         try:
