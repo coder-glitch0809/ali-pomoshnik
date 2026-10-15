@@ -27,6 +27,23 @@ from .config import ROOT, STATE_ROOT
 log = logging.getLogger("ali.agents")
 
 AGENTS_DIR = STATE_ROOT / "agents"
+LESSONS_HEADER = "## Tajriba (avtomatik)"
+
+
+def split_lessons(prompt: str) -> tuple[str, list[str]]:
+    """Ko'rsatma -> (asosiy qism, Murabbiy yozgan "Tajriba" saboqlari)."""
+    base, sep, tail = prompt.partition(LESSONS_HEADER)
+    if not sep:
+        return prompt.strip(), []
+    return base.strip(), [line.strip()[2:].strip() for line in tail.splitlines() if line.strip().startswith("- ")]
+
+
+def join_lessons(base: str, lessons: list[str]) -> str:
+    if not lessons:
+        return base.strip()
+    return base.strip() + f"\n\n{LESSONS_HEADER}\n" + "\n".join(f"- {l}" for l in lessons)
+
+
 if STATE_ROOT != ROOT:
     AGENTS_DIR.mkdir(parents=True, exist_ok=True)
     marker = AGENTS_DIR / ".initialized"
@@ -47,6 +64,7 @@ class Agent:
     tools: list[str]
     prompt: str
     learn: list[str] = field(default_factory=list)  # avtomatik o'rganish mavzulari
+    version: int = 0  # repodagi fayl versiyasi kattaroq bo'lsa, doimiy diskdagi nusxa yangilanadi
 
     def summary(self) -> dict:
         return {"key": self.key, "name": self.name, "icon": self.icon, "description": self.description}
@@ -56,7 +74,8 @@ class Agent:
 
     def to_markdown(self) -> str:
         return (f"---\nnom: {self.name}\nbelgi: {self.icon}\ntavsif: {self.description}\n"
-                f"vositalar: {', '.join(self.tools)}\no'rganish: {'; '.join(self.learn)}\n---\n{self.prompt.strip()}\n")
+                f"vositalar: {', '.join(self.tools)}\no'rganish: {'; '.join(self.learn)}\n"
+                + (f"versiya: {self.version}\n" if self.version else "") + f"---\n{self.prompt.strip()}\n")
 
 
 _listeners: list[Callable[[], None]] = []
@@ -83,9 +102,11 @@ def save(key: str, name: str, icon: str, description: str, tools: list[str], pro
         raise ValueError("Kalit faqat lotin harflari, raqam, - va _ dan iborat bo'lsin (masalan: huquqshunos)")
     if not prompt.strip():
         raise ValueError("Agent ko'rsatmasi (prompt) bo'sh")
+    path = AGENTS_DIR / f"{key}.md"
+    version = _parse(key, path.read_text(encoding="utf-8")).version if path.exists() else 0
     agent = Agent(key=key, name=" ".join(name.split()) or key.capitalize(), icon=(icon or "🤖").strip()[:4],
                   description=" ".join(description.split()), tools=[t.strip() for t in tools if t.strip()],
-                  prompt=prompt.strip(), learn=[t.strip() for t in (learn or []) if t.strip()])
+                  prompt=prompt.strip(), learn=[t.strip() for t in (learn or []) if t.strip()], version=version)
     AGENTS_DIR.mkdir(exist_ok=True)
     (AGENTS_DIR / f"{key}.md").write_text(agent.to_markdown(), encoding="utf-8")
     log.info("Agent saqlandi: %s", key)
@@ -122,7 +143,43 @@ def _parse(key: str, text: str) -> Agent:
         tools=[t.strip() for t in meta.get("vositalar", "").split(",") if t.strip()],
         prompt=body.strip(),
         learn=[t.strip() for t in meta.get("o'rganish", "").split(";") if t.strip()],
+        version=int(meta["versiya"]) if meta.get("versiya", "").isdigit() else 0,
     )
+
+
+def upgrade_defaults(source_dir=None, target_dir=None) -> list[str]:
+    """Repodagi agent fayli (versiya: N) doimiy diskdagi nusxadan yangi bo'lsa, uni yangilaydi.
+    Murabbiy qo'shgan "Tajriba" saboqlari, qo'shimcha o'rganish mavzulari va vositalar saqlanadi."""
+    source_dir, target_dir = source_dir or ROOT / "agents", target_dir or AGENTS_DIR
+    if source_dir.resolve() == target_dir.resolve():
+        return []
+    upgraded = []
+    for source in sorted(source_dir.glob("*.md")):
+        target = target_dir / source.name
+        if not target.exists():
+            continue
+        try:
+            new = _parse(source.stem, source.read_text(encoding="utf-8").lstrip("\ufeff"))
+            cur = _parse(source.stem, target.read_text(encoding="utf-8").lstrip("\ufeff"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            log.exception("Agentni yangilab bo'lmadi: %s", source.name)
+            continue
+        if new.version <= cur.version:
+            continue
+        new.prompt = join_lessons(split_lessons(new.prompt)[0], split_lessons(cur.prompt)[1])
+        new.learn += [t for t in cur.learn if t not in new.learn]
+        new.tools += [t for t in cur.tools if t not in new.tools]
+        history = target_dir / "_history"
+        history.mkdir(exist_ok=True)
+        shutil.copy2(target, history / f"{source.stem}-v{cur.version}-before-upgrade.md")
+        target.write_text(new.to_markdown(), encoding="utf-8")
+        upgraded.append(source.stem)
+        log.info("Agent yangi versiyaga o'tdi: %s v%s -> v%s", source.stem, cur.version, new.version)
+    return upgraded
+
+
+if STATE_ROOT != ROOT:
+    upgrade_defaults()
 
 
 def load() -> dict[str, Agent]:

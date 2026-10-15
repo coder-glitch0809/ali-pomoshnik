@@ -30,7 +30,6 @@ COACH = "murabbiy"
 ALI = "ali"  # asosiy yordamchi: agent fayli yo'q, tajribasi alohida faylda va tizim ko'rsatmasiga qo'shiladi
 ALI_PATH = config.data_dir / "ali-tajriba.md"
 HISTORY = agents.AGENTS_DIR / "_history"
-LESSONS_HEADER = "## Tajriba (avtomatik)"
 MAX_LESSONS = 15
 MAX_LEARN = 8
 MAX_HISTORY = 10  # har bir agent uchun saqlanadigan eski nusxalar
@@ -80,19 +79,10 @@ def _now() -> float:
     return time.time()
 
 
-# --- Tajriba bo'limi ---
-def split_lessons(prompt: str) -> tuple[str, list[str]]:
-    base, sep, tail = prompt.partition(LESSONS_HEADER)
-    if not sep:
-        return prompt.strip(), []
-    lessons = [line.strip()[2:].strip() for line in tail.splitlines() if line.strip().startswith("- ")]
-    return base.strip(), lessons
-
-
-def join_lessons(base: str, lessons: list[str]) -> str:
-    if not lessons:
-        return base.strip()
-    return base.strip() + f"\n\n{LESSONS_HEADER}\n" + "\n".join(f"- {l}" for l in lessons)
+# --- Tajriba bo'limi (agents.py da: agent yangilanganda ham saqlanadi) ---
+LESSONS_HEADER = agents.LESSONS_HEADER
+split_lessons = agents.split_lessons
+join_lessons = agents.join_lessons
 
 
 def ali_lessons() -> list[str]:

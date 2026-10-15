@@ -385,6 +385,65 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(evolution.ali_lessons(), [])
         self.assertNotIn("Tajriba (o'z xatolaringdan", build_system_prompt({}))
 
+    def test_mtf_signal_blocks_against_higher_timeframe_and_aggregates_4h(self):
+        from ali.skills import signals
+        hourly = [signals.Bar(i * 3600, 1 + i, 2 + i, i, 1.5 + i) for i in range(8)]
+        four = signals._aggregate(hourly, 4 * 3600)
+        self.assertEqual([(b.t, b.o, b.h, b.l, b.c) for b in four], [(0, 1, 5, 0, 4.5), (14400, 5, 9, 4, 8.5)])
+        up = [signals.Bar(i, 100 + i, 101 + i, 99 + i, 100.5 + i) for i in range(120)]
+        down = [signals.Bar(i, 300 - i, 301 - i, 299 - i, 299.5 - i) for i in range(120)]
+        fetch = lambda symbol, market, interval, htf=False: down if interval == "1d" or htf else up
+        def analyze(symbol, market, interval, bars, htf):
+            return signals.Plan(symbol=symbol, market=market, interval=interval, side=1, score=3, setup="EMA cross",
+                                entry=1, sl=0.5, tps=(1.75, 2.1, 2.5), zone=(0.9, 1.1))
+        with patch.object(signals, "_fetch", side_effect=fetch), patch.object(signals, "analyze", side_effect=analyze):
+            plans = signals._mtf_plans("EURUSD", "auto")
+            self.assertEqual([p.side for p in plans], [0, 0, 0, 1])
+            self.assertIn("Yuqori timeframe qarshi: 1d DOWN", plans[0].reason)
+            text = signals.mtf_signal("EURUSD")
+            self.assertIn("1d: ▲ LONG", text)
+            self.assertIn("Eng kuchli tekshirilgan signal", text)
+        def opposed(symbol, market, interval, bars, htf):
+            plan = analyze(symbol, market, interval, bars, htf)
+            plan.against = 1
+            return plan
+        with patch.object(signals, "_fetch", side_effect=lambda *a, **k: up), patch.object(signals, "analyze", side_effect=opposed):
+            self.assertIn("Hamma tekshiruvdan o'tgan signal yo'q", signals.mtf_signal("EURUSD"))
+
+    def test_mt5_signals_reads_v5_csv_and_hides_unverified(self):
+        from ali.skills import signals
+        folder = Path(state.name) / "mt5files"
+        folder.mkdir(exist_ok=True)
+        (folder / "AZT_signals_v5.csv").write_text(
+            "time,symbol,timeframe,side,setup,entry,sl,tp1,tp2,tp3,zone_low,zone_high,score,atr,ai,ai_conf,sent,mtf\r\n"
+            "2026.10.15 10:00,EURUSD,M15,BUY,EMA cross,1.1,1.09,1.115,1.12,1.13,1.099,1.101,3,0.001,APPROVE,82,1,Yuqori TF: H1 ▲UP\r\n"
+            "2026.10.15 11:00,EURUSD,H1,SELL,BOS,1.1,1.11,1.085,1.08,1.07,1.099,1.101,2,0.002,REJECT,40,0,\r\n",
+            encoding="utf-8")
+        with patch.dict(os.environ, {"MT5_FILES_DIR": str(folder)}):
+            sent = signals.mt5_signals()
+            self.assertIn("Claude APPROVE 82%", sent)
+            self.assertNotIn("SELL", sent)
+            self.assertIn("❌ yuborilmagan", signals.mt5_signals(all=True))
+
+    def test_agent_upgrade_keeps_lessons_and_extra_topics(self):
+        source, target = Path(state.name) / "upgrade-src", Path(state.name) / "upgrade-dst"
+        source.mkdir(exist_ok=True); target.mkdir(exist_ok=True)
+        (target / "trader.md").write_text("---\nnom: Old\nbelgi: T\ntavsif: old\nvositalar: a\no'rganish: x; coach topic\n---\n"
+                                          "Old prompt\n\n## Tajriba (avtomatik)\n- Keep this lesson\n", encoding="utf-8")
+        (source / "trader.md").write_text("---\nnom: New\nbelgi: T\ntavsif: new\nvositalar: a, b\no'rganish: x\nversiya: 2\n---\n"
+                                          "New prompt\n", encoding="utf-8")
+        self.assertEqual(agents.upgrade_defaults(source, target), ["trader"])
+        a = agents._parse("trader", (target / "trader.md").read_text(encoding="utf-8"))
+        self.assertTrue(a.prompt.startswith("New prompt"))
+        self.assertIn("- Keep this lesson", a.prompt)
+        self.assertEqual((a.version, a.tools, a.learn), (2, ["a", "b"], ["x", "coach topic"]))
+        self.assertEqual(agents.upgrade_defaults(source, target), [])
+        repo = {k: agents._parse(k, (Path(__file__).resolve().parents[1] / "agents" / f"{k}.md").read_text(encoding="utf-8"))
+                for k in ("treyder",)}
+        from ali.skills import REGISTRY
+        self.assertEqual(repo["treyder"].version, 2)
+        self.assertTrue(set(repo["treyder"].tools) - {"web_search"} <= set(REGISTRY))
+
     def test_coach_agent_and_improve_skills_are_registered(self):
         from ali.skills import REGISTRY
         coach = agents._parse("murabbiy", (Path(__file__).resolve().parents[1] / "agents" / "murabbiy.md").read_text(encoding="utf-8"))

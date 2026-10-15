@@ -1,5 +1,8 @@
 """Ko'p bozorli signal: kripto (Binance), forex, aksiya, ETF, indeks, fyuchers, obligatsiya (Yahoo ochiq chart API)
-va MT5 treyding EA'sining signallari (AZT_signals.csv).
+va MT5 treyding EA'sining signallari (AZT_signals_v5.csv, eski AZT_signals.csv).
+
+mtf_signal - EA 5 bilan bir xil ko'p timeframe'li tekshiruv: har bir TF (15m, 1h, 4h, 1d) alohida tahlil qilinadi,
+signal faqat qarshi omil yo'q va yuqori TF'lar qarshi bo'lmasa (kamida 50%i mos) qabul qilinadi.
 
 Qoidalar treyding EA bilan bir xil: EMA21/55 trend, RSI filtri, cross/pullback/breakout, swing ortidagi SL
 (kamida 1.5 ATR, +0.5 ATR bufer), TP 1.5R / 2.25R / 3R, konfluens kamida 2 ball.
@@ -26,9 +29,11 @@ MARKETS = ["auto", "crypto", "forex", "stock", "etf", "index", "futures", "bond"
 CCY = {"USD", "EUR", "GBP", "JPY", "CHF", "AUD", "NZD", "CAD", "XAU", "XAG"}
 BONDS = {"^TNX", "^TYX", "^FVX", "^IRX"}  # AQSh xazina yield'lari (foizda)
 # Yahoo: intervalga mos diapazon va yuqori vaqt ramkasi (trend filtri uchun)
-YAHOO_RANGE = {"15m": "60d", "1h": "730d", "1d": "5y"}
-YAHOO_HTF = {"15m": ("1h", "730d"), "1h": ("1d", "5y"), "1d": ("1wk", "10y")}
-BINANCE_HTF = {"15m": "1d", "1h": "1d", "1d": "1w"}
+YAHOO_RANGE = {"15m": "60d", "1h": "730d", "4h": "730d", "1d": "5y"}
+YAHOO_HTF = {"15m": ("1h", "730d"), "1h": ("1d", "5y"), "4h": ("1d", "5y"), "1d": ("1wk", "10y")}
+BINANCE_HTF = {"15m": "1d", "1h": "1d", "4h": "1d", "1d": "1w"}
+MTF_FRAMES = ["15m", "1h", "4h", "1d"]   # pastdan yuqoriga; EA: M15, H1, H4, D1 (+M5, M30)
+MTF_MIN_AGREE = 50
 WATCHLIST = {
     "crypto": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"],
     "forex": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "XAUUSD"],
@@ -96,6 +101,25 @@ def _fetch(symbol: str, market: str, interval: str, htf: bool = False) -> list[B
         return [Bar(int(x[0]) // 1000, float(x[1]), float(x[2]), float(x[3]), float(x[4])) for x in r.json()]
     yahoo_symbol = symbol if market != "forex" or symbol.endswith("=X") else symbol.upper() + "=X"
     iv, rng = YAHOO_HTF[interval] if htf else (interval, YAHOO_RANGE[interval])
+    if iv == "4h":  # Yahoo'da 4h yo'q: 1h shamlardan yig'iladi
+        return _aggregate(_fetch_yahoo(yahoo_symbol, "1h", rng), 4 * 3600)
+    return _fetch_yahoo(yahoo_symbol, iv, rng)
+
+
+def _aggregate(bars: list[Bar], seconds: int) -> list[Bar]:
+    """Kichik shamlarni katta TF shamlariga yig'adi (UTC chegaralari bo'yicha)."""
+    out: list[Bar] = []
+    for b in bars:
+        start = b.t - b.t % seconds
+        if out and out[-1].t == start:
+            last = out[-1]
+            out[-1] = Bar(start, last.o, max(last.h, b.h), min(last.l, b.l), b.c)
+        else:
+            out.append(Bar(start, b.o, b.h, b.l, b.c))
+    return out
+
+
+def _fetch_yahoo(yahoo_symbol: str, iv: str, rng: str) -> list[Bar]:
     with httpx.Client(timeout=20, headers=UA, follow_redirects=True) as http:
         r = http.get(f"{YAHOO}/{quote(yahoo_symbol, safe='=')}", params={"interval": iv, "range": rng})
     if r.status_code == 429:
@@ -103,7 +127,7 @@ def _fetch(symbol: str, market: str, interval: str, htf: bool = False) -> list[B
     r.raise_for_status()
     result = (r.json().get("chart") or {}).get("result") or []
     if not result:
-        raise RuntimeError(f"{symbol}: ma'lumot topilmadi (yozilishini tekshiring)")
+        raise RuntimeError(f"{yahoo_symbol}: ma'lumot topilmadi (yozilishini tekshiring)")
     res = result[0]
     q = res["indicators"]["quote"][0]
     bars = []
@@ -140,6 +164,7 @@ class Plan:
     tps: tuple[float, float, float] = (0.0, 0.0, 0.0)
     zone: tuple[float, float] = (0.0, 0.0)
     score: int = 0
+    against: int = 0             # qarshi (-1) omillar soni
     factors: list[str] = field(default_factory=list)
     price: float = 0.0
     rsi: float | None = None
@@ -210,16 +235,19 @@ def analyze(symbol: str, market: str, interval: str, bars: list[Bar], htf: list[
     if m0 is not None and m1 is not None and s0 is not None:
         vote = 1 if (m0 > s0 and m0 > m1) else -1 if (m0 < s0 and m0 < m1) else 0
         score += vote * side
+        plan.against += vote * side < 0
         plan.factors.append(f"MACD {'bullish' if vote == 1 else 'bearish' if vote == -1 else 'neytral'}")
     if len(closes) >= 200:
         sma200 = sum(closes[-200:]) / 200
         vote = 1 if last.c > sma200 else -1
         score += vote * side
+        plan.against += vote * side < 0
         plan.factors.append(f"Narx SMA200 {'ustida' if vote == 1 else 'ostida'} ({_fmt(sma200)})")
     htf_trend = _trend(htf) if htf else "n/a"
     if htf_trend in ("UP", "DOWN"):
         vote = 1 if htf_trend == "UP" else -1
         score += vote * side
+        plan.against += vote * side < 0
         plan.factors.append(f"Yuqori vaqt ramkasi trendi: {htf_trend}")
     prev = closed[i - 1]
     body = abs(last.c - last.o)
@@ -242,6 +270,7 @@ def analyze(symbol: str, market: str, interval: str, bars: list[Bar], htf: list[
         is_low = closed[k].l <= min(b.l for b in closed[k - 2:k + 3])
         if (side == 1 and is_high and entry < pivot < tp1) or (side == -1 and is_low and tp1 < pivot < entry):
             score -= 1
+            plan.against += 1
             plan.factors.append(f"Qarshi daraja {_fmt(pivot)} TP1 yo'lida")
             break
 
@@ -291,7 +320,7 @@ def _run(symbol: str, market: str, interval: str) -> Plan:
     mkt = market if market != "auto" else _detect_market(symbol)
     if mkt == "crypto" and not symbol.endswith(("USDT", "USDC", "BUSD")):
         symbol += "USDT"
-    if mkt != "crypto" and interval not in YAHOO_RANGE:
+    if interval not in YAHOO_RANGE:
         raise ValueError(f"Kripto bo'lmagan bozorlar uchun interval: {', '.join(YAHOO_RANGE)}")
     bars = _fetch(symbol, mkt, interval)
     htf = _fetch(symbol, mkt, interval, htf=True)
@@ -307,7 +336,7 @@ def _run(symbol: str, market: str, interval: str) -> Plan:
     params={
         "symbol": {"type": "string", "description": "Belgi: BTCUSDT, EURUSD, XAUUSD, AAPL, SPY, ^GSPC, ES=F, ^TNX"},
         "market": {"type": "string", "enum": MARKETS, "description": "Bozor turi (standart auto - belgidan aniqlanadi)"},
-        "interval": {"type": "string", "enum": ["15m", "1h", "1d"], "description": "Sham oralig'i (standart 1h)"},
+        "interval": {"type": "string", "enum": ["15m", "1h", "4h", "1d"], "description": "Sham oralig'i (standart 1h)"},
     },
     required=["symbol"],
 )
@@ -359,39 +388,121 @@ def signal_scan(market: str = "all", interval: str = "1h") -> str:
     return "\n".join(out)
 
 
-def _mt5_files() -> list[Path]:
+def _mt5_files(name: str = "AZT_signals_v5.csv") -> list[Path]:
     env = os.environ.get("MT5_FILES_DIR", "").strip()
     if env:
-        return [Path(env) / "AZT_signals.csv"]
+        return [Path(env) / name]
     base = Path(os.environ.get("APPDATA", "")) / "MetaQuotes" / "Terminal"
-    return [Path(p) for p in glob.glob(str(base / "*" / "MQL5" / "Files" / "AZT_signals.csv"))]
+    return [Path(p) for p in glob.glob(str(base / "*" / "MQL5" / "Files" / name))]
+
+
+def _read_mt5_rows() -> list[dict]:
+    """EA 5 fayli (Claude qarori bilan), bo'lmasa eski EA 4 fayli."""
+    for name in ("AZT_signals_v5.csv", "AZT_signals.csv"):
+        rows: list[dict] = []
+        for f in (f for f in _mt5_files(name) if f.exists()):
+            with f.open(encoding="utf-8", errors="replace", newline="") as fh:
+                rows += list(csv.DictReader(fh))
+        if rows:
+            return rows
+    return []
 
 
 @skill(
     description=(
-        "MT5 treyding EA (AI Zone Trader) chiqargan so'nggi signallarni o'qiydi: vaqt, belgi, yo'nalish, kirish, SL, TP, zona. "
-        "EA ishlayotgan kompyuterda AZT_signals.csv faylidan o'qiladi."
+        "MT5 treyding EA (AI Zone Trader 5) signallari: vaqt, belgi, timeframe (M5..D1), yo'nalish, kirish, SL, TP, zona, "
+        "Claude qarori va ishonchi, yuqori TF tekshiruvi, Telegram'ga yuborilganmi. Standart: faqat yuborilgan "
+        "(hamma tekshiruvdan o'tgan) signallar; all=true - Claude o'tkazmaganlari ham. EA ishlayotgan kompyuterda o'qiladi."
     ),
-    params={"limit": {"type": "integer", "description": "Nechta so'nggi signal (standart 10)"}},
+    params={
+        "limit": {"type": "integer", "description": "Nechta so'nggi signal (standart 10)"},
+        "all": {"type": "boolean", "description": "true - Claude rad etgan/filtrlangan signallar ham"},
+        "symbol": {"type": "string", "description": "Belgi bo'yicha filtr (ixtiyoriy)"},
+    },
     required=[],
 )
-def mt5_signals(limit: int = 10) -> str:
-    files = [f for f in _mt5_files() if f.exists()]
-    if not files:
-        return "AZT_signals.csv topilmadi: EA hali signal chiqarmagan yoki MT5 Files papkasi noma'lum (MT5_FILES_DIR)."
-    rows: list[dict] = []
-    for f in files:
-        with f.open(encoding="utf-8", errors="replace", newline="") as fh:
-            rows += list(csv.DictReader(fh))
+def mt5_signals(limit: int = 10, all: bool = False, symbol: str = "") -> str:
+    rows = _read_mt5_rows()
+    if not rows:
+        return ("MT5 signal fayli topilmadi: EA hali signal chiqarmagan yoki MT5 Files papkasi noma'lum (MT5_FILES_DIR). "
+                "Ali EA bilan bir kompyuterda ishlaganda o'qiy oladi; signallar baribir Telegram'ga EA'ning o'zidan keladi.")
+    if symbol:
+        rows = [r for r in rows if r.get("symbol", "").upper() == symbol.upper().strip()]
+    total = len(rows)
+    if not all:
+        rows = [r for r in rows if r.get("sent", "1") == "1"]
     rows = rows[-max(1, min(limit, 100)):]
     if not rows:
-        return "Fayl bo'sh: hali signal yo'q."
-    lines = [f"So'nggi {len(rows)} ta MT5 signali:"]
+        return f"Hozircha yuborilgan signal yo'q ({total} ta setup Claude yoki tekshiruvlardan o'tmagan)."
+    lines = [f"So'nggi {len(rows)} ta MT5 signali" + (" (filtrlanganlari bilan)" if all else " (tekshiruvdan o'tgan)") + ":"]
     for r in reversed(rows):
+        ai = f" | Claude {r['ai']} {r.get('ai_conf', '')}%" if r.get("ai") else ""
+        sent = "" if r.get("sent", "1") == "1" else " | ❌ yuborilmagan"
+        mtf = f"\n  {r['mtf']}" if r.get("mtf") else ""
         lines.append(f"- {r['time']} {r['symbol']} {r['timeframe']} {r['side']} | {r['setup']} | "
                      f"kirish {r['entry']} SL {r['sl']} TP1 {r['tp1']} TP3 {r['tp3']} | "
-                     f"zona {r['zone_low']}-{r['zone_high']} | ball {r['score']}")
+                     f"zona {r['zone_low']}-{r['zone_high']} | ball {r['score']}{ai}{sent}{mtf}")
     return "\n".join(lines)
+
+
+def _mtf_plans(symbol: str, market: str) -> list[Plan]:
+    """Har bir TF uchun reja; har biriga keyingi yuqori TF trend filtri sifatida beriladi."""
+    symbol = symbol.upper().replace("/", "").replace(" ", "").strip()
+    mkt = market if market != "auto" else _detect_market(symbol)
+    if mkt == "crypto" and not symbol.endswith(("USDT", "USDC", "BUSD")):
+        symbol += "USDT"
+    bars = {iv: _fetch(symbol, mkt, iv) for iv in MTF_FRAMES}
+    plans = []
+    for i, iv in enumerate(MTF_FRAMES):
+        htf = bars[MTF_FRAMES[i + 1]] if i + 1 < len(MTF_FRAMES) else _fetch(symbol, mkt, iv, htf=True)
+        plans.append(analyze(symbol, mkt, iv, bars[iv], htf))
+    trends = [_trend(bars[iv]) for iv in MTF_FRAMES]
+    for i, p in enumerate(plans):
+        if not p.side:
+            continue
+        higher = [t for t in trends[i + 1:] if t in ("UP", "DOWN", "MIXED")]
+        want = "UP" if p.side == 1 else "DOWN"
+        opposite = [f"{MTF_FRAMES[i + 1 + k]} {t}" for k, t in enumerate(trends[i + 1:]) if t in ("UP", "DOWN") and t != want]
+        agree = sum(t == want for t in higher)
+        if higher:
+            p.factors.append(f"Yuqori TF: {', '.join(f'{MTF_FRAMES[i + 1 + k]} {t}' for k, t in enumerate(trends[i + 1:]))} "
+                             f"({agree}/{len(higher)} mos)")
+        if opposite:
+            p.reason, p.side = f"Yuqori timeframe qarshi: {', '.join(opposite)}", 0
+        elif higher and agree * 100 < MTF_MIN_AGREE * len(higher):
+            p.reason, p.side = f"Yuqori TF'larning faqat {agree}/{len(higher)} tasi mos", 0
+        elif p.against:
+            p.reason, p.side = f"{p.against} ta qarshi omil bor (hamma tekshiruvdan o'tmadi)", 0
+    return plans
+
+
+@skill(
+    description=(
+        "Barcha timeframe'larda (15m, 1h, 4h, 1d) bitta belgini tekshiradi - MT5 EA 5 qoidalari bilan bir xil: "
+        "har TF uchun trend matritsasi va signal faqat hamma omillar mos, qarshi omil yo'q va yuqori TF'lar qarshi "
+        "bo'lmasa beriladi. Natijani Claude (sen) yana tanqidiy tekshirib, faqat ishonchli signalni tavsiya qil."
+    ),
+    params={
+        "symbol": {"type": "string", "description": "Belgi: EURUSD, XAUUSD, BTCUSDT, AAPL, ^GSPC ..."},
+        "market": {"type": "string", "enum": MARKETS, "description": "Bozor turi (standart auto)"},
+    },
+    required=["symbol"],
+)
+def mtf_signal(symbol: str, market: str = "auto") -> str:
+    if market not in MARKETS:
+        return f"market quyidagilardan biri bo'lishi kerak: {', '.join(MARKETS)}"
+    try:
+        plans = _mtf_plans(symbol, market)
+    except (httpx.HTTPError, RuntimeError, ValueError, KeyError, IndexError) as e:
+        return f"{symbol}: ma'lumot olinmadi - {e}"
+    arrow = {1: "▲ LONG", -1: "▼ SHORT", 0: "—"}
+    head = [f"🕒 {plans[0].symbol} ({plans[0].market}) - barcha timeframe'lar:"]
+    head += [f"- {p.interval}: {arrow[p.side]}" + (f" (ball {p.score})" if p.side else f" - {p.reason}") for p in plans]
+    valid = [p for p in plans if p.side]
+    if not valid:
+        return "\n".join(head + ["", "Hamma tekshiruvdan o'tgan signal yo'q - kutish ham qaror."])
+    best = max(valid, key=lambda p: (p.score, MTF_FRAMES.index(p.interval)))
+    return "\n".join(head + ["", "Eng kuchli tekshirilgan signal:", _format_plan(best)])
 
 
 def _journal_files() -> list[Path]:

@@ -186,6 +186,16 @@ Keyin bir marta `claude` (kirish) va `codex login`. Shundan so'ng Dasturchi katt
 vazifa fonda ishlaydi, tugagach telefonga/Telegramga xabar keladi. Faylni yozish, buyruq bajarish, issue ochish,
 redeploy kabi amallar har doim sizdan tasdiq so'raydi.
 
+## Treyding: barcha timeframe'lar va MT5
+
+- **📈 Treyder** agenti `mtf_signal` bilan bitta belgini 15m, 1h, 4h, 1d da birga tekshiradi va signalni faqat
+  qarshi omil yo'q hamda yuqori timeframe'lar qarshi bo'lmasa beradi (MT5 EA bilan bir xil qoida). Chatda: "XAUUSD signal".
+- MT5 robot (AI Zone Trader 5) — alohida repozitoriy **mql5-mt5**: bitta chart M5..D1 ni skanerlaydi, signalni Claude
+  tekshiradi va Telegram'ga EA'ning o'zi yuboradi. Ali EA bilan bir kompyuterda bo'lsa, `mt5_signals` va
+  `signal_results` bilan signallar va natijalarni o'qiydi (`MT5_FILES_DIR` — MT5 `MQL5\Files` papkasi).
+- Agent fayllaridagi `versiya:` raqami oshirilsa, Render'dagi doimiy diskdagi nusxa ham yangilanadi
+  (Murabbiy yozgan saboqlar saqlanadi).
+
 ## Avtopilot: o'z-o'zini o'rganish va loyihalarni kuzatish
 
 `.env` da yoqiladi (API'dan pul sarflaydi):
