@@ -117,7 +117,7 @@ async def login(request: Request):
     body = await json_object(request)
     if not auth.check_password(body.get("password", "")):
         await asyncio.sleep(1.5)  # parol terishni sekinlashtirish
-        return JSONResponse({"ok": False}, status_code=401)
+        return JSONResponse({"ok": False, "locked": auth.locked_for()}, status_code=401)
     response = JSONResponse({"ok": True})
     response.set_cookie(COOKIE, auth.TOKEN, max_age=60 * 60 * 24 * 365, httponly=True,
                         secure=request.url.scheme == "https", samesite="lax")

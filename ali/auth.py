@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import secrets
 import json
+import threading
 import time
 from urllib.parse import parse_qsl
 
@@ -21,8 +22,33 @@ PASSWORD = config.access_password or _load_secret("password.txt", lambda: secret
 TOKEN = hmac.new(SECRET_KEY.encode(), PASSWORD.encode(), hashlib.sha256).hexdigest()
 
 
+# Parol terishdan himoya: MAX_FAILS marta xato bo'lsa, LOCK_SECONDS davomida hamma urinishlar rad etiladi
+MAX_FAILS = 5
+LOCK_SECONDS = 15 * 60
+_fails: list[float] = []
+_locked_until = 0.0
+_guard = threading.Lock()
+
+
+def locked_for() -> int:
+    """Kirish bloklangan bo'lsa, qolgan soniyalar; aks holda 0."""
+    return max(0, int(_locked_until - time.time()))
+
+
 def check_password(value: str) -> bool:
-    return hmac.compare_digest(str(value).encode(), PASSWORD.encode())
+    global _locked_until
+    with _guard:
+        now = time.time()
+        if now < _locked_until:
+            return False
+        if hmac.compare_digest(str(value).encode(), PASSWORD.encode()):
+            _fails.clear()
+            return True
+        _fails[:] = [t for t in _fails if now - t < LOCK_SECONDS] + [now]
+        if len(_fails) >= MAX_FAILS:
+            _locked_until = now + LOCK_SECONDS
+            _fails.clear()
+        return False
 
 
 def check_token(value: str) -> bool:
