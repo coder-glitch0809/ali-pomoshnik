@@ -75,20 +75,28 @@ class PublicTelegram:
     async def send_request(self,update,kind,text):
         uid=update.effective_user.id
         rid,fresh=self.public.request(uid,kind,text)
-        if fresh and self.owner_id:
+        if self.owner_id:  # takroriy so'rovda ham karta qayta keladi - faqat /sorovlar ichida qolib ketmasin
             buttons=InlineKeyboardMarkup([[InlineKeyboardButton('✅ Tasdiqlash',callback_data=f'own:{rid}:yes'),InlineKeyboardButton('❌ Rad etish',callback_data=f'own:{rid}:no')]])
             labels={'content':'Kontent: 24 soat ruxsat','image':'Rasm buyurtmasi (qo‘lda bajarish)','trading_week':'40 000 so‘m / 7 kun: TO‘LOVNI TEKSHIRING','trading_month':'100 000 so‘m / 30 kun: TO‘LOVNI TEKSHIRING','agent':'Yangi agent kerak'}
             try:
-                message=await self.app.bot.send_message(self.owner_id,f"📌 So‘rov #{rid}\n{labels.get(kind,kind)}\nFoydalanuvchi: {update.effective_user.first_name} · ID {uid}\n\n{text[:1500]}",reply_markup=buttons)
+                hint='\n\n✅ Tasdiqlasangiz, Ali agentni o‘zi yaratadi va to‘ldiradi.' if kind=='agent' else ''
+                message=await self.app.bot.send_message(self.owner_id,f"📌 So‘rov #{rid}{'' if fresh else ' (takroriy)'}\n{labels.get(kind,kind)}\nFoydalanuvchi: {update.effective_user.first_name} · ID {uid}\n\n{text[:1500]}{hint}",reply_markup=buttons)
                 try: await self.app.bot.pin_chat_message(self.owner_id,message.message_id,disable_notification=True)
                 except TelegramError: log.info('Pin unavailable; request remains in /sorovlar')
-            except TelegramError: log.warning('Owner request delivery failed; stored request %s',rid)
+            except TelegramError as e: log.warning('Owner request delivery failed; stored request %s: %s',rid,e)
+            from .hub import hub
+            hub.broadcast({'type':'notify','text':f'📌 Yangi so‘rov #{rid}: {labels.get(kind,kind)}. Telegram’da tasdiqlang.'})
         await update.effective_message.reply_text(f"📨 So‘rov #{rid} {'qabul qilindi' if fresh else 'allaqachon navbatda'}. Administrator ko‘rib chiqadi. /start — bosh menyu.")
 
     async def owner_requests(self,update,ctx):
         if not self.is_private(update) or update.effective_user.id!=self.owner_id:return
         rows=self.public.pending()
-        if not rows:await update.effective_message.reply_text('Yangi so‘rovlar yo‘q.');return
+        unbuilt=self.public.unbuilt_agents()
+        for row in unbuilt:
+            await update.effective_message.reply_text(f"🛠 #{row['id']} · tasdiqlangan, agent hali yaratilmagan\n{row['text']}",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('🛠 Agentni yaratish',callback_data=f"own:{row['id']}:build")]]))
+        if not rows:
+            if not unbuilt:await update.effective_message.reply_text('Yangi so‘rovlar yo‘q.')
+            return
         for row in rows:
             await update.effective_message.reply_text(f"📌 #{row['id']} · {row['kind']} · ID {row['uid']}\n{row['text']}",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('✅ Tasdiqlash',callback_data=f"own:{row['id']}:yes"),InlineKeyboardButton('❌ Rad etish',callback_data=f"own:{row['id']}:no")]]))
 
@@ -97,12 +105,25 @@ class PublicTelegram:
         if not self.is_private(update):await q.answer();return
         if q.data.startswith('own:'):
             if q.from_user.id!=self.owner_id:await q.answer('Ruxsat yo‘q');return
-            _,rid,choice=q.data.split(':');row=self.public.resolve(int(rid),choice=='yes')
+            _,rid,choice=q.data.split(':')
+            if choice=='build':
+                row=self.public.get_request(int(rid))
+                if not row or row['kind']!='agent' or row['status']!='approved':await q.answer('Avval ko‘rib chiqilgan');return
+                await q.answer('Agent yaratilmoqda');await q.edit_message_reply_markup(reply_markup=None)
+                task=asyncio.create_task(self.build_requested_agent(row))
+                self.public_tasks=getattr(self,'public_tasks',set());self.public_tasks.add(task)
+                task.add_done_callback(self.public_tasks.discard)
+                return
+            row=self.public.resolve(int(rid),choice=='yes')
             await q.answer('Qaror saqlandi' if row else 'Avval ko‘rib chiqilgan')
             if row:
                 await q.edit_message_reply_markup(reply_markup=None)
                 if choice!='yes':text='So‘rovingiz administrator tomonidan rad etildi.'
-                elif row['kind']=='agent':text='Soha bo‘yicha agent so‘rovingiz qabul qilindi. Agent tayyor bo‘lganda xabar beramiz.'
+                elif row['kind']=='agent':
+                    text='Agent so‘rovingiz tasdiqlandi. Ali hozir agentni yaratmoqda - tayyor bo‘lganda xabar beramiz.'
+                    task=asyncio.create_task(self.build_requested_agent(row))
+                    self.public_tasks=getattr(self,'public_tasks',set());self.public_tasks.add(task)
+                    task.add_done_callback(self.public_tasks.discard)
                 elif row['kind']=='image':text='Rasm buyurtmangiz qabul qilindi. Administrator tayyor natijani yuboradi.'
                 else:text='Ruxsat berildi! So‘rovingizni qayta yuborishingiz mumkin.'
                 try:await ctx.bot.send_message(row['uid'],text)
@@ -123,6 +144,27 @@ class PublicTelegram:
                 await q.message.reply_text('Avval hudud yoki joylashuv tanlang.');return
             data['weather']=on;self.public.put(q.from_user.id,data)
             await q.message.reply_text('Har kuni 08:00 (Toshkent) da ob-havo yuboriladi.' if on else 'Kundalik ob-havo o‘chirildi.',reply_markup=self.keyboard(q.from_user.id))
+
+    async def build_requested_agent(self,row):
+        """Tasdiqlangan agent so'rovi: Ali agentni yaratadi, egasi va so'rovchi xabar oladi."""
+        from .service import brain, build_agent
+        owner=self.owner_id
+        try:
+            if owner:await self.app.bot.send_message(owner,f"🛠 So‘rov #{row['id']}: agent yaratilmoqda…")
+            changed,answer=await build_agent(row['id'],row['text'])
+        except Exception as e:
+            log.exception('Agent so‘rovi #%s bajarilmadi',row['id'])
+            if owner:await self.app.bot.send_message(owner,f"⚠️ So‘rov #{row['id']}: agent yaratilmadi - {str(e)[:300]}\n/sorovlar orqali qayta urinib bo‘lmaydi; Aliga to‘g‘ridan-to‘g‘ri yozing.")
+            return
+        names=[f"{brain.agents[k].icon} {brain.agents[k].name}" for k in changed if k in brain.agents]
+        if names:self.public.set_status(row['id'],'built')
+        if not names:
+            if owner:await self.app.bot.send_message(owner,f"⚠️ So‘rov #{row['id']}: Ali agent yaratmadi.\n{answer[:1500]}")
+            return
+        if owner:await self.app.bot.send_message(owner,f"✅ So‘rov #{row['id']}: agent tayyor - {', '.join(names)}\n\n{answer[:1500]}")
+        if row['uid']!=owner:
+            try:await self.app.bot.send_message(row['uid'],f"✨ Siz so‘ragan agent tayyor: {', '.join(names)}\nVazifangizni Aliga yozing.")
+            except TelegramError:pass
 
     async def menu_text(self,update,ctx,text):
         if not self.is_private(update):return True

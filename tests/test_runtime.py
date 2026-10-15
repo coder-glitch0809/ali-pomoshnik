@@ -577,6 +577,49 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual([table.cell(r, 3).text for r in range(1, 6)], ["5 мин", "10 мин", "15 мин", "15 мин", "5 мин"])
         self.assertEqual(table.cell(1, 2).text, "Действия")
 
+    def test_approved_agent_request_builds_agent_and_notifies(self):
+        from types import SimpleNamespace
+        from ali import service
+        from ali.skills import REGISTRY
+        local = Brain()
+        local.confirm = lambda name, args: False
+        args = {"key": "preapproved-test", "name": "Test", "icon": "T", "description": "d", "tools": [], "prompt": "p"}
+        local.preapproved.add("create_agent")
+        try:
+            out, error = local._run_one("create_agent", args)
+            self.assertFalse(error, out)
+            out, error = local._run_one("create_agent", args)  # bir martalik: ikkinchisi yana ruxsat so'raydi
+            self.assertTrue(error)
+            self.assertIn("rad etdi", out)
+        finally:
+            agents.delete("preapproved-test")
+
+        seen = {}
+        def ask(text, *rest):
+            seen["preapproved"] = set(brain.preapproved)
+            seen["text"] = text
+            agents.save("lawyer-test", "Huquqshunos", "⚖️", "Huquqiy savollar", [], "Prompt")
+            return "Huquqshunos agenti yaratildi"
+        try:
+            with patch.object(brain, "ask", side_effect=ask):
+                changed, answer = asyncio.run(service.build_agent(7, "Huquqshunos agent kerak"))
+            self.assertEqual(changed, ["lawyer-test"])
+            self.assertIn("create_agent", seen["preapproved"])
+            self.assertIn("Huquqshunos agent kerak", seen["text"])
+            self.assertNotIn("create_agent", brain.preapproved)
+            bot = TelegramBot()
+            bot.owner_id = 1
+            bot.app = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+            brain.reload_agents()
+            with patch.object(service, "build_agent", AsyncMock(return_value=(["lawyer-test"], "Tayyor"))):
+                asyncio.run(bot.build_requested_agent({"id": 7, "uid": 42, "text": "Huquqshunos agent kerak"}))
+            messages = {call.args[0]: call.args[1] for call in bot.app.bot.send_message.await_args_list}
+            self.assertIn("agent tayyor", messages[1])
+            self.assertIn("⚖️ Huquqshunos", messages[42])
+        finally:
+            agents.delete("lawyer-test")
+            brain.reload_agents()
+
     def test_coach_agent_and_improve_skills_are_registered(self):
         from ali.skills import REGISTRY
         coach = agents._parse("murabbiy", (Path(__file__).resolve().parents[1] / "agents" / "murabbiy.md").read_text(encoding="utf-8"))

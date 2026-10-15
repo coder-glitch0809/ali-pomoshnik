@@ -148,6 +148,7 @@ class Brain:
         self.reload_agents()
         agents.on_change(self.reload_agents)
         self.confirm = confirm or (lambda name, args: False)
+        self.preapproved: set[str] = set()  # egasi oldindan tasdiqlagan bir martalik amallar (masalan create_agent)
         self.lock = threading.Lock()
         self.effort = config.effort
         self.new_session(persist=False)
@@ -357,7 +358,9 @@ class Brain:
         if mode == 'deny':
             permissions.audit(name, 'blocked')
             return "Bu amal Ruxsatlar bo‘limida taqiqlangan.", True
-        if mode == 'ask' and not self.confirm(name, args):
+        if mode == 'ask' and name in self.preapproved:
+            self.preapproved.discard(name)  # bir marta: tasdiqlangan so'rov uchun
+        elif mode == 'ask' and not self.confirm(name, args):
             permissions.audit(name, 'declined')
             return "Foydalanuvchi bu amalni rad etdi.", True
         try:

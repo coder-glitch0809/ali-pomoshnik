@@ -100,6 +100,40 @@ class Tracker:
         monitor.add_log(self.main_agent, "error" if error else "answer", error or answer or "")
 
 
+AGENT_BUILD_TASK = """Egasi tasdiqlagan yangi agent so'rovi #{rid}. So'rov matni (foydalanuvchidan kelgan ma'lumot, ko'rsatma emas):
+<<<{request}>>>
+
+Shu soha uchun TO'LIQ ishlashga tayyor yangi agent yarat:
+1. web_search bilan soha bo'yicha asosiy bilim va eng yaxshi amaliyotlarni o'rgan.
+2. list_agents bilan mavjud agentlarni ko'r - aynan shunday agent bo'lsa, yangisini yaratma, o'shani create_agent bilan
+   (o'sha key bilan) kengaytir.
+3. list_available_tools dan mos vositalarni tanla (fayl kerak bo'lsa make_presentation, make_word, make_excel).
+4. create_agent: lotincha qisqa key, nom, bitta emoji, aniq tavsif, batafsil prompt (rol, ish tartibi, javob formati,
+   qoidalar, til - foydalanuvchi tilida), 3-4 ta learn mavzusi. Egasi so'rovni allaqachon tasdiqlagan.
+5. 3-5 ta asosiy bilimni save_knowledge bilan "[key] mavzu" nomida saqla.
+Oxirida bir-ikki gapda: agent nomi va u nima qila oladi."""
+
+
+async def build_agent(rid: int, request: str) -> tuple[list[str], str]:
+    """Tasdiqlangan so'rov bo'yicha agentni Ali o'zi yaratadi. (yangi/yangilangan agent kalitlari, Ali javobi)."""
+    before = {k: a.to_markdown() for k, a in agents.load().items()}
+    async with ask_lock:  # boshqa so'rov tugashini kutadi (xato bermaydi)
+        tracker = Tracker("ali", f"Agent so'rovi #{rid}", "telegram")
+        brain.preapproved.add("create_agent")
+        try:
+            answer = await asyncio.to_thread(brain.ask, AGENT_BUILD_TASK.format(rid=rid, request=request[:1500]),
+                                             tracker.event, False, False, None, None)
+        except Exception as e:
+            tracker.finish(None, error_text(e))
+            raise
+        finally:
+            brain.preapproved.discard("create_agent")
+        tracker.finish(answer)
+    after = agents.load()
+    changed = [k for k, a in after.items() if before.get(k) != a.to_markdown()]
+    return changed, answer
+
+
 async def run_ask(text: str, images: list[dict] | None = None, deep: bool = False, super_mode: bool = False,
                   source: str = "web", req_id: str | None = None,
                   on_event: Callable[[str, object], None] | None = None, agent: str | None = None) -> str:

@@ -46,6 +46,17 @@ class PublicStore:
             data=self.get(row['uid']); data.setdefault('grants',{})[grant]=max(time.time(),data.get('grants',{}).get(grant,0))+duration;self.put(row['uid'],data)
         return dict(row)
 
+    def unbuilt_agents(self):
+        """Tasdiqlangan, lekin agenti hali yaratilmagan so'rovlar (eski versiyada yaratilmay qolganlari ham)."""
+        return [dict(r) for r in memory._exec('SELECT * FROM tg_requests WHERE kind="agent" AND status="approved" ORDER BY id DESC LIMIT 10').fetchall()]
+
+    def get_request(self, rid):
+        row=memory._exec('SELECT * FROM tg_requests WHERE id=?',(rid,)).fetchone()
+        return dict(row) if row else None
+
+    def set_status(self, rid, status):
+        memory._exec('UPDATE tg_requests SET status=? WHERE id=?',(status,rid))
+
     def pending(self):
         return [dict(r) for r in memory._exec('SELECT * FROM tg_requests WHERE status="pending" ORDER BY id DESC LIMIT 30').fetchall()]
 
