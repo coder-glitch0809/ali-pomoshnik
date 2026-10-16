@@ -112,9 +112,20 @@ class RuntimeTests(unittest.TestCase):
         ctx=SimpleNamespace(bot=SimpleNamespace(set_chat_menu_button=AsyncMock()))
         asyncio.run(bot.public_start(update,ctx))
         self.assertTrue(bot.public.get(108)['subscribed'])
-        self.assertIn('10 ta',message.reply_text.call_args.args[0])
+        self.assertIn(f'{config.free_daily_questions} ta',message.reply_text.call_args.args[0])
         self.assertNotIn('/login',message.reply_text.call_args.args[0])
         self.assertEqual(ctx.bot.set_chat_menu_button.call_args.kwargs['menu_button'].type,'commands')
+
+    def test_public_trading_signal_shows_payment_without_ai_or_quota(self):
+        from types import SimpleNamespace
+        bot=TelegramBot();bot.owner_id=999
+        message=SimpleNamespace(reply_text=AsyncMock())
+        update=SimpleNamespace(effective_chat=SimpleNamespace(type='private'),effective_user=SimpleNamespace(id=109,first_name='Trader'),effective_message=message,message=message)
+        with patch.object(bot,'classify_guest',new=AsyncMock()) as classify,patch.object(bot,'guest_reply',new=AsyncMock()) as reply:
+            asyncio.run(bot.public_process(update,SimpleNamespace(),'BTCUSDT signal bering'))
+        classify.assert_not_called();reply.assert_not_called()
+        self.assertIn(config.telegram_payment_text,message.reply_text.call_args.args[0])
+        self.assertEqual(bot.public.get(109).get('count',0),0)
 
     def test_public_weather_only_once_per_day(self):
         from types import SimpleNamespace
@@ -742,7 +753,14 @@ class RuntimeTests(unittest.TestCase):
                 self.assertNotIn("web_search", [t["name"] for t in captured["tools"]])
                 self.assertIn("test_sevimli_rang", captured["system"])
                 permissions.save({"web_search": "auto"}, brain.registry)
+                # Oddiy vazifada tashqi qidiruv yo'q - faqat agent yaratish/to'ldirishda
                 brain._run_agent({"agent": "yangiliklar", "task": "yangilik"}, lambda *a: None)
+                self.assertNotIn("web_search", [t["name"] for t in captured["tools"]])
+                brain.research = True
+                try:
+                    brain._run_agent({"agent": "yangiliklar", "task": "yangilik"}, lambda *a: None)
+                finally:
+                    brain.research = False
                 self.assertIn("web_search", [t["name"] for t in captured["tools"]])
         finally:
             memory.delete_fact("test_sevimli_rang")
@@ -874,31 +892,20 @@ class RuntimeTests(unittest.TestCase):
                 self.assertIs(ask.call_args.args[3], True)
                 self.assertIsNone(ask.call_args.args[5])
 
-    def test_super_mode_consults_models_before_ali_answers(self):
+    def test_only_claude_answers_and_web_search_only_for_agent_build(self):
         from types import SimpleNamespace
         from anthropic.types import TextBlock
-        response = SimpleNamespace(stop_reason="end_turn", content=[TextBlock(type="text", text="Ali javobi")])
+        response = SimpleNamespace(stop_reason="end_turn", content=[TextBlock(type="text", text="Toshkent")])
         b = Brain()
-        events = []
-        with patch("ali.brain.providers.available", return_value={"openai": True}), \
-                patch("ali.brain.providers.ask_all", return_value={"GPT": "Tekshiriladigan maslahat"}) as experts, \
-                patch.object(b, "_call", return_value=response):
-            self.assertEqual(b.ask("Reja tuz", on_event=lambda k, d: events.append((k, d)), super_mode=True), "Ali javobi")
-        experts.assert_called_once()
-        self.assertIn("Reja tuz", experts.call_args.args[0])
-        self.assertEqual(events[0][0], "tool_start")
-        self.assertEqual(events[1][0], "tool_end")
-        self.assertIn("Tekshiriladigan maslahat", b.messages[-2]["content"])
-
-    def test_super_mode_advisor_failure_does_not_block_ali(self):
-        from types import SimpleNamespace
-        from anthropic.types import TextBlock
-        response = SimpleNamespace(stop_reason="end_turn", content=[TextBlock(type="text", text="Ali davom etdi")])
-        b = Brain()
-        with patch("ali.brain.providers.available", return_value={"gemini": True}), \
-                patch("ali.brain.providers.ask_all", return_value={"Gemini": "[xato: unavailable]"}), \
-                patch.object(b, "_call", return_value=response):
-            self.assertEqual(b.ask("Salom", super_mode=True), "Ali davom etdi")
+        with patch.object(config, "web_search", True):
+            b.reload_agents()
+        self.assertNotIn("consult_experts", b.registry)
+        with patch.object(b, "_call", return_value=response) as call:
+            self.assertEqual(b.ask("O'zbekiston poytaxti qayer?", super_mode=True), "Toshkent")
+            self.assertNotIn("web_search", [t["name"] for t in call.call_args.kwargs["tools"]])
+            b.ask("Huquqshunos agent yarat", super_mode=True)
+            self.assertIn("web_search", [t["name"] for t in call.call_args.kwargs["tools"]])
+        self.assertEqual(call.call_count, 2)  # boshqa model (Gemini) chaqirilmaydi
 
 
 if __name__ == "__main__":

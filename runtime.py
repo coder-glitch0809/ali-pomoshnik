@@ -141,8 +141,7 @@ async def status(request: Request):
         "user": config.user_name,
         "models": {
             "claude": config.model,
-            "openai": config.openai_model if config.openai_api_key else None,
-            "gemini": config.gemini_model if config.gemini_api_key else None,
+            "gemini": "ovoz va rasm" if config.gemini_api_key else None,
         },
         "devices": hub.summary(),
         "agents": [a.summary() for a in brain.agents.values()],
@@ -292,7 +291,7 @@ async def transcribe(request: Request, file: UploadFile = File(...)):
     if not is_authed(request.cookies):
         return JSONResponse({}, status_code=401)
     if not providers.can_transcribe():
-        return JSONResponse({"error": "OPENAI_API_KEY yoki GEMINI_API_KEY yo'q"}, status_code=400)
+        return JSONResponse({"error": "GEMINI_API_KEY yo'q"}, status_code=400)
     data = await file.read()
     text = await asyncio.to_thread(providers.transcribe, data, file.filename or "audio.webm")
     return {"text": text}

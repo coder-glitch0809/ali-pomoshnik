@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const $=id=>document.getElementById(id);
-  const groups={pc:'Kompyuter',system:'Tizim',projects:'Loyiha fayllari',coding:'Dasturlash',github:'GitHub',vercel:'Vercel',instagram:'Instagram',phone:'Telefon va joylashuv',knowledge:'Bilimlar va Vault',memory_skills:'Shaxsiy xotira',reminders:'Eslatmalar',agent_admin:'Agentlar boshqaruvi',autopilot_skills:'Avtomatik o‘rganish',experts:'Maslahatchilar',market:'Bozor ma’lumotlari'};
+  const groups={pc:'Kompyuter',system:'Tizim',projects:'Loyiha fayllari',coding:'Dasturlash',github:'GitHub',vercel:'Vercel',instagram:'Instagram',phone:'Telefon va joylashuv',knowledge:'Bilimlar va Vault',memory_skills:'Shaxsiy xotira',reminders:'Eslatmalar',agent_admin:'Agentlar boshqaruvi',autopilot_skills:'Avtomatik o‘rganish',market:'Bozor ma’lumotlari'};
   const modes={auto:'Avtomatik',ask:'Tasdiq so‘rasin',deny:'Taqiqlangan'};
   let tools=[],rules={},dirty=false,loaded=false;
   const node=(tag,text,cls)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;};

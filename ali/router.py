@@ -88,6 +88,19 @@ def is_design(text: str) -> bool:
                for w in DESIGN_WORDS)
 
 
+AGENT_WORDS = ("agent", "агент")
+AGENT_BUILD_ACTIONS = ("yarat", "ярат", "qo'sh", "қўш", "кўш", "to'ldir", "тўлдир", "толдир", "toldir", "o'rgat", "ўргат",
+                       "orgat", "yangila", "янгила", "kengaytir", "кенгайтир", "bilim", "билим", "создай", "создать",
+                       "сделай", "добав", "заполн", "обуч", "научи", "обнов", "create", "build", "train", "teach", "add")
+
+
+def is_agent_build(text: str) -> bool:
+    """Agent yaratish yoki agentga bilim to'ldirish so'ralganmi. Faqat shunda tashqi manbalar (web_search, Gemini)
+    ishlatiladi; oddiy savollarga Claude o'z bilimidan javob beradi."""
+    low = text.lower()
+    return any(w in low for w in AGENT_WORDS) and any(a in low for a in AGENT_BUILD_ACTIONS)
+
+
 def hint(text: str, team: dict) -> str:
     """Ali'ga beriladigan yo'naltirish ko'rsatmasi ('' - maxsus yo'naltirish kerak emas)."""
     lang = language(text)

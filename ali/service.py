@@ -122,7 +122,7 @@ async def build_agent(rid: int, request: str) -> tuple[list[str], str]:
         brain.preapproved.add("create_agent")
         try:
             answer = await asyncio.to_thread(brain.ask, AGENT_BUILD_TASK.format(rid=rid, request=request[:1500]),
-                                             tracker.event, False, False, None, None)
+                                             tracker.event, False, True, None, None, True)
         except Exception as e:
             tracker.finish(None, error_text(e))
             raise

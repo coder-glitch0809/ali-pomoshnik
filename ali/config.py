@@ -33,19 +33,14 @@ class Config:
     # Suhbat shuncha xabardan oshsa, yangi suhbat boshlanadi (uzoq xotira saqlanadi)
     # Ommaviy bot tariflari: bepul - arzon tez model, Pro (pullik) - asosiy model va ko'proq rasm
     free_model: str = field(default_factory=lambda: _env("FREE_MODEL", "claude-haiku-5-5"))
-    free_daily_questions: int = field(default_factory=lambda: int(_env("FREE_DAILY_QUESTIONS", "10")))
+    free_daily_questions: int = field(default_factory=lambda: int(_env("FREE_DAILY_QUESTIONS", "3")))
     pro_daily_questions: int = field(default_factory=lambda: int(_env("PRO_DAILY_QUESTIONS", "100")))
     free_daily_images: int = field(default_factory=lambda: int(_env("FREE_DAILY_IMAGES", "3")))
     pro_daily_images: int = field(default_factory=lambda: int(_env("PRO_DAILY_IMAGES", "30")))
     max_history_messages: int = field(default_factory=lambda: int(_env("MAX_HISTORY_MESSAGES", "80")))
 
-    # Maslahatchi modellar ("super miya")
-    openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
-    openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5"))
-    openai_transcribe_model: str = field(default_factory=lambda: _env("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-transcribe"))
+    # Gemini: faqat ovozni matnga aylantirish va rasm (Claude qila olmaydigan ishlar)
     gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY"))
-    gemini_model: str = field(default_factory=lambda: _env("GEMINI_MODEL", "gemini-pro-latest"))
-    openai_image_model: str = field(default_factory=lambda: _env("OPENAI_IMAGE_MODEL", "gpt-image-1"))
     gemini_image_model: str = field(default_factory=lambda: _env("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"))
     gemini_fast_model: str = field(default_factory=lambda: _env("GEMINI_FAST_MODEL", "gemini-flash-latest"))
 
@@ -91,7 +86,7 @@ class Config:
     projects_dirs: list[Path] = field(default_factory=lambda: [
         Path(p.strip()) for p in (_env("PROJECTS_DIRS") or str(ROOT.parent)).split(";") if p.strip()
     ])
-    # Claude Code / Codex CLI vazifasi uchun maksimal vaqt (daqiqa)
+    # Claude Code CLI vazifasi uchun maksimal vaqt (daqiqa)
     code_task_minutes: int = field(default_factory=lambda: int(_env("CODE_TASK_MINUTES", "30")))
 
     # Avtopilot: o'z-o'zini o'rgatish va loyihalarni kuzatish

@@ -14,6 +14,9 @@ from .telegram_store import PublicStore, TZ
 
 log=logging.getLogger('ali.telegram.public')
 MENU=[['💬 Savol berish','✍️ Kontent'],['🎨 Rasm yaratish','📈 Treyding signallari'],['🌤 Ob-havo','🧩 Agent so‘rash'],['👥 Agentlar','⭐ Pro'],['⚙️ Sozlamalar']]
+# Treyding signali so'rovi: AI chaqirmasdan va bepul limitni sarflamasdan darhol to'lov ko'rsatiladi
+TRADING_WORDS=('signal','сигнал','treyd','trade','трейд','трэйд','treding','usdt','btc','eth','bitcoin','биткоин','xauusd','eurusd','фьючерс','futures')
+TRADING_SHORT={'btc','eth'}  # faqat alohida so'z bo'lsa ("method", "ethics" emas)
 REGIONS={'Toshkent':(41.31,69.28),'Andijon':(40.78,72.34),'Buxoro':(39.77,64.42),'Farg‘ona':(40.39,71.79),'Jizzax':(40.12,67.84),'Xorazm':(41.55,60.63),'Navoiy':(40.1,65.37),'Namangan':(41.0,71.67),'Qashqadaryo':(38.86,65.79),'Samarqand':(39.65,66.96),'Sirdaryo':(40.49,68.78),'Surxondaryo':(37.23,67.28),'Toshkent viloyati':(41.0,69.0),'Qoraqalpog‘iston':(42.46,59.61)}
 
 
@@ -182,7 +185,7 @@ class PublicTelegram:
         if text in {'🏠 Bosh menyu','/menu'}:await self.public_start(update,ctx);return True
         if text=='🌤 Ob-havo':await self.weather_menu(update);return True
         if text=='📈 Treyding signallari':
-            if uid==self.owner_id or data.get('grants',{}).get('trading',0)>time.time():
+            if self.has_trading(uid):
                 data['intent']='trading';self.public.put(uid,data)
                 await update.effective_message.reply_text('Bozor juftligini yozing, masalan BTCUSDT yoki ETHUSDT. Tahlil kafolatlangan daromad emas.')
             else:await self.subscription_menu(update)
@@ -205,8 +208,15 @@ class PublicTelegram:
         data=self.public.get(update.effective_user.id);data['history']=[];data.pop('intent',None);self.public.put(update.effective_user.id,data)
         await update.effective_message.reply_text('Ommaviy suhbat tarixi tozalandi.')
 
+    def is_trading(self,text):
+        low=text.lower()
+        return any(re.search(r'(?<![a-zа-яё])'+re.escape(w)+(r'(?![a-zа-яё])' if w in TRADING_SHORT else ''),low) for w in TRADING_WORDS)
+
+    def has_trading(self,uid):
+        return uid==self.owner_id or self.public.get(uid).get('grants',{}).get('trading',0)>time.time()
+
     async def subscription_menu(self,update):
-        await update.effective_message.reply_text('📈 Treyding obunasi\n\n7 kun — 40 000 so‘m\n30 kun — 100 000 so‘m\n\nTarifni tanlang: administrator to‘lov bo‘yicha siz bilan bog‘lanadi. Obuna faqat to‘lov tekshirilgach yoqiladi. Natijalar va foyda kafolatlanmaydi.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('7 kun · 40 000 so‘m',callback_data='pub:plan:week')],[InlineKeyboardButton('30 kun · 100 000 so‘m',callback_data='pub:plan:month')]]))
+        await update.effective_message.reply_text('📈 Treyding signallari — pullik xizmat\n\n7 kun — 40 000 so‘m\n30 kun — 100 000 so‘m\n\n💳 '+config.telegram_payment_text+'\n\nTarifni tanlang: administrator to‘lovni tekshirgach obuna darhol yoqiladi. Natijalar va foyda kafolatlanmaydi.',reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('7 kun · 40 000 so‘m',callback_data='pub:plan:week')],[InlineKeyboardButton('30 kun · 100 000 so‘m',callback_data='pub:plan:month')]]))
 
     def tier(self,uid):
         """Pro (pullik) yoki bepul. Egasi doim Pro."""
@@ -276,6 +286,8 @@ class PublicTelegram:
         uid=update.effective_user.id
         if uid in self.public_busy:await update.message.reply_text('Oldingi savolingizga javob tayyorlanmoqda.');return
         if len(text)>6000:await update.message.reply_text('Iltimos, xabarni 6000 belgidan qisqaroq yuboring.');return
+        if not self.has_trading(uid) and (self.public.get(uid).get('intent')=='trading' or self.is_trading(text)):
+            await self.subscription_menu(update);return
         limit=config.pro_daily_questions if self.tier(uid) else config.free_daily_questions
         if not self.public.quota(uid,limit):
             if self.tier(uid):await update.message.reply_text(f'Bugungi {limit} ta so‘rov limiti tugadi. Ertaga yana kutamiz.')

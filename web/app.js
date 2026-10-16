@@ -250,9 +250,9 @@
     }
     function stopWake() { if (mode === 'wake' && rec) { mode = null; try { rec.abort(); } catch { /* */ } } }
 
-    // Brauzer tanimasa: yozib, serverga (OpenAI) yuborish
+    // Brauzer tanimasa: yozib, serverga (Gemini) yuborish
     async function startServerRecording() {
-      if (!status.server_stt) { toast('Ovozni tanish uchun Chrome yoki OPENAI_API_KEY kerak'); return; }
+      if (!status.server_stt) { toast('Ovozni tanish uchun Chrome yoki GEMINI_API_KEY kerak'); return; }
       if (mediaRec) { mediaRec.stop(); return; }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -319,7 +319,7 @@
   // ---------- Suhbat lentasi ----------
   const turns = new Map();
   const TOOL_NAMES = {
-    web_search: 'Internetdan qidirish', consult_experts: 'GPT + Gemini maslahati', run_powershell: 'PowerShell',
+    web_search: 'Internetdan qidirish', run_powershell: 'PowerShell',
     take_screenshot: 'Ekran rasmi', get_weather: 'Ob-havo', get_my_location: 'Joylashuv', open_application: 'Ilova ochish',
     open_website: 'Sayt ochish', instagram_analytics: 'Instagram analitika', instagram_competitor: 'Raqobatchi tahlili',
     instagram_comments: 'Izohlar', save_knowledge: 'Bilimni saqlash', search_knowledge: 'Bilimlar bazasi',
@@ -329,7 +329,7 @@
     project_git_status: 'Git holati', write_project_file: 'Faylga yozish', run_in_project: 'Loyihada buyruq', open_in_vscode: 'VS Code’da ochish',
     github_repos: 'GitHub repolar', github_repo: 'GitHub repo', github_read: 'GitHub fayl', github_issues: 'GitHub issue',
     github_create_issue: 'Issue ochish', github_clone: 'Repo klonlash', vercel_projects: 'Vercel loyihalar', vercel_deployments: 'Vercel deploylar',
-    vercel_logs: 'Vercel loglar', vercel_redeploy: 'Qayta deploy', code_task: 'Claude Code / Codex', code_task_status: 'Kod vazifasi holati',
+    vercel_logs: 'Vercel loglar', vercel_redeploy: 'Qayta deploy', code_task: 'Claude Code', code_task_status: 'Kod vazifasi holati',
     coding_tools_status: 'Kod agentlari', create_agent: 'Agent yaratish', delete_agent: 'Agent o‘chirish', list_agents: 'Agentlar',
     list_available_tools: 'Vositalar ro‘yxati', learn_now: 'O‘z-o‘zini o‘qitish', check_trading_projects: 'Treyding loyihalari tekshiruvi',
     instagram_accounts: 'Instagram akkauntlar', list_knowledge_topics: 'Bilim mavzulari', list_facts: 'Faktlar', forget_fact: 'Unutish',
@@ -633,7 +633,7 @@
       unlockAudio();
       const name = b.dataset.mode;
       setMode(name, !modes[name]);
-      const labels = { deep: ['Chuqur fikrlash yoqildi', 'Tezkor rejim'], super: ['Super miya: Claude + GPT + Gemini', 'Faqat Claude'],
+      const labels = { deep: ['Chuqur fikrlash yoqildi', 'Tezkor rejim'], super: ['Faqat Claude', 'Faqat Claude'],
         voice: ['Javoblar ovoz bilan o‘qiladi', 'Ovoz o‘chirildi'], wake: [`“${status.wake_words[0]}” deb chaqiring`, 'Doimiy tinglash o‘chdi'] };
       toast(labels[name][modes[name] ? 0 : 1]);
       if (name === 'voice' && !modes.voice) stopSpeaking();
@@ -768,7 +768,7 @@
       <div class="tile"><span>Eslab qolingan fakt</span><b>${status.facts}</b></div>
       <div class="tile"><span>O‘rganilgan mavzu</span><b>${status.knowledge}</b></div>
       <div class="tile"><span>Asosiy miya</span><b class="small">${esc(status.models.claude)}</b></div>
-      <div class="tile"><span>Maslahatchilar</span>${onOff([status.models.openai, status.models.gemini].filter(Boolean).join(' · '), [status.models.openai, status.models.gemini].filter(Boolean).join(' · '))}</div>
+      <div class="tile"><span>Gemini</span>${onOff(status.models.gemini, status.models.gemini)}</div>
       <div class="tile"><span>Telegram bot</span>${onOff(status.telegram, 'ulangan')}</div>
       <div class="tile"><span>Ovoz</span><b class="small">${esc(status.voice || '—')}</b></div>
       <div class="tile"><span>Instagram</span>${onOff(status.instagram.length, status.instagram.join(', '))}</div>`;

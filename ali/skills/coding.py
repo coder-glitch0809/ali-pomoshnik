@@ -1,8 +1,7 @@
-"""Kod yozuvchi agentlar: Claude Code va OpenAI Codex CLI orqali loyihada vazifa bajarish.
+"""Kod yozuvchi agentlar: Claude Code CLI orqali loyihada vazifa bajarish.
 
 Vazifa fonda ishlaydi (uzoq bo'lishi mumkin); tugagach telefon/Telegramga xabar keladi.
 O'rnatish:  npm install -g @anthropic-ai/claude-code   (keyin bir marta: claude  -> kirish)
-            npm install -g @openai/codex               (keyin bir marta: codex login)
 """
 import shutil
 import subprocess
@@ -22,12 +21,9 @@ TASKS: dict[str, dict] = {}
 COMMANDS = {
     # Claude Code: fayllarni o'zgartirishga ruxsat, buyruqlar esa so'ralmaydi (xavfsiz rejim)
     "claude": ["-p", "--output-format", "text", "--permission-mode", "acceptEdits"],
-    # Codex: faqat loyiha papkasiga yozish huquqi bilan
-    "codex": ["exec", "--full-auto", "-"],
 }
 INSTALL = {
     "claude": "npm install -g @anthropic-ai/claude-code  (keyin terminalda bir marta `claude` deb kiring)",
-    "codex": "npm install -g @openai/codex  (keyin terminalda bir marta `codex login`)",
 }
 
 
@@ -58,12 +54,12 @@ def _run(task: dict, exe: str) -> None:
 
 @skill(
     description=(
-        "Loyihada dasturlash vazifasini Claude Code yoki Codex agentiga topshiradi: yangi funksiya yozish, xatoni tuzatish, "
+        "Loyihada dasturlash vazifasini Claude Code agentiga topshiradi: yangi funksiya yozish, xatoni tuzatish, "
         "refaktoring, test yozish, README to'ldirish. Agent loyiha fayllarini o'zi o'qiydi va o'zgartiradi. Vazifa fonda "
         "ishlaydi, tugagach xabar keladi. Vazifani aniq va to'liq yoz (nima, qayerda, qanday natija kerak). Foydalanuvchi tasdiqlaydi."
     ),
     params={
-        "tool": {"type": "string", "enum": ["claude", "codex"], "description": "claude (Claude Code) yoki codex (OpenAI Codex)"},
+        "tool": {"type": "string", "enum": ["claude"], "description": "claude (Claude Code)"},
         "project": {"type": "string", "description": "Loyiha nomi (list_projects)"},
         "task": {"type": "string", "description": "To'liq vazifa matni"},
     },
@@ -71,7 +67,7 @@ def _run(task: dict, exe: str) -> None:
 )
 def code_task(tool: str, project: str, task: str) -> str:
     if tool not in COMMANDS:
-        return "tool: claude yoki codex"
+        return "tool: claude"
     exe = shutil.which(tool)
     if not exe:
         return f"{tool} CLI o'rnatilmagan. O'rnatish: {INSTALL[tool]}"
@@ -85,7 +81,7 @@ def code_task(tool: str, project: str, task: str) -> str:
 
 
 @skill(
-    description="Claude Code / Codex vazifalari holati. task_id berilsa - o'sha vazifa natijasi (log oxiri).",
+    description="Claude Code vazifalari holati. task_id berilsa - o'sha vazifa natijasi (log oxiri).",
     params={"task_id": {"type": "string", "description": "Vazifa ID (ixtiyoriy)"}},
     required=[],
 )
@@ -106,7 +102,7 @@ def code_task_status(task_id: str = "") -> str:
     )
 
 
-@skill(description="Kompyuterda qaysi kod agentlari (Claude Code, Codex) o'rnatilganini tekshiradi.")
+@skill(description="Kompyuterda Claude Code o'rnatilganini tekshiradi.")
 def coding_tools_status() -> str:
     return "\n".join(
         f"- {name}: {'o`rnatilgan (' + shutil.which(name) + ')' if shutil.which(name) else 'yo`q -> ' + INSTALL[name]}"

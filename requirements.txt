@@ -16,7 +16,6 @@ edge-tts
 python-telegram-bot
 
 # Super miya (ixtiyoriy)
-openai
 google-genai
 
 # Terminal ovoz rejimi (main.py --voice, ixtiyoriy)

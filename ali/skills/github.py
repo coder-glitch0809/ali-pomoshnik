@@ -173,7 +173,7 @@ def github_push_file(repo: str, path: str, content: str, message: str, branch: s
 @skill(
     description=(
         "GitHub repozitoriyni kompyuterga klonlaydi (PROJECTS_DIRS dagi birinchi papkaga), shundan keyin uni loyiha "
-        "vositalari, Claude Code yoki Codex bilan o'zgartirish mumkin."
+        "vositalari, Claude Code bilan o'zgartirish mumkin."
     ),
     params={"repo": {"type": "string", "description": "egasi/nomi yoki nomi"}},
 )

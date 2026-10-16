@@ -8,7 +8,7 @@ va Instagram akkauntlaringizni tahlil qilib kontent reja tuzadi.
 
 | | |
 |---|---|
-| **Super miya** | Claude — asosiy miya. "Super miya" rejimida GPT va Gemini fikrini ham so'rab, solishtirib javob beradi |
+| **Super miya** | Claude — asosiy miya. Barcha savol va vazifalarni o'zi bajaradi; Gemini faqat ovozni matnga aylantirish va rasm uchun |
 | **Chuqur fikrlash** | Murakkab vazifalar uchun chuqurroq o'ylash rejimi; fikrlash jarayoni ekranda jonli ko'rinadi |
 | **Veb-sayt** | Telefon va kompyuterda bir xil, Jarvis HUD dizayni, bosh ekranga ilova sifatida o'rnatiladi |
 | **Telegram bot** | Matn, ovozli xabar, rasm, joylashuv; javob matn + ovoz bilan; xavfli amallarni tugma bilan tasdiqlash |
@@ -56,7 +56,7 @@ start.bat          # yoki: python server.py
 Buyruqlar: `/new` yangi suhbat · `/chuqur` · `/super` · `/ovozli` ovozli javob · `/holat` ·
 `/ovoz` `/ovoz_tayyor` `/ovoz_standart` — shaxsiy ovoz.
 
-Ovozli xabarlarni tushunish uchun `OPENAI_API_KEY` yoki `GEMINI_API_KEY` kerak.
+Ovozli xabarlarni tushunish uchun `GEMINI_API_KEY` kerak.
 
 ## O'z ovozingizni qo'yish
 
@@ -92,7 +92,7 @@ ali/
   autopilot.py           O'z-o'zini o'rganish va loyihalarni kuzatish
   monitor.py             Monitoring: ishlar, agentlar statistikasi, jonli lenta
   service.py             Yagona miya va so'rov bajarish (sayt va Telegram uchun umumiy)
-  providers.py           GPT va Gemini, ovozni matnga aylantirish
+  providers.py           Gemini: faqat ovozni matnga aylantirish va rasm
   telegram_bot.py        Telegram bot
   tts.py                 Ovoz: Edge yoki shaxsiy klon (ElevenLabs)
   hub.py                 Ulangan qurilmalar, tasdiqlash, bildirishnomalar
@@ -105,14 +105,13 @@ ali/
     phone.py             Telefonga havola/xabar, joylashuv, ob-havo
     knowledge.py         O'rganish va bilimlar bazasi
     instagram.py         Instagram analitika va raqobatchilar
-    experts.py           GPT + Gemini maslahati
     memory_skills.py     Eslab qolish
     reminders.py         Eslatmalar
     market.py            Kripto narxlari va texnik ko'rsatkichlar (Binance)
     projects.py          Kompyuterdagi loyihalar (VS Code)
     github.py            GitHub
     vercel.py            Vercel
-    coding.py            Claude Code va Codex vazifalari
+    coding.py            Claude Code vazifalari
     agent_admin.py       Agent yaratish/tahrirlash
     autopilot_skills.py  Avtopilotni qo'lda ishga tushirish
   voice/                 Terminal rejimi uchun mikrofon va karnay
@@ -144,7 +143,7 @@ Agent — o'z roli, ko'rsatmasi, vositalari va bilimlariga ega mutaxassis. Tayyo
 
 | Agent | Fayl | Nima qiladi |
 |---|---|---|
-| 👨‍💻 Dasturchi | `dasturchi.md` | Kompyuterdagi (VS Code), GitHub va Vercel loyihalari: kodni o'qish, xato tuzatish, deploy tekshirish, Claude Code / Codex'ga vazifa |
+| 👨‍💻 Dasturchi | `dasturchi.md` | Kompyuterdagi (VS Code), GitHub va Vercel loyihalari: kodni o'qish, xato tuzatish, deploy tekshirish, Claude Code'ga vazifa |
 | 📈 Treyder | `treyder.md` | Bozor tahlili (Binance, RSI/SMA/ATR), savdo rejasi, risk; treyding loyihalaringiz kodini tahlil qiladi |
 | 🎬 Kontent-meyker | `kontent.md` | Reels ssenariylari, hook, post matni, kontent-reja, Instagram tahlili |
 | 💻 Учитель информатики | `informatika.md` | Ruscha ishlaydi: dasturlash va informatikani o'rgatish; dars rejasi, test, topshiriqlar |
@@ -168,21 +167,20 @@ o'rganish: O'zbekiston qonunchiligidagi yangi o'zgarishlar; sud amaliyoti
 Sen tajribali huquqshunossan... (agentning to'liq ko'rsatmasi)
 ```
 
-## Dasturlash: GitHub, Vercel, VS Code, Claude Code, Codex
+## Dasturlash: GitHub, Vercel, VS Code, Claude Code
 
 `.env` ga yozing:
 - `GITHUB_TOKEN` — https://github.com/settings/tokens → Fine-grained token → *All repositories*; ruxsatlar: Contents, Issues, Pull requests, Actions — *Read and write*.
 - `VERCEL_TOKEN` — https://vercel.com/account/tokens (jamoa loyihalari uchun `VERCEL_TEAM_ID` ham).
 - `PROJECTS_DIRS` — loyihalar papkalari (`;` bilan). Bo'sh bo'lsa: Ali turgan papkaning ota papkasi + VS Code'da ochilgan papkalar.
 
-Kod yozuvchi agentlar (ixtiyoriy) — terminalda:
+Kod yozuvchi agent (ixtiyoriy) — terminalda:
 
 ```
 npm install -g @anthropic-ai/claude-code
-npm install -g @openai/codex
 ```
 
-Keyin bir marta `claude` (kirish) va `codex login`. Shundan so'ng Dasturchi katta vazifalarni ularga topshiradi —
+Keyin bir marta `claude` (kirish). Shundan so'ng Dasturchi katta vazifalarni unga topshiradi —
 vazifa fonda ishlaydi, tugagach telefonga/Telegramga xabar keladi. Faylni yozish, buyruq bajarish, issue ochish,
 redeploy kabi amallar har doim sizdan tasdiq so'raydi.
 

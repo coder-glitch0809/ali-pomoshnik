@@ -1,25 +1,14 @@
-"""Qo'shimcha AI modellari: OpenAI (GPT) va Google Gemini.
+"""Google Gemini - faqat Claude qila olmaydigan ishlar uchun: ovozni matnga aylantirish va rasm yaratish.
 
-Claude - asosiy miya (vositalar bilan ishlaydi). GPT va Gemini - maslahatchilar:
-Claude ularning fikrini so'raydi, solishtiradi va yakuniy javobni beradi.
+Savollarga javob, tahlil va agentlar - hammasi Claude'da.
 """
 import logging
-from concurrent.futures import ThreadPoolExecutor
 
 from .config import config
 
 log = logging.getLogger("ali.providers")
 
-_openai = None
 _gemini = None
-
-
-def _openai_client():
-    global _openai
-    if _openai is None:
-        from openai import OpenAI
-        _openai = OpenAI(api_key=config.openai_api_key)
-    return _openai
 
 
 def _gemini_client():
@@ -30,85 +19,41 @@ def _gemini_client():
     return _gemini
 
 
-def available() -> dict[str, bool]:
-    return {"openai": bool(config.openai_api_key), "gemini": bool(config.gemini_api_key)}
-
-
-def ask_openai(prompt: str) -> str:
-    response = _openai_client().responses.create(model=config.openai_model, input=prompt)
-    return response.output_text
-
-
-def ask_gemini(prompt: str) -> str:
-    response = _gemini_client().models.generate_content(model=config.gemini_model, contents=prompt)
-    return response.text or ""
-
-
-def ask_all(prompt: str) -> dict[str, str]:
-    """Mavjud barcha maslahatchilarga parallel so'rov yuboradi."""
-    jobs = {}
-    if config.openai_api_key:
-        jobs[f"GPT ({config.openai_model})"] = ask_openai
-    if config.gemini_api_key:
-        jobs[f"Gemini ({config.gemini_model})"] = ask_gemini
-    results: dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=len(jobs) or 1) as pool:
-        futures = {name: pool.submit(fn, prompt) for name, fn in jobs.items()}
-        for name, future in futures.items():
-            try:
-                results[name] = future.result(timeout=180)
-            except Exception as e:
-                log.exception("%s xatosi", name)
-                results[name] = f"[xato: {e}]"
-    return results
-
-
 MIME = {"webm": "audio/webm", "ogg": "audio/ogg", "oga": "audio/ogg", "mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4"}
 
 
 def can_transcribe() -> bool:
-    return bool(config.openai_api_key or config.gemini_api_key)
+    return bool(config.gemini_api_key)
 
 
 def transcribe(audio: bytes, filename: str = "audio.webm") -> str:
-    """Ovozni matnga aylantiradi (brauzer tanimasa va Telegram ovozli xabarlari uchun).
-    Avval OpenAI, bo'lmasa Gemini ishlatiladi."""
-    if config.openai_api_key:
-        result = _openai_client().audio.transcriptions.create(
-            model=config.openai_transcribe_model, file=(filename, audio), language="uz"
-        )
-        return result.text
-    if config.gemini_api_key:
-        from google.genai import types
+    """Ovozni matnga aylantiradi (brauzer tanimasa va Telegram ovozli xabarlari uchun) - Gemini orqali."""
+    if not config.gemini_api_key:
+        raise RuntimeError("Ovozni tanish uchun GEMINI_API_KEY kerak")
+    from google.genai import types
 
-        mime = MIME.get(filename.rsplit(".", 1)[-1].lower(), "audio/ogg")
-        response = _gemini_client().models.generate_content(
-            model=config.gemini_fast_model,
-            contents=[
-                types.Part.from_bytes(data=audio, mime_type=mime),
-                "Bu audioni so'zma-so'z matnga yoz (asosan o'zbek tilida). Faqat matnni qaytar, boshqa hech narsa yozma.",
-            ],
-        )
-        return (response.text or "").strip()
-    raise RuntimeError("Ovozni tanish uchun OPENAI_API_KEY yoki GEMINI_API_KEY kerak")
+    mime = MIME.get(filename.rsplit(".", 1)[-1].lower(), "audio/ogg")
+    response = _gemini_client().models.generate_content(
+        model=config.gemini_fast_model,
+        contents=[
+            types.Part.from_bytes(data=audio, mime_type=mime),
+            "Bu audioni so'zma-so'z matnga yoz (asosan o'zbek tilida). Faqat matnni qaytar, boshqa hech narsa yozma.",
+        ],
+    )
+    return (response.text or "").strip()
 
 
 def can_generate_image() -> bool:
-    return bool(config.openai_api_key or config.gemini_api_key)
+    return bool(config.gemini_api_key)
 
 
 def generate_image(prompt: str) -> bytes:
-    """Matn bo'yicha rasm (PNG bayt). Avval OpenAI, bo'lmasa Gemini."""
-    if config.openai_api_key:
-        import base64
-
-        result = _openai_client().images.generate(model=config.openai_image_model, prompt=prompt[:4000], size="1024x1024")
-        return base64.b64decode(result.data[0].b64_json)
-    if config.gemini_api_key:
-        response = _gemini_client().models.generate_content(model=config.gemini_image_model, contents=prompt[:4000])
-        for candidate in response.candidates or []:
-            for part in candidate.content.parts or []:
-                if getattr(part, "inline_data", None) and part.inline_data.data:
-                    return part.inline_data.data
-        raise RuntimeError("Gemini rasm qaytarmadi")
-    raise RuntimeError("Rasm uchun OPENAI_API_KEY yoki GEMINI_API_KEY kerak")
+    """Matn bo'yicha rasm (PNG bayt) - Gemini orqali."""
+    if not config.gemini_api_key:
+        raise RuntimeError("Rasm uchun GEMINI_API_KEY kerak")
+    response = _gemini_client().models.generate_content(model=config.gemini_image_model, contents=prompt[:4000])
+    for candidate in response.candidates or []:
+        for part in candidate.content.parts or []:
+            if getattr(part, "inline_data", None) and part.inline_data.data:
+                return part.inline_data.data
+    raise RuntimeError("Gemini rasm qaytarmadi")

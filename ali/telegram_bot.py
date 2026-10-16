@@ -30,7 +30,7 @@ USERS_FILE = config.data_dir / "telegram_users.json"
 LIMIT = 4000
 
 TOOL_LABELS = {
-    "web_search": "🌐 Internetdan qidirish", "consult_experts": "✦ GPT + Gemini maslahati",
+    "web_search": "🌐 Internetdan qidirish",
     "run_powershell": "💻 PowerShell", "take_screenshot": "🖥 Ekran rasmi", "get_weather": "⛅ Ob-havo",
     "get_my_location": "📍 Joylashuv", "open_application": "🚀 Ilova ochish", "open_website": "🔗 Sayt ochish",
     "instagram_analytics": "📊 Instagram analitika", "instagram_competitor": "🔍 Raqobatchi tahlili",
@@ -304,7 +304,7 @@ class TelegramBot(PublicTelegram, Listener):
             await query.answer("Ruxsat yo'q")
             return
         await query.answer("Agentlarni Ali boshqaradi")
-        await query.edit_message_text("Topshiriqni Aliga yozing. Super miya doim yoqilgan.")
+        await query.edit_message_text("Topshiriqni Aliga yozing.")
 
     async def cmd_status(self, update: Update, ctx):
         if not await self._guard(update):
@@ -313,8 +313,7 @@ class TelegramBot(PublicTelegram, Listener):
         p = self.pref(update.effective_chat.id)
         await update.message.reply_text(
             f"Miya: {config.model}\n"
-            f"GPT: {config.openai_model if config.openai_api_key else 'ulanmagan'}\n"
-            f"Gemini: {config.gemini_model if config.gemini_api_key else 'ulanmagan'}\n"
+            f"Gemini: {'ovoz va rasm' if config.gemini_api_key else 'ulanmagan'}\n"
             f"Ovoz: {voice.get('name') or voice.get('voice')} ({voice['provider']}), namunalar: {len(tts.samples())}\n"
             f"Ulangan qurilmalar: {hub.summary() or 'yo‘q'}\n"
             f"Rejimlar: chuqur={'ha' if p['deep'] else 'yo‘q'}, super={'ha' if p['super'] else 'yo‘q'}, "
@@ -385,7 +384,7 @@ class TelegramBot(PublicTelegram, Listener):
             return
 
         if not providers.can_transcribe():
-            await update.message.reply_text("Ovozli xabarni tushunish uchun .env da OPENAI_API_KEY yoki GEMINI_API_KEY kerak.")
+            await update.message.reply_text("Ovozli xabarni tushunish uchun .env da GEMINI_API_KEY kerak.")
             return
         await ctx.bot.send_chat_action(update.effective_chat.id, ChatAction.TYPING)
         try:

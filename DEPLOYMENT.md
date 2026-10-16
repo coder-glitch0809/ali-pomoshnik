@@ -10,7 +10,7 @@ ishga tushirishdan oldin amaldagi tarifni tasdiqlang.
 2. Render sirlar sozlamasiga `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `TELEGRAM_BOT_TOKEN`,
    `ACCESS_PASSWORD` ni mahalliy `.env` dan kiriting. Kalitlarni Git'ga yubormang.
    `TELEGRAM_ALLOWED_USERS` ixtiyoriy: bo'sh bo'lsa, botdagi `/login PAROL` orqali kiriladi.
-   Kerak bo'lsa `OPENAI_API_KEY`, `GEMINI_API_KEY`, ovoz va boshqa sozlamalarni ham kiriting.
+   Kerak bo'lsa `GEMINI_API_KEY`, ovoz va boshqa sozlamalarni ham kiriting.
 3. `/healthz`, saytga kirish, WebSocket va botdagi `/start` ni tekshiring.
    Render `RENDER_EXTERNAL_URL` orqali botning Mini App manzilini avtomatik belgilaydi.
 4. Vercel loyihasida `ALI_BACKEND_URL=https://<render-server>.onrender.com` ni o'rnating
