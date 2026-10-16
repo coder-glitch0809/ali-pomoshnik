@@ -91,3 +91,24 @@ def transcribe(audio: bytes, filename: str = "audio.webm") -> str:
         )
         return (response.text or "").strip()
     raise RuntimeError("Ovozni tanish uchun OPENAI_API_KEY yoki GEMINI_API_KEY kerak")
+
+
+def can_generate_image() -> bool:
+    return bool(config.openai_api_key or config.gemini_api_key)
+
+
+def generate_image(prompt: str) -> bytes:
+    """Matn bo'yicha rasm (PNG bayt). Avval OpenAI, bo'lmasa Gemini."""
+    if config.openai_api_key:
+        import base64
+
+        result = _openai_client().images.generate(model=config.openai_image_model, prompt=prompt[:4000], size="1024x1024")
+        return base64.b64decode(result.data[0].b64_json)
+    if config.gemini_api_key:
+        response = _gemini_client().models.generate_content(model=config.gemini_image_model, contents=prompt[:4000])
+        for candidate in response.candidates or []:
+            for part in candidate.content.parts or []:
+                if getattr(part, "inline_data", None) and part.inline_data.data:
+                    return part.inline_data.data
+        raise RuntimeError("Gemini rasm qaytarmadi")
+    raise RuntimeError("Rasm uchun OPENAI_API_KEY yoki GEMINI_API_KEY kerak")

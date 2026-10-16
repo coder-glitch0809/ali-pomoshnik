@@ -198,6 +198,35 @@ class RuntimeTests(unittest.TestCase):
         from ali.memory import memory
         self.assertEqual(memory.vault_list('private guest test')['total'],0)
 
+    def test_free_and_pro_tiers_pick_model_and_image_limit(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        import time
+        bot=TelegramBot();bot.owner_id=999
+        rid,_=bot.public.request(120,'pro_month','pay');bot.public.resolve(rid,True)
+        self.assertTrue(bot.public.is_pro(120));self.assertFalse(bot.public.is_pro(121))
+        self.assertAlmostEqual(bot.public.get(120)['grants']['pro']-time.time(),30*86400,delta=5)
+        calls=[]
+        async def create(**kw):
+            calls.append(kw);return SimpleNamespace(content=[SimpleNamespace(type='text',text='javob')])
+        client=MagicMock();client.__aenter__=AsyncMock(return_value=SimpleNamespace(messages=SimpleNamespace(create=create)));client.__aexit__=AsyncMock(return_value=False)
+        with patch('ali.telegram_public.anthropic.AsyncAnthropic',return_value=client):
+            asyncio.run(bot.guest_reply(121,'salom','general',False))
+            asyncio.run(bot.guest_reply(120,'batafsil tahlil','general',True))
+        self.assertEqual(calls[0]['model'],config.free_model);self.assertEqual(calls[0]['output_config'],{'effort':'low'})
+        self.assertEqual(calls[1]['model'],config.model);self.assertNotIn('output_config',calls[1])
+        # Bepul: 3 ta rasm, 4-chisida Pro taklifi
+        msg=SimpleNamespace(reply_text=AsyncMock(),reply_photo=AsyncMock())
+        update=SimpleNamespace(effective_chat=SimpleNamespace(type='private'),effective_user=SimpleNamespace(id=121,first_name='G'),message=msg,effective_message=msg)
+        ctx=SimpleNamespace(bot=SimpleNamespace(send_chat_action=AsyncMock()))
+        with patch('ali.providers.can_generate_image',return_value=True),patch('ali.providers.generate_image',return_value=b'png') as gen:
+            for _ in range(config.free_daily_images+1):asyncio.run(bot.guest_image(update,ctx,121,'mushuk'))
+            self.assertEqual(gen.call_count,config.free_daily_images)
+            self.assertIn('Pro',msg.reply_text.call_args.args[0])
+            update.effective_user.id=120
+            for _ in range(config.free_daily_images+1):asyncio.run(bot.guest_image(update,ctx,120,'mushuk'))
+            self.assertEqual(gen.call_count,2*config.free_daily_images+1)
+
     def test_malformed_api_inputs_are_rejected(self):
         self.assertEqual(self.client.post('/api/login', json=[]).status_code, 400)
         self.login()

@@ -5,6 +5,9 @@ from datetime import datetime, timezone, timedelta
 from .memory import memory
 
 TZ = timezone(timedelta(hours=5))
+# So'rov turi -> (ruxsat nomi, muddati soniyada)
+GRANTS = {'content':('content',86400), 'trading_week':('trading',7*86400), 'trading_month':('trading',30*86400),
+          'pro_week':('pro',7*86400), 'pro_month':('pro',30*86400)}
 
 
 class PublicStore:
@@ -30,6 +33,19 @@ class PublicStore:
         if count>=limit:return False
         data.update(day=day,count=count+1);self.put(uid,data);return True
 
+    def is_pro(self, uid):
+        return self.get(uid).get('grants',{}).get('pro',0)>time.time()
+
+    def used(self, uid, key):
+        """Bugun ishlatilgan son (masalan 'images')."""
+        data=self.get(uid); day=datetime.now(TZ).date().isoformat()
+        return data.get('usage',{}).get(key,0) if data.get('usage_day')==day else 0
+
+    def bump(self, uid, key):
+        data=self.get(uid); day=datetime.now(TZ).date().isoformat()
+        if data.get('usage_day')!=day:data.update(usage_day=day,usage={})
+        data.setdefault('usage',{})[key]=data['usage'].get(key,0)+1;self.put(uid,data)
+
     def request(self, uid, kind, text):
         old=memory._exec('SELECT id FROM tg_requests WHERE uid=? AND kind=? AND status="pending"',(uid,kind)).fetchone()
         if old:return old['id'],False
@@ -40,9 +56,8 @@ class PublicStore:
         row=memory._exec('SELECT * FROM tg_requests WHERE id=?',(rid,)).fetchone()
         if not row or row['status']!='pending':return None
         memory._exec('UPDATE tg_requests SET status=? WHERE id=?',('approved' if allow else 'denied',rid))
-        if allow and row['kind'] in {'content','trading_week','trading_month'}:
-            grant='content' if row['kind']=='content' else 'trading'
-            duration={'content':86400,'trading_week':7*86400,'trading_month':30*86400}[row['kind']]
+        if allow and row['kind'] in GRANTS:
+            grant,duration=GRANTS[row['kind']]
             data=self.get(row['uid']); data.setdefault('grants',{})[grant]=max(time.time(),data.get('grants',{}).get(grant,0))+duration;self.put(row['uid'],data)
         return dict(row)
 
