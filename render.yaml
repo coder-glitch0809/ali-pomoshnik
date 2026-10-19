@@ -25,6 +25,11 @@ services:
         sync: false
       - key: CLAUDE_MODEL
         sync: false
+      # Bepul tarif javoblari va Claude ishlamaganda zaxira (Google AI Studio bepul kaliti)
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FREE_PROVIDER
+        value: gemini
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: ACCESS_PASSWORD

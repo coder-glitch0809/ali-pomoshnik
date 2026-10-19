@@ -1,6 +1,8 @@
-"""Google Gemini - faqat Claude qila olmaydigan ishlar uchun: ovozni matnga aylantirish va rasm yaratish.
+"""Google Gemini: ovozni matnga aylantirish, rasm yaratish va bepul suhbat.
 
-Savollarga javob, tahlil va agentlar - hammasi Claude'da.
+Asosiy miya - Claude (vositalar va agentlar bilan). Gemini'ning bepul API'si:
+  - ommaviy Telegram botning bepul tarifi javoblari (FREE_PROVIDER=gemini);
+  - Claude API ishlamasa (balans tugagan, kalit xato) - zaxira javob (GEMINI_FALLBACK=true).
 """
 import logging
 
@@ -17,6 +19,29 @@ def _gemini_client():
         from google import genai
         _gemini = genai.Client(api_key=config.gemini_api_key)
     return _gemini
+
+
+def can_chat() -> bool:
+    return bool(config.gemini_api_key)
+
+
+def gemini_chat(system: str, history: list[dict], text: str, max_tokens: int = 1500, json_mode: bool = False,
+                model: str | None = None) -> str:
+    """Gemini bilan oddiy suhbat (vositalarsiz). history: [{"role": "user"|"assistant", "content": str}]."""
+    if not config.gemini_api_key:
+        raise RuntimeError("GEMINI_API_KEY yo'q")
+    from google.genai import types
+
+    contents = [
+        types.Content(role="model" if m["role"] == "assistant" else "user", parts=[types.Part(text=str(m["content"]))])
+        for m in history if str(m.get("content", "")).strip()
+    ]
+    contents.append(types.Content(role="user", parts=[types.Part(text=text)]))
+    # Fikrlash tokenlari ham chegaraga kiradi - javob kesilmasligi uchun zaxira qo'shamiz
+    cfg = types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens + 4096,
+                                      response_mime_type="application/json" if json_mode else None)
+    response = _gemini_client().models.generate_content(model=model or config.gemini_chat_model, contents=contents, config=cfg)
+    return (response.text or "").strip()
 
 
 MIME = {"webm": "audio/webm", "ogg": "audio/ogg", "oga": "audio/ogg", "mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4"}

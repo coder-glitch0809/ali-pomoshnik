@@ -43,6 +43,12 @@ class Config:
     gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY"))
     gemini_image_model: str = field(default_factory=lambda: _env("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"))
     gemini_fast_model: str = field(default_factory=lambda: _env("GEMINI_FAST_MODEL", "gemini-flash-latest"))
+    # Bepul suhbat uchun Gemini modeli (bepul API limiti bor)
+    gemini_chat_model: str = field(default_factory=lambda: _env("GEMINI_CHAT_MODEL", "gemini-flash-latest"))
+    # Ommaviy botning bepul tarifi kim bilan javob beradi: gemini (bepul API) | claude (FREE_MODEL, pullik)
+    free_provider: str = field(default_factory=lambda: _env("FREE_PROVIDER", "gemini").lower())
+    # Claude API ishlamasa (balans tugagan va h.k.) - Gemini javob bersin
+    gemini_fallback: bool = field(default_factory=lambda: _env_bool("GEMINI_FALLBACK", True))
 
     # Telegram bot
     telegram_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))

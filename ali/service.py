@@ -134,6 +134,41 @@ async def build_agent(rid: int, request: str) -> tuple[list[str], str]:
     return changed, answer
 
 
+GEMINI_NOTE = ("\n\nHOZIR ZAXIRA REJIMDASAN: Claude API ishlamayapti, sen Gemini orqali javob beryapsan. Vositalar (kompyuter, "
+               "internet qidiruv, fayllar, agentlar) ishlamaydi - faqat bilimingdan javob ber. So'rov vosita talab qilsa, "
+               "buni qisqa ayt va Claude API balansini to'ldirish kerakligini eslat.")
+
+
+def _plain_history(limit: int = 20) -> list[dict]:
+    """Claude suhbat tarixidan faqat matnlar (Gemini uchun)."""
+    out = []
+    for m in brain.messages:
+        content = m["content"]
+        if isinstance(content, list):
+            content = "".join(getattr(b, "text", None) or (b.get("text", "") if isinstance(b, dict) and b.get("type") == "text" else "")
+                              for b in content)
+        if content and str(content).strip():
+            out.append({"role": m["role"], "content": str(content)})
+    return out[-limit:]
+
+
+async def gemini_rescue(error: Exception, text: str, message: str) -> str | None:
+    """Claude API ishlamasa (balans, kalit, server) - Gemini'ning bepul API'si javob beradi (vositalarsiz)."""
+    from . import providers
+    if not (isinstance(error, anthropic.APIStatusError) and config.gemini_fallback and providers.can_chat()):
+        return None
+    try:
+        reply = await asyncio.to_thread(providers.gemini_chat, brain.system + GEMINI_NOTE, _plain_history(), text, 4000)
+    except Exception:
+        log.exception("Gemini zaxirasi ham ishlamadi")
+        return None
+    if not reply:
+        return None
+    brain.messages += [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
+    log.warning("Claude xatosi (%s) - javobni Gemini berdi", message)
+    return "⚡ (Gemini · zaxira rejim)\n\n" + reply
+
+
 async def run_ask(text: str, images: list[dict] | None = None, deep: bool = False, super_mode: bool = False,
                   source: str = "web", req_id: str | None = None,
                   on_event: Callable[[str, object], None] | None = None, agent: str | None = None) -> str:
@@ -162,9 +197,11 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
         if not isinstance(e, anthropic.APIError):
             log.exception("so'rov xatosi")
         message = error_text(e)
-        tracker.finish(None, message)
-        hub.broadcast({"type": "error", "id": req_id, "text": message})
-        raise AskError(message) from e
+        answer = await gemini_rescue(e, text, message)
+        if answer is None:
+            tracker.finish(None, message)
+            hub.broadcast({"type": "error", "id": req_id, "text": message})
+            raise AskError(message) from e
     tracker.finish(answer)
     files = outbox.since(start)
     if files:  # agentlar yaratgan .pptx/.docx/.xlsx - saytda yuklab olish havolasi, Telegram'da hujjat
