@@ -15,8 +15,14 @@ python-multipart
 edge-tts
 python-telegram-bot
 
-# Super miya (ixtiyoriy)
+# Super miya (ixtiyoriy): GPT + Gemini maslahati
 google-genai
+openai
+
+# Kompyuterni boshqarish (oynalar, sichqoncha, klaviatura) va PDF o'qish
+pyautogui
+pygetwindow
+pypdf
 
 # Terminal ovoz rejimi (main.py --voice, ixtiyoriy)
 SpeechRecognition

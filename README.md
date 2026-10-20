@@ -39,7 +39,15 @@ Qolganlari ixtiyoriy — qo'shgan sari imkoniyat ko'payadi.
 
 ```bash
 start.bat          # yoki: python server.py
+start-full.bat     # TO'LIQ RUXSAT: barcha vositalar tasdiqsiz (faqat o'z kompyuteringizda)
 ```
+
+**To'liq ruxsat rejimi** (`start-full.bat`): Ali dasturlarni ochadi, oynalarga kiradi, bosadi va yozadi
+(`list_windows`, `focus_window`, `mouse_click`, `type_text`, `press_keys`), fayl va papkalarni o'qib tahlil qiladi
+(`read_file`, `list_folder`: docx, xlsx, pptx, pdf, kod), internetdan qidiradi va murakkab savolda GPT + Gemini
+fikrini oladi (`consult_experts`, `OPENAI_API_KEY` / `GEMINI_API_KEY` kerak). Ruxsatlar bo'limida "Taqiqlangan"
+qilingan vosita bu rejimda ham bloklanadi. Sichqonchani ekranning burchagiga olib borsangiz, boshqaruv to'xtaydi.
+Administrator huquqi kerak bo'lsa — `start-full.bat` ni "Run as administrator" bilan oching.
 
 - **Kompyuterda:** http://localhost:8000 (parol terminalda chiqadi yoki `.env` dagi `ACCESS_PASSWORD`)
 - **Telefonda:** `tunnel.bat` ni ishga tushiring → chiqqan `https://...trycloudflare.com` havolani telefonda oching →

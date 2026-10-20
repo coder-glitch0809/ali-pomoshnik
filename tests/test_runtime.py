@@ -238,6 +238,60 @@ class RuntimeTests(unittest.TestCase):
             for _ in range(config.free_daily_images+1):asyncio.run(bot.guest_image(update,ctx,120,'mushuk'))
             self.assertEqual(gen.call_count,2*config.free_daily_images+1)
 
+    def test_full_access_mode_auto_approves_but_keeps_owner_deny(self):
+        from ali import permissions
+        from unittest.mock import Mock
+        with patch.object(permissions,'load',return_value={'rules':{'run_powershell':'deny'}}):
+            with patch.object(config,'full_access',False):
+                self.assertEqual(permissions.mode('mouse_click',True),'ask')
+                self.assertEqual(permissions.mode('run_powershell',True),'deny')
+            with patch.object(config,'full_access',True):
+                self.assertEqual(permissions.mode('mouse_click',True),'auto')
+                self.assertEqual(permissions.mode('open_application'),'auto')
+                self.assertEqual(permissions.mode('run_powershell',True),'deny')
+        with patch.object(permissions,'load',return_value={'rules':{},'unavailable':True}),patch.object(config,'full_access',True):
+            self.assertEqual(permissions.mode('mouse_click',True),'deny')
+        # Render'da FULL_ACCESS yoqilmaydi
+        from ali.config import Config
+        with patch.dict(os.environ,{'FULL_ACCESS':'true','RENDER':'true'}):self.assertFalse(Config().full_access)
+        with patch.dict(os.environ,{'FULL_ACCESS':'true'}):
+            os.environ.pop('RENDER',None);self.assertTrue(Config().full_access)
+        confirm=Mock(return_value=False);b=Brain(confirm=confirm)
+        with patch.object(config,'full_access',True),patch.object(permissions,'load',return_value={'rules':{}}),\
+             patch.object(b.registry['list_windows'],'func',return_value='oyna'):
+            self.assertEqual(b._run_one('list_windows',{}),('oyna',False))
+        confirm.assert_not_called()
+
+    def test_read_file_and_list_folder_handle_office_and_text(self):
+        from ali.skills import desktop
+        from unittest.mock import Mock
+        import docx,openpyxl
+        root=Path(state.name)/'files';root.mkdir(exist_ok=True)
+        d=docx.Document();d.add_paragraph('Salom hujjat');t=d.add_table(rows=1,cols=2);t.cell(0,0).text='A';t.cell(0,1).text='B';d.save(root/'a.docx')
+        wb=openpyxl.Workbook();wb.active.append(['narx',42]);wb.save(root/'b.xlsx')
+        (root/'c.txt').write_bytes('Привет мир'.encode('cp1251'))
+        self.assertIn('Salom hujjat',desktop.read_file(str(root/'a.docx')));self.assertIn('A | B',desktop.read_file(str(root/'a.docx')))
+        self.assertIn('narx | 42',desktop.read_file(str(root/'b.xlsx')))
+        self.assertIn('Привет мир',desktop.read_file(str(root/'c.txt')))
+        self.assertIn('topilmadi',desktop.read_file(str(root/'yoq.txt')))
+        listing=desktop.list_folder(str(root),'*.docx');self.assertIn('a.docx',listing);self.assertNotIn('b.xlsx',listing)
+        (root/'big.txt').write_text('x'*(desktop.MAX_TEXT+10))
+        self.assertIn('offset=',desktop.read_file(str(root/'big.txt')))
+        desktop.set_scale((3000,2000),(1500,1000))
+        fake=Mock()
+        with patch.object(desktop,'_gui',return_value=fake):
+            desktop.mouse_click(100,50);fake.click.assert_called_with(200,100,clicks=1,button='left')
+            desktop.press_keys('ctrl+s');fake.hotkey.assert_called_with('ctrl','s')
+
+    def test_consult_experts_uses_connected_models(self):
+        from ali import providers
+        from ali.skills.experts import consult_experts
+        with patch.object(config,'openai_api_key',''),patch.object(config,'gemini_api_key',''):
+            self.assertIn('ulanmagan',consult_experts('savol'))
+        with patch.object(config,'openai_api_key','k'),patch.object(config,'gemini_api_key',''),\
+             patch.object(providers,'ask_openai',return_value='GPT fikri'):
+            self.assertIn('GPT fikri',consult_experts('savol'))
+
     def test_malformed_api_inputs_are_rejected(self):
         self.assertEqual(self.client.post('/api/login', json=[]).status_code, 400)
         self.login()
@@ -899,7 +953,7 @@ class RuntimeTests(unittest.TestCase):
         b = Brain()
         with patch.object(config, "web_search", True):
             b.reload_agents()
-        self.assertNotIn("consult_experts", b.registry)
+        self.assertIn("consult_experts", b.registry)  # GPT + Gemini - Claude o'zi kerak bo'lganda chaqiradi
         with patch.object(b, "_call", return_value=response) as call:
             self.assertEqual(b.ask("O'zbekiston poytaxti qayer?", super_mode=True), "Toshkent")
             self.assertNotIn("web_search", [t["name"] for t in call.call_args.kwargs["tools"]])

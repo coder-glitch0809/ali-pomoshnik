@@ -50,6 +50,16 @@ class Config:
     # Claude API ishlamasa (balans tugagan va h.k.) - Gemini javob bersin
     gemini_fallback: bool = field(default_factory=lambda: _env_bool("GEMINI_FALLBACK", True))
 
+    # Maslahatchi modellar (consult_experts): GPT va Gemini fikri, Claude solishtiradi
+    openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
+    openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5"))
+    gemini_model: str = field(default_factory=lambda: _env("GEMINI_MODEL", "gemini-pro-latest"))
+
+    # To'liq ruxsat (faqat o'z kompyuterida, start-full.bat): barcha vositalar tasdiqsiz, internet doim ochiq.
+    # Serverda (Render) hech qachon yoqilmaydi.
+    full_access: bool = field(default_factory=lambda: _env_bool("FULL_ACCESS", False) and not os.getenv("RENDER"))
+    powershell_timeout: int = field(default_factory=lambda: int(_env("POWERSHELL_TIMEOUT", "300")))
+
     # Telegram bot
     telegram_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))
     public_url: str = field(default_factory=lambda: (_env("PUBLIC_URL") or _env("RENDER_EXTERNAL_URL")).rstrip("/"))

@@ -31,7 +31,10 @@ def mode(name, dangerous=False):
     data = load()
     if data.get('unavailable'):
         return 'deny'
-    return data['rules'].get(name, 'ask' if dangerous or name in REVIEW_DEFAULT else 'auto')
+    rule = data['rules'].get(name)
+    if config.full_access:  # o'z kompyuterida to'liq ruxsat: faqat egasi qo'lda taqiqlagani bloklanadi
+        return 'deny' if rule == 'deny' else 'auto'
+    return rule or ('ask' if dangerous or name in REVIEW_DEFAULT else 'auto')
 
 
 def save(rules, registry):

@@ -3,6 +3,7 @@ import base64
 import io
 import subprocess
 
+from ..config import config
 from ..hub import hub
 from . import skill
 
@@ -23,10 +24,10 @@ def run_powershell(command: str) -> str:
     try:
         proc = subprocess.run(
             ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=config.powershell_timeout,
         )
     except subprocess.TimeoutExpired:
-        return "Vaqt tugadi (120 s)"
+        return f"Vaqt tugadi ({config.powershell_timeout} s). Uzoq ishlarni Start-Process bilan fonda ishga tushir."
     out = (proc.stdout + ("\n[stderr]\n" + proc.stderr if proc.stderr.strip() else "")).strip()
     if len(out) > MAX_OUTPUT:
         out = out[:MAX_OUTPUT] + f"\n... ({len(out) - MAX_OUTPUT} belgi qisqartirildi)"
@@ -37,13 +38,19 @@ def run_powershell(command: str) -> str:
 def take_screenshot():
     from PIL import ImageGrab
 
+    from . import desktop
+
+    desktop.dpi_aware()
     image = ImageGrab.grab()
+    full = image.size
     image.thumbnail((1568, 1568))
+    desktop.set_scale(full, image.size)
     buf = io.BytesIO()
     image.convert("RGB").save(buf, format="JPEG", quality=80)
     data = base64.b64encode(buf.getvalue()).decode()
     hub.broadcast({"type": "image", "src": f"data:image/jpeg;base64,{data}", "caption": "Ekran rasmi"})
     return [
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}},
-        {"type": "text", "text": f"Ekran rasmi ({image.width}x{image.height})."},
+        {"type": "text", "text": f"Ekran rasmi ({image.width}x{image.height}, haqiqiy ekran {full[0]}x{full[1]}). "
+                                 "mouse_click uchun shu rasmdagi koordinatalarni ber - avtomatik moslashtiriladi."},
     ]
