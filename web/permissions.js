@@ -82,8 +82,21 @@
     const coach=node('div',undefined,'permission-connection'),coachStatus=node('span',info.coach?'Yoqilgan: agentlarni ulangan Pro ilova o‘qitadi':'O‘chiq: Claude API ishlamasa, Pro ilova zaxira bo‘ladi','ai-app-status'),coachBox=node('div',undefined,'ai-app-actions');
     const cb=node('button',info.coach?'O‘chirish':'Yoqish','connection-button'+(info.coach?'':' primary'));cb.type='button';cb.disabled=!info.local;
     cb.onclick=()=>aiAppAction('_coach',info.coach?'off':'on',coachStatus,[cb]);coachBox.append(cb);
+    const lb=node('button','▶ Hozir o‘qitish','connection-button primary');lb.type='button';lb.disabled=!info.local||!info.apps.some(x=>x.connected);
+    lb.title='Barcha agentlarni ulangan Pro AI’lardan (Claude, ChatGPT, Gemini) o‘qitadi va bilimni xotiraga yozadi';
+    lb.onclick=()=>aiAppAction('_coach','learn',coachStatus,[lb,cb]);coachBox.prepend(lb);
     coach.append(titled('_coach','Murabbiy Pro orqali'),coachStatus,coachBox);root.append(coach);
     // Boshqa dasturlar
+    // Xizmatlar ilova orqali (token qo'lda kiritilmaydi): GitHub, Vercel
+    for(const sv of info.services||[]){
+      const row=node('div',undefined,'permission-connection'),box=node('div',undefined,'ai-app-actions'),buttons=[];
+      const st=node('span',!sv.installed?'Ilova o‘rnatilmagan':sv.connected?`✅ Ulangan (ilova orqali) · ${sv.at}`:sv.connected===false?`⚠️ ${sv.error||'Ulanmagan'}`:'O‘rnatilgan · brauzer orqali kiring','ai-app-status');
+      const add=(label,action,primary)=>{const b=node('button',label,'connection-button'+(primary?' primary':''));b.type='button';b.disabled=!info.local;b.onclick=()=>aiAppAction(sv.key,action,st,buttons);buttons.push(b);box.append(b);};
+      if(!sv.installed)add('O‘rnatish','install',true);
+      else if(sv.connected){add('Tekshirish','verify');add('Unutish','forget');}
+      else{add('1. Kirish','login',true);add('2. Tekshirish','verify',true);}
+      row.append(titled(sv.key,sv.name+' ilovasi'),st,box);root.append(row);
+    }
     for(const p of info.programs||[]){
       const row=node('div',undefined,'permission-connection'),st=node('span',p.found?'✅ Topildi · Ali loyihalarni shu dasturda ochadi':'O‘rnatilmagan','ai-app-status'),box=node('div',undefined,'ai-app-actions');
       if(p.found){const b=node('button','Ochish','connection-button');b.type='button';b.disabled=!info.local;b.onclick=()=>aiAppAction(p.key,'open',st,[b]);box.append(b);}

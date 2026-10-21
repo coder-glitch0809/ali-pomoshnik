@@ -89,9 +89,79 @@ def learn(brain, key: str) -> str:
     a = brain.agents.get(key)
     if a is None:
         return "Bunday agent yo'q."
+    from . import local_ai
+    pro_ready = local_ai.access() is True and bool(local_ai.connected())
+    if pro_ready and local_ai.option("_coach"):  # egasi tanlagan: Pro AI ilovalardan o'qish
+        return pro_learn(brain, key)
     topics = "; ".join(a.learn) or a.description
-    return run_agent(brain, key, LEARN_TASK.format(topics=topics, key=key), f"O'z-o'zini o'qitish: {topics}",
-                     extra_tools=("web_search", "search_knowledge", "save_knowledge", "get_datetime"), strict=True)
+    try:
+        return run_agent(brain, key, LEARN_TASK.format(topics=topics, key=key), f"O'z-o'zini o'qitish: {topics}",
+                         extra_tools=("web_search", "search_knowledge", "save_knowledge", "get_datetime"), strict=True)
+    except RuntimeError:
+        if pro_ready:  # Claude API ishlamasa - Pro ilovalardan
+            return pro_learn(brain, key)
+        raise
+
+
+PRO_LEARN_TASK = """Sen {app}san va Ali jamoasidagi "{name}" agentini o'qityapsan. Agent vazifasi: {description}
+O'rganish mavzulari: {topics}
+
+Shu mavzular bo'yicha eng muhim, amaliy va dolzarb bilimlarni ber: 3-5 ta qisqa yozuv, har biri aniq va
+tekshiriladigan (raqamlar, qoidalar, bosqichlar, tez-tez uchraydigan xatolar). Agent bularni o'z ishida ishlatadi.
+Faqat JSON qaytar, boshqa hech narsa yozma:
+{{"notes": [{{"topic": "qisqa sarlavha", "content": "3-8 gapli amaliy bilim"}}]}}"""
+
+
+def pro_learn(brain, key: str) -> str:
+    """Murabbiy agentni ulangan barcha Pro AI ilovalaridan (Claude, ChatGPT, Gemini) o'qitadi va xotiraga yozadi."""
+    import json as _json
+    from concurrent.futures import ThreadPoolExecutor
+
+    from . import local_ai
+    from .service import Tracker
+
+    a = brain.agents.get(key)
+    if a is None:
+        return "Bunday agent yo'q."
+    apps = local_ai.connected() if local_ai.access() is True else []
+    if not apps:
+        return "Ulangan Pro ilova yo'q (Ruxsatlar -> AI ilovalari)."
+    topics = "; ".join(a.learn) or a.description
+    tracker = Tracker("murabbiy" if "murabbiy" in brain.agents else key, f"Pro AI'lardan o'qitish: {a.name}", "avtopilot")
+
+    def ask(app):
+        prompt = PRO_LEARN_TASK.format(app=local_ai.NAMES[app], name=a.name, description=a.description, topics=topics)
+        try:
+            raw = local_ai.ask_one(app, local_ai.app_exe(app), prompt)
+            return app, _json.loads(raw[raw.index("{"):raw.rindex("}") + 1]).get("notes", [])
+        except (RuntimeError, ValueError) as e:
+            log.warning("%s o'qitmadi (%s): %s", app, key, e)
+            return app, []
+
+    with ThreadPoolExecutor(max_workers=len(apps)) as pool:
+        results = list(pool.map(ask, apps))
+    saved, lines = 0, []
+    for app, notes in results:
+        name = local_ai.NAMES[app]
+        for n in notes[:5]:
+            topic, content = str(n.get("topic", "")).strip()[:120], str(n.get("content", "")).strip()[:3000]
+            if topic and content:
+                memory.add_knowledge(f"[{key}] {topic}", f"{content}\n\nManba: {name} ({time.strftime('%Y-%m-%d')})")
+                saved += 1
+        lines.append(f"{name}: {len(notes)} ta bilim")
+    summary = f"{a.icon} {a.name}: {saved} ta yangi bilim xotiraga yozildi ({', '.join(lines)})"
+    tracker.finish(summary if saved else None, None if saved else "Pro ilovalar bilim qaytarmadi")
+    state = _load()
+    state["learn"][key] = time.time()
+    _save(state)
+    return summary
+
+
+def pro_learn_all(brain) -> str:
+    """Barcha agentlarni Pro AI'lardan o'qitadi (fonda). Natija telefon/Telegramga keladi."""
+    results = [pro_learn(brain, key) for key in list(brain.agents)]
+    hub.notify("🧑‍🏫 Murabbiy Pro AI'lardan o'qitishni tugatdi:\n" + "\n".join(results)[:3000])
+    return "\n".join(results)
 
 
 def learning_status(brain) -> dict:

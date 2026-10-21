@@ -13,6 +13,9 @@ API = "https://api.vercel.com"
 
 def _req(method: str, path: str, **kw):
     if not config.vercel_token:
+        from ..local_ai import service_token
+        config.vercel_token = service_token("vercel")  # Vercel ilovasi orqali kirilgan bo'lsa
+    if not config.vercel_token:
         raise RuntimeError("VERCEL_TOKEN yo'q (.env). README -> Vercel bo'limiga qarang.")
     params = kw.pop("params", {})
     if config.vercel_team_id:

@@ -47,6 +47,10 @@ def catalog(telegram_live=False):
         if key=='instagram' and config.ig_accounts:status='Ulangan: '+', '.join('@'+a for a in config.ig_accounts)
         if key=='voice':status=f'Sozlangan: {config.tts_backend}'
         if key in {'google','meta','channels'}:status='Integratsiya hali o‘rnatilmagan'
+        if key in ('github','vercel'):
+            from . import local_ai
+            if local_ai.app_state().get(key,{}).get('connected'):
+                status,configured='Ulangan (ilova orqali) · Ruxsatlar → Ilovalar',True
         if key=='firebase':
             from . import cloud
             configured=cloud.configured()

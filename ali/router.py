@@ -7,6 +7,23 @@ O'zbek tili kirillda ham yoziladi, shuning uchun til harfga emas, so'z va qo'shi
 import re
 
 INFORMATIKA, OFFICE, DESIGNER = "informatika", "office", "dizayner"
+# Ruscha xabar informatikaga emas, shu fanlar agentiga boradi (agent bo'lsa)
+SUBJECTS = {
+    "huquqshunos": ("закон", "юрист", "юридич", "договор", "суд", "иск", "кодекс", "штраф", "налог", "адвокат",
+                    "наследств", "развод", "алимент", "увольн", "трудов", "жалоб", "доверенност", "нотариус",
+                    "qonun", "huquq", "advokat", "shartnoma", "da'vo", "jarima", "soliq"),
+    "rus_tili": ("русск", "грамматик", "падеж", "орфограф", "пунктуац", "диктант", "сочинени", "изложени",
+                 "правописан", "склонени", "спряжени", "литератур", "rus tili"),
+    "ingliz_tili": ("английск", "english", "ielts", "ingliz", "toefl"),
+}
+SUBJECT_NAMES = {"huquqshunos": "⚖️ Huquqshunos", "rus_tili": "🇷🇺 Учитель русского языка",
+                 "ingliz_tili": "🇺🇸 Ingliz tili o'qituvchisi"}
+
+
+def subject(text: str, team: dict) -> str | None:
+    """Xabar qaysi fan agentiga tegishli (huquq, rus tili, ingliz tili) - jamoada bo'lsa."""
+    low = text.lower()
+    return next((k for k, words in SUBJECTS.items() if k in team and any(w in low for w in words)), None)
 
 _WORD = re.compile(r"[a-zа-яёўқғҳ']+", re.I)
 _UZ_LETTERS = set("ўқғҳЎҚҒҲ")
@@ -105,9 +122,14 @@ def hint(text: str, team: dict) -> str:
     """Ali'ga beriladigan yo'naltirish ko'rsatmasi ('' - maxsus yo'naltirish kerak emas)."""
     lang = language(text)
     kinds = office_kinds(text)
-    teacher = INFORMATIKA in team and lang == "ru"
+    other = subject(text, team)
+    teacher = INFORMATIKA in team and lang == "ru" and not other
     office = OFFICE in team and bool(kinds)
     design = DESIGNER in team and is_design(text)
+    if lang == "ru" and other and not office and not design:
+        return ("[Avtomatik yo'naltirish - tizim ko'rsatmasi, foydalanuvchi matni emas]\n"
+                f"Xabar rus tilida, mavzusi: {SUBJECT_NAMES[other]}. ask_agent bilan '{other}' agentiga topshir "
+                "va javobini to'liq, foydalanuvchi tilida yetkaz.\n\n")
     if not teacher and not office and not design:
         return ""
     lines = ["[Avtomatik yo'naltirish - tizim ko'rsatmasi, foydalanuvchi matni emas]"]
@@ -120,11 +142,12 @@ def hint(text: str, team: dict) -> str:
         return "\n".join(lines) + "\n\n"
     if "pptx" in kinds and DESIGNER in team:
         lesson = any(w in text.lower() for w in LESSON_WORDS)
-        content = (f"1) ask_agent bilan '{INFORMATIKA}' agentidan to'liq mazmunni tayyorlat"
+        teacher_key = other or INFORMATIKA
+        content = (f"1) ask_agent bilan '{teacher_key}' agentidan to'liq mazmunni tayyorlat"
                    + (" (RUS tilida)" if lang == "ru" else "") +
                    (": 50 daqiqalik dars uchun 5 bosqich (Tashkiliy 5, Uy vazifasini so'rash 10, Yangi mavzu 15, "
                     "Mustahkamlash 15, Yakuniy 5 daqiqa) - har bosqich slaydlari, savollar va javoblar, amaliy topshiriq, "
-                    "uy vazifasi. " if lesson else ". ") if INFORMATIKA in team else "")
+                    "uy vazifasi. " if lesson else ". ") if teacher_key in team else "")
         lines.append(f"Taqdimot so'ralgan{' (DARS)' if lesson else ''}. {content}"
                      f"{'2' if content else '1'}) ask_agent bilan '{DESIGNER}' (🎨 Dizayner) agentiga shu to'liq mazmunni "
                      f"berib, {'make_lesson_presentation' if lesson else 'make_presentation'} bilan professional, "

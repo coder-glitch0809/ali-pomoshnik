@@ -354,6 +354,13 @@ async def ai_app_action(key: str, action: str, request: Request):
     if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
         return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
     from ali import local_ai
+    if key == "_coach" and action == "learn":  # hozir: barcha agentlarni Pro AI'lardan o'qitish (fonda)
+        if not local_ai.connected():
+            return JSONResponse({"error": "Avval kamida bitta AI ilovani ulang va tekshiring"}, status_code=400)
+        from ali import autopilot
+        asyncio.get_running_loop().run_in_executor(None, autopilot.pro_learn_all, brain)
+        return {"message": f"Murabbiy {len(brain.agents)} ta agentni {', '.join(local_ai.NAMES[k] for k in local_ai.connected())} "
+                           "orqali o'qitishni boshladi. Jarayon Monitoring’da, tugagach xabar keladi.", **local_ai.summary()}
     if key == "_coach" and action in {"on", "off"}:  # Murabbiy Pro ilova orqali o'qitsin
         local_ai.set_option("_coach", action == "on")
         return {"message": "Murabbiy Pro orqali o'qitadi" if action == "on" else "Murabbiy oddiy rejimda", **local_ai.summary()}
@@ -363,6 +370,23 @@ async def ai_app_action(key: str, action: str, request: Request):
         except RuntimeError as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         return {"message": f"{local_ai.PROGRAMS[key][0]} ochildi", **local_ai.summary()}
+    if key in local_ai.SERVICES and action in {"install", "login", "verify", "forget"}:  # GitHub, Vercel ilovalari
+        try:
+            if action == "install":
+                message = await asyncio.to_thread(local_ai.install_service, key)
+            elif action == "login":
+                await asyncio.to_thread(local_ai.login_service, key)
+                message = "Oyna ochildi - brauzerda akkauntingizga kiring, keyin “Tekshirish” ni bosing."
+            elif action == "verify":
+                ok, message = await asyncio.to_thread(local_ai.verify_service, key)
+                if not ok:
+                    return JSONResponse({"error": message, **local_ai.summary()}, status_code=400)
+            else:
+                local_ai.remember(key, None)
+                message = "Ulanish unutildi"
+        except RuntimeError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return {"message": message, **local_ai.summary()}
     if key not in local_ai.PACKAGES or action not in {"install", "login", "verify", "forget", "primary", "unprimary"}:
         return JSONResponse({"error": "Noma'lum ilova yoki amal"}, status_code=400)
     try:

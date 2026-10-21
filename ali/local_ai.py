@@ -85,7 +85,7 @@ def apps() -> dict[str, str]:
 def summary() -> dict:
     found, state = apps(), app_state()
     return {"allowed": access(), "primary": state.get("_primary"), "coach": bool(state.get("_coach")),
-            "programs": programs(), "apps": [
+            "programs": programs(), "services": services(), "apps": [
         {"key": k, "name": NAMES[k], "ready": k in found, "installed": bool(app_exe(k)),
          "connected": state.get(k, {}).get("connected"), "at": state.get(k, {}).get("at", ""),
          "error": state.get(k, {}).get("error", "")} for k in NAMES]}
@@ -112,6 +112,100 @@ def open_program(key: str, path: str = "") -> None:
     if not exe:
         raise RuntimeError(f"{name} topilmadi")
     subprocess.Popen([exe, *([path] if path else [])], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+# --- xizmatlar ilova (CLI) orqali: GitHub (gh), Vercel (vercel) - token qo'lda kiritilmaydi ---
+def _gh_exe() -> str | None:
+    found = shutil.which("gh")
+    if found:
+        return found
+    for base in (os.environ.get("ProgramFiles", r"C:\Program Files"), os.environ.get("LOCALAPPDATA", "")):
+        p = Path(base) / "GitHub CLI" / "gh.exe"
+        if p.exists():
+            return str(p)
+    return None
+
+
+def _vercel_exe() -> str | None:
+    npm_dir = Path(os.environ.get("APPDATA", "")) / "npm"
+    return shutil.which("vercel") or next((str(p) for p in (npm_dir / "vercel.cmd",) if p.exists()), None)
+
+
+SERVICES = {
+    "github": {"name": "GitHub", "exe": _gh_exe, "login": ["auth", "login", "--web", "-h", "github.com", "-p", "https"],
+               "install": ["winget", "install", "--id", "GitHub.cli", "-e", "--silent",
+                           "--accept-source-agreements", "--accept-package-agreements"]},
+    "vercel": {"name": "Vercel", "exe": _vercel_exe, "login": ["login"], "install": "npm:vercel"},
+}
+
+
+def service_token(key: str) -> str:
+    """Ilova saqlagan kirish tokeni (egasi ilovada kirgan bo'lsa). Bo'lmasa - bo'sh."""
+    try:
+        if key == "github" and (exe := _gh_exe()):
+            r = subprocess.run([exe, "auth", "token", "-h", "github.com"], capture_output=True, text=True, timeout=20,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return r.stdout.strip() if r.returncode == 0 else ""
+        if key == "vercel":
+            for base in (os.environ.get("APPDATA", ""), os.path.expanduser("~/.local/share")):
+                auth = Path(base) / "com.vercel.cli" / "Data" / "auth.json"
+                auth = auth if auth.exists() else Path(base) / "com.vercel.cli" / "auth.json"
+                if auth.exists():
+                    return json.loads(auth.read_text(encoding="utf-8")).get("token", "")
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        pass
+    return ""
+
+
+def install_service(key: str) -> str:
+    spec = SERVICES[key]
+    if spec["install"] == "npm:vercel":
+        npm = shutil.which("npm") or shutil.which("npm.cmd")
+        if not npm:
+            raise RuntimeError("Node.js (npm) o'rnatilmagan")
+        cmd = [npm, "install", "-g", "vercel"]
+    else:
+        cmd = spec["install"]
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if r.returncode != 0 and not spec["exe"]():
+        raise RuntimeError(f"O'rnatilmadi: {(r.stderr or r.stdout)[-300:]}")
+    return f"{spec['name']} ilovasi o'rnatildi"
+
+
+def login_service(key: str) -> None:
+    exe = SERVICES[key]["exe"]()
+    if not exe:
+        raise RuntimeError(f"{SERVICES[key]['name']} ilovasi o'rnatilmagan")
+    subprocess.Popen(["cmd", "/k", exe, *SERVICES[key]["login"]], env=clean_env(),
+                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+
+
+def verify_service(key: str) -> tuple[bool, str]:
+    import httpx
+    token = service_token(key)
+    if not token:
+        remember(key, False, "ilovada kirilmagan")
+        return False, f"{SERVICES[key]['name']} ilovasida hali kirilmagan - “Kirish” ni bosing"
+    url = {"github": "https://api.github.com/user", "vercel": "https://api.vercel.com/v2/user"}[key]
+    try:
+        r = httpx.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        ok = r.status_code == 200
+    except httpx.HTTPError as e:
+        return False, f"Tekshirib bo'lmadi: {e}"
+    if not ok:
+        remember(key, False, f"HTTP {r.status_code}")
+        return False, f"{SERVICES[key]['name']} kirishni tasdiqlamadi"
+    data = r.json()
+    who = data.get("login") or (data.get("user") or {}).get("username") or ""
+    remember(key, True)
+    return True, f"{SERVICES[key]['name']} ulandi{(' · ' + who) if who else ''}"
+
+
+def services() -> list[dict]:
+    state = app_state()
+    return [{"key": k, "name": s["name"], "installed": bool(s["exe"]()), "connected": state.get(k, {}).get("connected"),
+             "at": state.get(k, {}).get("at", ""), "error": state.get(k, {}).get("error", "")} for k, s in SERVICES.items()]
 
 
 # --- ulanishni eslab qolish (data/ai_apps.json) ---

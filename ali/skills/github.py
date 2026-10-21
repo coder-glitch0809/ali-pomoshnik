@@ -17,6 +17,9 @@ API = "https://api.github.com"
 
 def _client() -> httpx.Client:
     if not config.github_token:
+        from ..local_ai import service_token
+        config.github_token = service_token("github")  # GitHub ilovasi (gh) orqali kirilgan bo'lsa
+    if not config.github_token:
         raise RuntimeError("GITHUB_TOKEN yo'q (.env). README -> GitHub bo'limiga qarang.")
     return httpx.Client(base_url=API, timeout=30, headers={
         "Authorization": f"Bearer {config.github_token}", "Accept": "application/vnd.github+json",
