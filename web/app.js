@@ -666,6 +666,37 @@
   $('#allowBtn').onclick = () => answerConfirm(true);
   $('#denyBtn').onclick = () => answerConfirm(false);
 
+  // ---------- Kompyuterdagi AI ilovalariga ruxsat ----------
+  // Saytga shu kompyuterdan (localhost) kirilganda so'raladi; ruxsat berilsa eslab qolinadi, rad etilsa keyingi kirishda yana so'raladi.
+  const localSheet = $('#localSheet');
+  let localAsked = false;
+  async function checkLocalAccess() {
+    if (localAsked) return;
+    let info;
+    try {
+      const res = await fetch('/api/local-access');
+      if (!res.ok) return;
+      info = await res.json();
+    } catch { return; }
+    if (!info.local || info.allowed === true) return;
+    localAsked = true;
+    $('#localApps').innerHTML = info.apps.map((a) => `<li class="${a.ready ? 'ready' : ''}"><span>${esc(a.name)}</span><small>${a.ready ? 'O‘rnatilgan' : 'O‘rnatilmagan'}</small></li>`).join('');
+    localSheet.classList.add('show');
+    localSheet.setAttribute('aria-hidden', 'false');
+    $('#localAllow').focus();
+  }
+  async function answerLocal(allowed) {
+    localSheet.classList.remove('show');
+    localSheet.setAttribute('aria-hidden', 'true');
+    try {
+      const res = await fetch('/api/local-access', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ allowed }) });
+      if (!res.ok) throw new Error();
+      toast(allowed ? 'Ruxsat berildi: Ali kompyuterdagi AI ilovalaridan foydalanadi' : 'Rad etildi');
+    } catch { toast('Ruxsat saqlanmadi'); }
+  }
+  $('#localAllow').onclick = () => answerLocal(true);
+  $('#localDeny').onclick = () => answerLocal(false);
+
   // ---------- Bo'limlar va menyu ----------
   const VIEW_TITLES = { home: 'Bosh sahifa', chat: 'Chat', monitor: 'Monitoring', agents: 'Agentlar', vault: 'Vault · Xotira', permissions: 'Ruxsatlar' };
   let view = 'home';
@@ -758,6 +789,7 @@
     window.AliHome?.update(status);
     $('#homeSub').textContent = `${name} va ${(status.agents || []).length} ta agent xizmatingizda`;
     $('#sideMeta').textContent = status.models.claude;
+    checkLocalAccess();
     for (const [k, v] of Object.entries(status.models)) document.querySelector(`.pill[data-model="${k}"]`)?.classList.toggle('on', !!v);
     renderAgents();
     const d = status.devices || {};

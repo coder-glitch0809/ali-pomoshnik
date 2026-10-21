@@ -445,3 +445,10 @@ code { font: 12.5px var(--mono); padding: 1px 6px; border-radius: 6px; backgroun
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+/* Kompyuterdagi AI ilovalariga ruxsat */
+.local-text { margin: 10px 0 12px; line-height: 1.5; color: var(--muted, #9aa4b8); font-size: 14px; }
+.local-apps { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
+.local-apps li { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); font-size: 14px; }
+.local-apps small { color: var(--muted, #9aa4b8); }
+.local-apps li.ready small { color: #4ade80; }

@@ -225,6 +225,39 @@ async def connection_save(provider: str, request: Request):
     except ValueError as error:return JSONResponse({'error':str(error)},status_code=400)
 
 
+def is_local(request: Request) -> bool:
+    """So'rov aynan shu kompyuterdan (localhost) - tunnel/proxy orqali emas."""
+    host = (request.headers.get("host") or "").split(":")[0]
+    proxied = any(h in request.headers for h in ("x-forwarded-for", "cf-connecting-ip", "x-real-ip"))
+    return (request.client is not None and request.client.host in ("127.0.0.1", "::1")
+            and host in ("localhost", "127.0.0.1", "[::1]") and not proxied)
+
+
+@app.get("/api/local-access")
+async def local_access_get(request: Request):
+    """Kompyuterdagi AI ilovalari (Claude, ChatGPT, Gemini) - ruxsat holati. Faqat localhost'da so'raladi."""
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    from ali import local_ai
+    return {**local_ai.summary(), "local": is_local(request)}
+
+
+@app.post("/api/local-access")
+async def local_access_save(request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if not is_local(request):
+        return JSONResponse({"error": "Ruxsat faqat shu kompyuterning o'zidan beriladi"}, status_code=403)
+    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+        return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
+    body = await json_object(request)
+    if not isinstance(body.get("allowed"), bool):
+        return JSONResponse({"error": "allowed: true/false"}, status_code=400)
+    from ali import local_ai
+    local_ai.set_access(body["allowed"])
+    return local_ai.summary()
+
+
 @app.post("/api/permissions")
 async def permissions_save(request: Request):
     if not is_authed(request.cookies):

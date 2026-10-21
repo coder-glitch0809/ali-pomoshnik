@@ -287,6 +287,22 @@
   </div>
 </div>
 
+<!-- Kompyuterdagi AI ilovalariga ruxsat (faqat localhost'da) -->
+<div class="sheet" id="localSheet" aria-hidden="true" role="dialog" aria-labelledby="localTitle">
+  <div class="sheet-card">
+    <div class="sheet-title" id="localTitle">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+      Kompyuterdan foydalanishga ruxsat
+    </div>
+    <p class="local-text">Ali shu kompyuterdagi AI ilovalaridan foydalanmoqchi. Claude API ishlamasa (masalan, balans tugasa), javoblarni sizning akkauntingiz orqali shu ilovalar beradi. API kalit kerak emas.</p>
+    <ul class="local-apps" id="localApps"></ul>
+    <div class="sheet-actions">
+      <button class="btn ghost" id="localDeny">Rad etish</button>
+      <button class="btn primary" id="localAllow">Ruxsat berish</button>
+    </div>
+  </div>
+</div>
+
 <!-- Agent yaratish / tahrirlash -->
 <div class="sheet" id="agentSheet" aria-hidden="true">
   <form class="sheet-card agent-form" id="agentForm" autocomplete="off">
