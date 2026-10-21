@@ -55,6 +55,8 @@ async def lifespan(_app):
     hub.loop = asyncio.get_running_loop()
     scheduler.start(hub.notify)
     autopilot.start(brain)
+    from ali import cloud
+    cloud.start()  # xotiraning Firebase'dagi nusxasi (kalit bo'lsa)
     bot = None
     if config.telegram_token:
         from ali.telegram_bot import TelegramBot
@@ -184,6 +186,16 @@ async def agents_list(request: Request):
     return {"agents": [a.full() for a in agents.load().values()], "tools": tools}
 
 
+@app.get("/ig-media/{name}")
+async def ig_media(name: str):
+    """Instagram joylash uchun vaqtinchalik ochiq rasm (tasodifiy 32 belgili nom, joylangach o'chiriladi)."""
+    import re
+    from ali.skills.instagram import PUBLIC_MEDIA
+    if not re.fullmatch(r"[0-9a-f]{32}\.(jpe?g|png|webp)", name) or not (PUBLIC_MEDIA / name).is_file():
+        return JSONResponse({}, status_code=404)
+    return FileResponse(PUBLIC_MEDIA / name)
+
+
 @app.get("/api/outbox/{name}")
 async def outbox_file(name: str, request: Request):
     """Agentlar yaratgan Office fayllari (faqat kirgan foydalanuvchiga)."""
@@ -239,7 +251,7 @@ async def local_access_get(request: Request):
     if not is_authed(request.cookies):
         return JSONResponse({}, status_code=401)
     from ali import local_ai
-    return {**local_ai.summary(), "local": is_local(request)}
+    return {**local_ai.summary(), "local": is_local(request), "facts": len(memory.all_facts())}
 
 
 @app.post("/api/local-access")
@@ -256,6 +268,129 @@ async def local_access_save(request: Request):
     from ali import local_ai
     local_ai.set_access(body["allowed"])
     return local_ai.summary()
+
+
+@app.get("/api/dashboard")
+async def dashboard_data(request: Request, refresh: int = 0):
+    """Asosiy ekran: ob-havo, kripto, aksiya/fyuchers, yangiliklar (10 daqiqa kesh)."""
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    from ali import dashboard
+    return await asyncio.to_thread(dashboard.get, bool(refresh))
+
+
+@app.get("/api/memory-info")
+async def memory_info(request: Request):
+    """Ali xotirasi qayerda va nimalar saqlangan - egasi aniq bilib tursin."""
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    from ali import agents as agents_mod
+    from ali.agents import split_lessons
+    from ali.memory import JOURNAL_DIR
+    team = []
+    for a in agents_mod.load().values():
+        _, lessons = split_lessons(a.prompt)
+        team.append({"key": a.key, "name": a.name, "icon": a.icon, "lessons": len(lessons), "learn": len(a.learn),
+                     "knowledge": memory.agent_knowledge_summary(a.key)["count"]})
+    return {**memory.stats(), "db": str(config.db_path.resolve()), "journal": str(JOURNAL_DIR.resolve()),
+            "agents_dir": str(agents_mod.AGENTS_DIR.resolve()), "team": team, "local": is_local(request)}
+
+
+@app.post("/api/memory-open")
+async def memory_open(request: Request):
+    """Xotira papkasini shu kompyuterda Explorer'da ochadi (faqat localhost)."""
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if not is_local(request):
+        return JSONResponse({"error": "Faqat shu kompyuterdan"}, status_code=403)
+    import os
+    from ali.memory import JOURNAL_DIR
+    JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+    os.startfile(str(JOURNAL_DIR.resolve()))
+    return {"ok": True}
+
+
+MEMORY_SOURCES = {"codex": "ChatGPT", "claude": "Claude", "gemini": "Gemini", "other": "Boshqa"}
+
+
+@app.post("/api/memory-import")
+async def memory_import(request: Request):
+    """ChatGPT / Claude / Gemini'dagi saqlangan xotiralarni Ali xotirasiga qo'shadi (egasi nusxalab joylaydi)."""
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+        return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
+    import hashlib
+    import re
+    body = await json_object(request)
+    source = MEMORY_SOURCES.get(str(body.get("source")), "Boshqa")
+    text = str(body.get("text") or "")[:20000]
+    lines = [re.sub(r"^\s*(?:[-*•·]|\d+[.)])\s*", "", line).strip() for line in text.splitlines()]
+    lines = [l for l in lines if len(l) >= 3][:150]
+    if not lines:
+        return JSONResponse({"error": "Xotira matni bo‘sh"}, status_code=400)
+    known = set(memory.all_facts().values())
+    added = 0
+    for line in lines:
+        if line[:500] in known:
+            continue
+        memory.set_fact(f"{source} xotirasi {hashlib.sha1(line.encode()).hexdigest()[:6]}", line[:500])
+        added += 1
+    memory.add_knowledge(f"[xotira] {source} saqlangan xotiralari", "\n".join(f"- {l}" for l in lines))
+    from ali.evolution import refresh_ali
+    refresh_ali(brain)  # yangi faktlar Ali ko'rsatmasiga darhol kirsin
+    return {"message": f"{source}: {added} ta yangi xotira qo‘shildi ({len(lines) - added} tasi allaqachon bor edi)",
+            "facts": len(memory.all_facts())}
+
+
+@app.post("/api/ai-apps/{key}/{action}")
+async def ai_app_action(key: str, action: str, request: Request):
+    """AI ilovasini API'siz ulash: o'rnatish, kirish oynasini ochish, tekshirish (eslab qolinadi), unutish.
+    Faqat shu kompyuterdan - ilova shu kompyuterda ishlaydi."""
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if not is_local(request):
+        return JSONResponse({"error": "Ilovalarni faqat shu kompyuterning o'zidan ulash mumkin"}, status_code=403)
+    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+        return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
+    from ali import local_ai
+    if key == "_coach" and action in {"on", "off"}:  # Murabbiy Pro ilova orqali o'qitsin
+        local_ai.set_option("_coach", action == "on")
+        return {"message": "Murabbiy Pro orqali o'qitadi" if action == "on" else "Murabbiy oddiy rejimda", **local_ai.summary()}
+    if key in local_ai.PROGRAMS and action == "open":
+        try:
+            await asyncio.to_thread(local_ai.open_program, key)
+        except RuntimeError as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        return {"message": f"{local_ai.PROGRAMS[key][0]} ochildi", **local_ai.summary()}
+    if key not in local_ai.PACKAGES or action not in {"install", "login", "verify", "forget", "primary", "unprimary"}:
+        return JSONResponse({"error": "Noma'lum ilova yoki amal"}, status_code=400)
+    try:
+        if action in {"primary", "unprimary"}:
+            if action == "primary" and key not in local_ai.connected():
+                return JSONResponse({"error": "Avval ilovani ulang va tekshiring"}, status_code=400)
+            local_ai.set_option("_primary", key if action == "primary" else None)
+            message = (f"{local_ai.NAMES[key]} Pro endi Ali'ning asosiy miyasi (shu kompyuterdan)" if action == "primary"
+                       else "Asosiy miya: Claude API")
+        elif action == "install":
+            message = await asyncio.to_thread(local_ai.install, key)
+        elif action == "login":
+            await asyncio.to_thread(local_ai.open_login, key)
+            message = "Kompyuterda oyna ochildi - akkauntingizga kiring, keyin “Tekshirish” ni bosing."
+        elif action == "verify":
+            ok, message = await asyncio.to_thread(local_ai.verify, key)
+            if ok:
+                local_ai.set_access(True)  # egasi shu kompyuterdan o'zi uladi - foydalanishga ruxsat
+            else:
+                return JSONResponse({"error": message, **local_ai.summary()}, status_code=400)
+        else:
+            local_ai.remember(key, None)
+            if local_ai.option("_primary") == key:
+                local_ai.set_option("_primary", None)
+            message = "Ulanish unutildi"
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"message": message, **local_ai.summary()}
 
 
 @app.post("/api/permissions")
@@ -356,7 +491,7 @@ async def ws_endpoint(ws: WebSocket):
             msg = await ws.receive_json()
             kind = msg.get("type")
             if kind == "ask":
-                asyncio.create_task(handle_ask(device.id, msg))
+                asyncio.create_task(handle_ask(device.id, msg, allow_local=is_local(ws)))
             elif kind == "confirm":
                 hub.resolve_confirm(msg.get("id", ""), bool(msg.get("ok")))
             elif kind == "location":
@@ -377,7 +512,7 @@ async def ws_endpoint(ws: WebSocket):
         hub.broadcast({"type": "devices", "devices": hub.summary()})
 
 
-async def handle_ask(device_id: str, msg: dict):
+async def handle_ask(device_id: str, msg: dict, allow_local: bool = False):
     text = str(msg.get("text", "")).strip()
     images = msg.get("images") or None
     if not text and not images:
@@ -387,7 +522,7 @@ async def handle_ask(device_id: str, msg: dict):
         return
     try:
         await run_ask(text, images, bool(msg.get("deep")), bool(msg.get("super")),
-                      source=device_id, req_id=msg.get("id"), agent=str(msg.get("agent") or "") or None)
+                      source=device_id, req_id=msg.get("id"), agent=str(msg.get("agent") or "") or None, allow_local=allow_local)
     except AskError:
         pass  # xato allaqachon ekranlarga yuborilgan
 

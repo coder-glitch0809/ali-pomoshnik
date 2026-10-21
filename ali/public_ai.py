@@ -16,8 +16,8 @@ log = logging.getLogger("ali.public_ai")
 
 async def ask_model(pro: bool, system: str, history: list[dict], text: str, max_tokens: int,
                     json_mode: bool = False) -> str:
-    if not pro and config.free_provider == "gemini" and providers.can_chat():
-        return await asyncio.to_thread(providers.gemini_chat, system, history, text, max_tokens, json_mode)
+    if config.chat_provider in {'gemini','openai','auto'} or (not pro and config.free_provider in {'gemini','openai'} and providers.can_chat()):
+        return (await asyncio.to_thread(providers.chat, system, history, text, max_tokens, json_mode))[1]
     tier = ({"model": config.model, "max_tokens": max_tokens} if pro else
             {"model": config.free_model, "max_tokens": max_tokens, "output_config": {"effort": "low"}})
     try:
@@ -29,4 +29,4 @@ async def ask_model(pro: bool, system: str, history: list[dict], text: str, max_
         if not (config.gemini_fallback and providers.can_chat()):
             raise
         log.warning("Claude javob bermadi (%s) - Gemini zaxirasi ishlatildi", type(e).__name__)
-        return await asyncio.to_thread(providers.gemini_chat, system, history, text, max_tokens, json_mode)
+        return (await asyncio.to_thread(providers.chat, system, history, text, max_tokens, json_mode))[1]

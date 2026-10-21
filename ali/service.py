@@ -5,6 +5,7 @@ Telegram'da davom ettirish mumkin, hammasi har bir ekranda jonli ko'rinadi.
 """
 import asyncio
 import json
+import re
 import logging
 import secrets
 from typing import Callable
@@ -16,6 +17,7 @@ from .brain import Brain
 from .config import config
 from .hub import hub
 from .monitor import monitor
+from .memory import memory
 
 log = logging.getLogger("ali.service")
 
@@ -134,9 +136,10 @@ async def build_agent(rid: int, request: str) -> tuple[list[str], str]:
     return changed, answer
 
 
-GEMINI_NOTE = ("\n\nHOZIR ZAXIRA REJIMDASAN: Claude API ishlamayapti, sen Gemini orqali javob beryapsan. Vositalar (kompyuter, "
-               "internet qidiruv, fayllar, agentlar) ishlamaydi - faqat bilimingdan javob ber. So'rov vosita talab qilsa, "
-               "buni qisqa ayt va Claude API balansini to'ldirish kerakligini eslat.")
+HIDE_SOURCE = (" Sen doim Alisan: qaysi model, ilova yoki API javob berayotganini, zaxira rejimni, API balansi yoki "
+               "holatini HECH QACHON aytma va javob boshiga manba yozma - faqat javobning o'zini yoz.")
+GEMINI_NOTE = ("\n\nHozir vositalar (kompyuter, internet qidiruv, fayllar, agentlar) ishlamaydi - faqat bilimingdan javob ber. "
+               "So'rov vosita talab qilsa, buni hozir bajara olmasligingni qisqa ayt." + HIDE_SOURCE)
 
 
 def _plain_history(limit: int = 20) -> list[dict]:
@@ -148,7 +151,7 @@ def _plain_history(limit: int = 20) -> list[dict]:
             content = "".join(getattr(b, "text", None) or (b.get("text", "") if isinstance(b, dict) and b.get("type") == "text" else "")
                               for b in content)
         if content and str(content).strip():
-            out.append({"role": m["role"], "content": str(content)})
+            out.append({"role": m["role"], "content": strip_label(str(content))})
     return out[-limit:]
 
 
@@ -172,9 +175,8 @@ def _gemini_route(text: str) -> str | None:
     return key if key in brain.agents else None
 
 
-LOCAL_NOTE = ("\n\nHOZIR ZAXIRA REJIMDASAN: Claude API ishlamayapti, javob kompyuterdagi AI ilovasi orqali beriladi. "
-              "Ali vositalari (fayl yaratish, kompyuter, agent vositalari) bu rejimda ishlamaydi - bilimingdan to'liq javob ber. "
-              "Fayl kerak bo'lsa, mazmunini matnda to'liq yoz.")
+LOCAL_NOTE = ("\n\nHozir Ali vositalari (fayl yaratish, kompyuter, agent vositalari) ishlamaydi - bilimingdan to'liq javob ber. "
+              "Fayl kerak bo'lsa, mazmunini matnda to'liq yoz." + HIDE_SOURCE)
 
 
 def _rescue_local(system: str, text: str):
@@ -194,7 +196,7 @@ def _rescue_gemini(system: str, text: str) -> str:
 
 
 async def gemini_rescue(error: Exception, text: str, message: str,
-                        emit: Callable[[str, object], None] | None = None) -> str | None:
+                        emit: Callable[[str, object], None] | None = None, allow_local: bool = False) -> str | None:
     """Claude API ishlamasa (balans, kalit, server): avval kompyuterdagi AI ilovalari (Claude Code, ChatGPT, Gemini -
     egasining akkaunti orqali, ruxsat bilan), keyin Gemini'ning bepul API'si javob beradi (vositalarsiz).
     So'rov agentga tegishli bo'lsa, javobni o'sha agent roli beradi (monitoringda Ali -> agent nuri ko'rinadi)."""
@@ -211,7 +213,7 @@ async def gemini_rescue(error: Exception, text: str, message: str,
         if emit:
             emit("agent", {"key": a.key, "name": a.name, "icon": a.icon, "task": text[:300]})
     source, reply = "", ""
-    if local := await asyncio.to_thread(_rescue_local, system, text):
+    if allow_local and (local := await asyncio.to_thread(_rescue_local, system, text)):
         source, reply = f"{local[0]} ilovasi", local[1]
     elif reply := await asyncio.to_thread(_rescue_gemini, system, text):
         source = "Gemini"
@@ -221,12 +223,42 @@ async def gemini_rescue(error: Exception, text: str, message: str,
         return None
     brain.messages += [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
     log.warning("Claude xatosi (%s) - javobni %s berdi%s", message, source, f" ({a.key})" if a else "")
-    return f"⚡ ({source} · zaxira rejim{f' · {a.icon} {a.name}' if a else ''})\n\n" + reply
+    return reply  # kim javob bergani foydalanuvchiga ko'rsatilmaydi - faqat logda
+
+
+# Vaqtga bog'liq savollar xotiradan javob olmaydi (narx, ob-havo, yangilik eskiradi)
+FRESH_WORDS = ("bugun", "hozir", "ertaga", "kecha", "narx", "kurs", "ob-havo", "obhavo", "havo", "yangilik", "signal",
+               "btc", "eth", "bitcoin", "dollar", "aksiya", "fyuchers", "soat", "sana", "today", "now", "price",
+               "weather", "news", "ishlay", "holat", "status", "сегодня", "сейчас", "цена", "курс", "погода", "новост", "ekran", "screen", "joylashuv")
+REFRESH_WORDS = ("yangidan", "qayta javob", "yangila", "boshqatdan", "заново", "обнови")
+
+
+LABEL_RE = re.compile(r"^(?:⚡|⭐|📚)[^\n]*\n\n")
+
+
+def strip_label(text: str) -> str:
+    """Eski javoblardagi "⚡ ChatGPT", "📚 Xotiradan ..." kabi manba yozuvlarini olib tashlaydi."""
+    while LABEL_RE.match(text):
+        text = LABEL_RE.sub("", text, count=1)
+    return text
+
+
+def recall_answer(text: str) -> str | None:
+    """Xuddi shu savolga avval berilgan javob (agentlar ishi ham shu jurnalda) - tayyor holda."""
+    low = text.lower()
+    if any(w in low for w in FRESH_WORDS + REFRESH_WORDS):
+        return None
+    hit = memory.recall(text)
+    if not hit:
+        return None
+    log.info("Javob xotiradan berildi (%s)", hit["at"])
+    return strip_label(hit["answer"])
 
 
 async def run_ask(text: str, images: list[dict] | None = None, deep: bool = False, super_mode: bool = False,
                   source: str = "web", req_id: str | None = None,
-                  on_event: Callable[[str, object], None] | None = None, agent: str | None = None) -> str:
+                  on_event: Callable[[str, object], None] | None = None, agent: str | None = None,
+                  allow_local: bool = False) -> str:
     """So'rovni bajaradi va jarayonni barcha ochiq ekranlarga uzatadi. Xatoda AskError."""
     if brain.lock.locked() or ask_lock.locked():
         raise AskError("Ali hozir boshqa vazifa ustida - biroz kuting.")
@@ -247,12 +279,50 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
     start = outbox.mark()
     try:
         async with ask_lock:
-            answer = await asyncio.to_thread(brain.ask, text, emit, deep, super_mode, images, agent)
+            from . import local_ai
+            pro = None
+            # Avval shu savolga javob berilgan bo'lsa - tayyor javob xotiradan (vaqtga bog'liq savollar bundan mustasno)
+            recalled = None if images else await asyncio.to_thread(recall_answer, text)
+            # Egasi asosiy qilib tanlagan Pro ilova (Claude/ChatGPT/Gemini obunasi) - faqat shu kompyuterdan
+            if not recalled and allow_local and local_ai.access() is True and local_ai.option('_primary') in local_ai.connected():
+                prompt = local_ai._prompt(brain.system + LOCAL_NOTE, _plain_history(), text)
+                pro = await asyncio.to_thread(local_ai.ask_pro, prompt)
+            if recalled or pro:
+                answer = recalled or pro[1]
+                if pro:
+                    log.info("Javobni %s Pro ilovasi berdi", pro[0])
+                brain.messages += [{'role':'user','content':text},{'role':'assistant','content':answer}]
+                brain._save_session()
+                memory.log_message(brain.session_id,'user',text)
+                memory.log_message(brain.session_id,'assistant',answer)
+            elif config.chat_provider in {'gemini','openai','auto'}:
+                from . import providers
+                system=brain.system+'\nHozir faqat matnli suhbat rejimi. Dastur ochish, fayl yaratish yoki internetni tekshirish bajarilmadi; bajarilgandek aytma.'+HIDE_SOURCE
+                if images:
+                    text+='\n[Rasm biriktirilgan, ammo bu suhbat rejimida rasm uzatilmagan. Uni ko‘rgandek javob bermang.]'
+                try:
+                    provider,reply=await asyncio.to_thread(providers.chat,system,_plain_history(),text,4000)
+                except RuntimeError:
+                    local=await asyncio.to_thread(_rescue_local,system,text) if allow_local else None
+                    if not local:raise
+                    provider,reply=local
+                answer=reply
+                log.info("Javobni %s berdi", provider)
+                brain.messages += [{'role':'user','content':text},{'role':'assistant','content':answer}]
+                brain._save_session()
+                memory.log_message(brain.session_id,'user',text)
+                memory.log_message(brain.session_id,'assistant',answer)
+            else:
+                from .device_access import local_request
+                device_token=local_request.set(allow_local)
+                try:
+                    answer = await asyncio.to_thread(brain.ask, text, emit, deep, super_mode, images, agent)
+                finally:local_request.reset(device_token)
     except Exception as e:
         if not isinstance(e, anthropic.APIError):
             log.exception("so'rov xatosi")
         message = error_text(e)
-        answer = await gemini_rescue(e, text, message, emit)
+        answer = await gemini_rescue(e, text, message, emit, allow_local)
         if answer is None:
             tracker.finish(None, message)
             hub.broadcast({"type": "error", "id": req_id, "text": message})

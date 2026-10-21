@@ -324,9 +324,53 @@ def review(brain, key: str, report: dict) -> str:
         task = REVIEW_TASK.format(icon=a.icon, name=a.name, key=key, markdown=a.to_markdown()[:6000],
                                   report=json.dumps(report, ensure_ascii=False, indent=1))
         title = f"Agentni rivojlantirish: {a.name}"
-    return run_agent(brain, COACH, task, title,
-                     extra_tools=("agent_health", "list_agents", "list_available_tools", "search_knowledge",
-                                  "improve_agent", "get_datetime"), strict=True)
+    from . import local_ai
+    pro_ready = local_ai.access() is True and bool(local_ai.connected())
+    if pro_ready and local_ai.option("_coach"):  # egasi tanlagan: Murabbiy Pro ilova orqali o'qitadi
+        if (result := review_with_pro(brain, key, task)) is not None:
+            return result
+    try:
+        return run_agent(brain, COACH, task, title,
+                         extra_tools=("agent_health", "list_agents", "list_available_tools", "search_knowledge",
+                                      "improve_agent", "get_datetime"), strict=True)
+    except RuntimeError:
+        # Claude API ishlamasa (balans va h.k.) - ulangan Pro ilova (Claude / ChatGPT / Gemini obunasi) o'qitadi
+        if pro_ready and (result := review_with_pro(brain, key, task)) is not None:
+            return result
+        raise
+
+
+PRO_FORMAT = """
+
+MUHIM: bu safar sening vositalaring yo'q (improve_agent chaqira olmaysan). Tahlilni o'zing qil va FAQAT JSON qaytar:
+{"lessons": ["1-3 ta qisqa amaliy saboq"], "learn": ["0-2 ta yangi o'rganish mavzusi"], "summary": "2-4 qatorda nima topding"}
+O'zgartirish kerak bo'lmasa lessons va learn bo'sh ro'yxat bo'lsin. JSON'dan boshqa hech narsa yozma."""
+
+
+def review_with_pro(brain, key: str, task: str) -> str | None:
+    """Murabbiy tahlilini kompyuterdagi Pro ilova bajaradi; natijani improve() xavfsiz qo'llaydi."""
+    from . import local_ai
+    from .service import Tracker
+    coach = brain.agents.get(COACH)
+    prompt = f"{coach.prompt if coach else ''}\n\n{task}{PRO_FORMAT}"
+    tracker = Tracker(COACH, f"Pro orqali o'qitish: {key}", "avtopilot")
+    got = local_ai.ask_pro(prompt)
+    if not got:
+        tracker.finish(None, "Pro ilova javob bermadi")
+        return None
+    app, raw = got
+    try:
+        start, end = raw.index("{"), raw.rindex("}") + 1
+        data = json.loads(raw[start:end])
+    except ValueError:
+        tracker.finish(None, f"{app} JSON qaytarmadi")
+        return None
+    lessons = [str(x) for x in data.get("lessons") or []][:3]
+    learn = [str(x) for x in data.get("learn") or []][:2] if key != ALI else []
+    changed = improve(brain.registry, key, lessons, learn) if lessons or learn else "O'zgarish yo'q."
+    summary = f"[{app} Pro] {str(data.get('summary', ''))[:600]}\n{changed}"
+    tracker.finish(summary)
+    return summary
 
 
 def needs_review(report: dict, last: dict) -> bool:

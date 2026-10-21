@@ -86,6 +86,18 @@
           <div class="home-panel"><b id="activeCount">—</b><span>Hozir ishlayapti</span></div>
           <div class="home-panel"><b id="memoryCount">—</b><span>Xotiradagi fakt</span></div>
         </div>
+        <!-- Bugun dunyoda: ob-havo, kripto, bozorlar, yangiliklar -->
+        <div class="home-world-head"><h2>Bugun dunyoda</h2><span id="worldUpdated"></span><button class="link" id="worldRefresh">↻ Yangilash</button></div>
+        <div class="home-world">
+          <section class="home-panel world-weather" id="worldWeather"><header><h2>🌤 Ob-havo</h2></header><div class="world-body">Yuklanmoqda…</div></section>
+          <section class="home-panel" id="worldCrypto"><header><h2>₿ Kripto</h2><small>24 soat</small></header><div class="world-body">Yuklanmoqda…</div></section>
+          <section class="home-panel" id="worldMarkets"><header><h2>📈 Aksiya va fyuchers</h2></header><div class="world-body">Yuklanmoqda…</div></section>
+          <section class="home-panel world-news" id="worldNews"><header><h2>📰 Yangiliklar</h2>
+            <div class="news-tabs" role="tablist"><button data-news="uzbekiston" class="on">O‘zbekiston</button><button data-news="dunyo">Dunyo</button><button data-news="kripto">Kripto</button></div></header>
+            <div class="world-body">Yuklanmoqda…</div></section>
+        </div>
+        <section class="home-panel home-memory" id="homeMemory"><header><h2>🧠 Ali xotirasi</h2><button class="link" id="memoryOpen" hidden>Papkani ochish →</button></header><div class="world-body">Yuklanmoqda…</div></section>
+
         <div class="home-columns">
           <section class="home-panel home-plan"><header><h2>Kun rejasi</h2><button class="link" id="planWithAli">Ali bilan →</button></header><div id="planList"></div></section>
           <section class="home-panel"><header><h2>Tezkor yozuv</h2><span id="inboxHint"></span></header>
@@ -156,6 +168,9 @@
       <div class="page-head"><div><h1>Ruxsatlar</h1><p class="page-sub">Ali qaysi amallarni sizdan so‘ramasdan bajara olishini belgilang.</p></div><button class="btn primary" id="permissionsSave" disabled>Saqlash</button></div>
       <p id="permissionsStatus" role="status">Sozlamalar yuklanmoqda…</p>
       <section class="permission-connections"><h2>Ulanishlar</h2><div id="permissionConnections"></div></section>
+      <section class="permission-connections ai-apps"><h2>AI ilovalari · API'siz</h2>
+        <p class="ai-apps-note">Claude, ChatGPT va Gemini'ni API kalitisiz — o‘z akkauntingiz (obunangiz) orqali ulang. Bir marta ulansa, Ali eslab qoladi. Faqat shu kompyuterda ochilgan saytdan ulanadi.</p>
+        <div id="aiApps"></div></section>
       <div class="permission-toolbar"><input id="permissionSearch" type="search" placeholder="Vosita yoki amalni qidirish…" aria-label="Ruxsatlarni qidirish"><span>Yangi vositalar ro‘yxatga avtomatik qo‘shiladi</span></div>
       <div id="permissionGroups"></div>
       <div class="permission-note"><b>Rejimlar qanday ishlaydi?</b><p>Avtomatik — Ali vazifa davomida qayta so‘ramasdan bajaradi. Tasdiq so‘rasin — sayt yoki Telegram orqali ruxsat kutiladi. Taqiqlangan — amal bajarilmaydi.</p><p>Ruxsat berish xizmatga akkaunt ulash o‘rnini bosmaydi. Fon o‘rganishi faqat avtomatik va xavfli deb belgilanmagan vositalardan foydalanadi. O‘zgarishlar “Saqlash”dan keyin sayt va Telegramdagi Ali uchun amal qiladi.</p></div>
@@ -334,6 +349,7 @@
 <script src="/static/monitor-galaxy.js"></script>
 <script src="/static/home.js"></script>
 <script src="/static/vault.js"></script>
+<script src="/static/brand-icons.js"></script>
 <script src="/static/permissions.js"></script>
 <script src="/static/app.js"></script>
 </body>

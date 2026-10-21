@@ -18,9 +18,6 @@ def _start() -> tuple[bool, str]:
     _progid = find_progid("CorelDRAW.Application")
     if not _progid:
         return False, "CorelDRAW bu kompyuterda topilmadi"
-    if config.plugins_open_apps:
-        run_ps(f"$app = New-Object -ComObject {_progid}\n$app.Visible = $true", timeout=240)
-        return True, "Ishga tushirildi"
     return True, "Tayyor (kerak bo'lganda ochiladi)"
 
 

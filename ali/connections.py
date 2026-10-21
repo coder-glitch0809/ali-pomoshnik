@@ -1,5 +1,6 @@
 """Owner-only connection setup. Credentials never appear in catalog responses."""
 import asyncio
+import json
 import os
 import re
 import httpx
@@ -11,8 +12,8 @@ _lock = asyncio.Lock()
 PROVIDERS = {
     'telegram': dict(name='Telegram bot', url='https://t.me/BotFather', link='BotFather orqali sozlash',
         steps=['BotFather’da /mybots ni oching va Ali botini tanlang.', 'API Token bo‘limidan bot tokenini oling va pastga kiriting.', 'Saqlagach Ali serverini qayta ishga tushiring.'], field='telegram_token', env='TELEGRAM_BOT_TOKEN'),
-    'instagram': dict(name='Instagram tahlili', url='https://developers.facebook.com/apps/', link='Meta orqali sozlash',
-        steps=['Meta hisobingiz bilan kiring va Instagram ilovasini tanlang.', 'Professional Instagram hisobini ulang va kerakli tahlil ruxsatlarini bering.', 'Graph API tokenini kiriting. Hisob IDlarini serverdagi IG_ACCOUNTS sozlamasiga yozing.'], field='ig_access_token', env='IG_ACCESS_TOKEN'),
+    'instagram': dict(name='Instagram', url='https://developers.facebook.com/apps/', link='Meta Developers’da ilova ochish',
+        steps=['Instagram akkauntingizni Professional (Business yoki Creator) qiling: Instagram → Sozlamalar → Akkaunt turi.', 'Meta Developers’da ilova yarating → “Instagram” mahsulotini qo‘shing → “API setup with Instagram login”.', 'Ruxsatlar: instagram_business_basic, content_publish, manage_comments, manage_insights, manage_messages — barchasini belgilang (to‘liq boshqaruv: joylash, analitika, izohlar, Direct).', '“Generate access token” → akkauntingiz bilan kiring → tokenni (IGAA… bilan boshlanadi) pastga kiriting. Ali akkauntni o‘zi topadi va eslab qoladi.'], field='ig_access_token', env='IG_ACCESS_TOKEN'),
     'github': dict(name='GitHub', url='https://github.com/settings/personal-access-tokens/new', link='GitHub orqali davom etish',
         steps=['GitHub hisobingizga kiring va Ali uchun fine-grained token yarating.', 'Faqat kerakli repozitoriylarni tanlang. O‘qish uchun Contents: Read-only; tahrirlash kerak bo‘lsa Read and write ruxsatini bering.', 'Tokenni nusxalab pastga kiriting. Ali ulanishni tekshirib saqlaydi.'], field='github_token', env='GITHUB_TOKEN'),
     'vercel': dict(name='Vercel', url='https://vercel.com/account/settings/tokens', link='Vercel orqali davom etish',
@@ -25,6 +26,8 @@ PROVIDERS = {
         steps=['Meta hisobingizga kiring va Business ilovasini tanlang.', 'Marketing API va reklama hisobiga tegishli ruxsatlarni sozlang.', 'Ali’da Meta Ads boshqaruv vositasi hali o‘rnatilmagan. Hozir bu sozlash yo‘riqnomasi.']),
     'channels': dict(name='Telegram kanallari', url='https://telegram.org/faq_channels', link='Kanalni ulash yo‘riqnomasi',
         steps=['Telegram’da o‘z kanalingiz sozlamalarini oching.', 'Ali botini administrator qilib qo‘shing, faqat post joylash ruxsatini bering.', 'Kanalga avtomatik post vositasi hali o‘rnatilmagan. Botni qo‘shishning o‘zi avtomatik postni yoqmaydi.']),
+    'firebase': dict(name='Firebase (xotira nusxasi)', url='https://console.firebase.google.com/', link='Firebase Console', json=True,
+        steps=['Firebase Console’da loyihangizni oching → Build → Firestore Database → yoqilganini tekshiring (yo‘q bo‘lsa “Create database”).', 'Project settings (⚙) → Service accounts → “Generate new private key” → JSON fayl yuklanadi.', 'Faylni Bloknot bilan oching, butun matnni nusxalab pastga joylang. Ali tekshiradi va har daqiqada xotirani Firebase’ga yozadi.', 'Kalit faqat shu kompyuterda (data/ papkasida) saqlanadi va GitHub’ga chiqmaydi.']),
     'gemini': dict(name='Gemini plagini', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
         steps=['Google hisobingiz bilan AI Studio’ga kiring.', '“Create API key” tugmasi bilan kalit yarating.', 'Kalitni pastga kiriting - plagin avtomatik ishga tushadi.'], field='gemini_api_key', env='GEMINI_API_KEY'),
     'chatgpt': dict(name='ChatGPT plagini', url='https://platform.openai.com/api-keys', link='OpenAI’da kalit olish', plugin='chatgpt',
@@ -41,22 +44,30 @@ def catalog(telegram_live=False):
         configured=bool(getattr(config,p.get('field',''),''))
         status='Kalit sozlangan, aloqa tekshirilmagan' if configured else 'Sozlanmagan'
         if key=='telegram' and telegram_live:status='Ulangan'
+        if key=='instagram' and config.ig_accounts:status='Ulangan: '+', '.join('@'+a for a in config.ig_accounts)
         if key=='voice':status=f'Sozlangan: {config.tts_backend}'
         if key in {'google','meta','channels'}:status='Integratsiya hali o‘rnatilmagan'
+        if key=='firebase':
+            from . import cloud
+            configured=cloud.configured()
+            st=cloud.status
+            status=('Xato: '+st['error'][:120]) if st['error'] else (('Ulangan · oxirgi nusxa '+__import__('time').strftime('%H:%M',__import__('time').localtime(st['last_sync']))) if st['last_sync'] else ('Ulangan · birinchi nusxa tayyorlanmoqda' if configured else 'Sozlanmagan'))
         if 'plugin' in p:
             from . import plugins
             plug=plugins.PLUGINS.get(p['plugin'])
             status=plug.status if plug else 'Plagin o‘chirilgan (PLUGINS_DISABLED)'
             configured=bool(plug and plug.ready)
-        result.append(dict(id=key,name=p['name'],status=status,url=p['url'],link=p['link'],steps=p['steps'],can_save='field' in p,configured=configured))
+        result.append(dict(id=key,name=p['name'],status=status,url=p['url'],link=p['link'],steps=p['steps'],can_save='field' in p or p.get('json',False),json=p.get('json',False),configured=configured))
     return result
 
 async def connect(key, token):
+    if key=='firebase':return await connect_firebase(token)
     p=PROVIDERS.get(key)
     if not p or 'field' not in p:raise ValueError('Bu xizmat uchun hozir faqat yo‘riqnoma mavjud.')
     if not isinstance(token,str) or not 12<=len(token)<=4096 or re.search(r'\s',token):
         raise ValueError('To‘liq token kiriting; bo‘sh joy bo‘lmasin.')
     headers={}
+    if key=='instagram':return await connect_instagram(token)
     if key=='telegram':
         if not re.fullmatch(r'\d+:[A-Za-z0-9_-]+',token):raise ValueError('Telegram token formati noto‘g‘ri.')
         url=f'https://api.telegram.org/bot{token}/getMe'
@@ -87,3 +98,36 @@ async def connect(key, token):
         from . import plugins
         await asyncio.to_thread(plugins.restart,p['plugin'])
     return {'ok':True,'message':'Token tekshirildi va saqlandi.'+(' Botni yangilash uchun Ali serverini qayta ishga tushiring.' if key=='telegram' else '')}
+
+
+async def connect_instagram(token):
+    """Instagram: token turini aniqlaydi, akkaunt(lar)ni topadi va token bilan birga saqlaydi."""
+    from .skills.instagram import discover
+    try:accounts=await asyncio.to_thread(discover,token)
+    except (RuntimeError,httpx.HTTPError,KeyError,ValueError):
+        raise ValueError('Instagram tokenni tasdiqlamadi. Token to‘liq nusxalanganini va ruxsatlarni tekshiring.') from None
+    if not accounts:
+        raise ValueError('Token ishladi, lekin Instagram Professional akkaunt topilmadi (Facebook sahifaga ulanganini tekshiring).')
+    value=','.join(f'{name}={uid}' for name,uid in accounts.items())
+    async with _lock:
+        try:
+            await asyncio.to_thread(set_key,str(ENV_FILE),'IG_ACCESS_TOKEN',token)
+            await asyncio.to_thread(set_key,str(ENV_FILE),'IG_ACCOUNTS',value)
+        except OSError:raise ValueError('Server sozlamani saqlay olmadi.') from None
+        config.ig_access_token=token;config.ig_accounts=dict(accounts)
+        os.environ['IG_ACCESS_TOKEN']=token;os.environ['IG_ACCOUNTS']=value
+    return {'ok':True,'message':'Instagram ulandi: '+', '.join('@'+n for n in accounts)+'. Ali joylash, analitika, izohlar va Direct’ni boshqara oladi (har bir amal tasdiq bilan).'}
+
+
+async def connect_firebase(text):
+    """Firebase service account kalitini tekshiradi, data/ ga saqlaydi va sinxronlashni boshlaydi."""
+    from . import cloud
+    if not isinstance(text,str) or len(text)>20000:raise ValueError('Kalit matnini to‘liq joylang.')
+    data=await asyncio.to_thread(cloud.validate,text.strip())
+    async with _lock:
+        cloud.KEY_FILE.write_text(json.dumps(data),encoding='utf-8')
+        cloud.reset()
+    cloud.start()
+    try:result=await asyncio.to_thread(cloud.sync_once)
+    except Exception as e:return {'ok':True,'message':f'Kalit saqlandi ({data["project_id"]}), lekin birinchi nusxa xato berdi: {str(e)[:200]}'}
+    return {'ok':True,'message':f'Firebase ulandi ({data["project_id"]}). Birinchi nusxa: {result["pushed"]} ta yozuv yuborildi. Endi har daqiqada avtomatik.'}

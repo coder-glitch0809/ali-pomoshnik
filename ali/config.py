@@ -26,6 +26,8 @@ class Config:
     assistant_name: str = field(default_factory=lambda: _env("ASSISTANT_NAME", "Ali"))
     user_name: str = field(default_factory=lambda: _env("USER_NAME", "Ser"))
 
+    chat_provider: str = field(default_factory=lambda: _env("CHAT_PROVIDER", "claude").lower())
+
     # Asosiy miya (Claude)
     model: str = field(default_factory=lambda: _env("CLAUDE_MODEL", "claude-opus-5-5"))
     effort: str = field(default_factory=lambda: _env("CLAUDE_EFFORT", "medium"))
@@ -52,7 +54,6 @@ class Config:
     # Claude API ishlamasa (balans tugagan va h.k.) - Gemini javob bersin
     gemini_fallback: bool = field(default_factory=lambda: _env_bool("GEMINI_FALLBACK", True))
 
-<<<<<<< HEAD
     # Maslahatchi modellar (consult_experts): GPT va Gemini fikri, Claude solishtiradi
     openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5"))
@@ -62,10 +63,7 @@ class Config:
     # Serverda (Render) hech qachon yoqilmaydi.
     full_access: bool = field(default_factory=lambda: _env_bool("FULL_ACCESS", False) and not os.getenv("RENDER"))
     powershell_timeout: int = field(default_factory=lambda: int(_env("POWERSHELL_TIMEOUT", "300")))
-=======
     # ChatGPT plagini (OpenAI API)
-    openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
-    openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5"))
     openai_image_model: str = field(default_factory=lambda: _env("OPENAI_IMAGE_MODEL", "gpt-image-1"))
 
     # Plaginlar: hammasi avtomatik ishga tushadi; o'chirish uchun PLUGINS_DISABLED=chatgpt,coreldraw
@@ -73,7 +71,7 @@ class Config:
         x.strip().lower() for x in _env("PLUGINS_DISABLED").split(",") if x.strip()
     })
     # Ali ishga tushganda Photoshop/CorelDRAW ham darhol ochilsinmi (false - faqat kerak bo'lganda)
-    plugins_open_apps: bool = field(default_factory=lambda: _env_bool("PLUGINS_OPEN_APPS", True))
+    plugins_open_apps: bool = field(default_factory=lambda: _env_bool("PLUGINS_OPEN_APPS", False))
 
     # Telefon ilovasi: Firebase loyihasi (kirish tokenlarini tekshirish) va kunlik bepul savollar
     firebase_project_id: str = field(default_factory=lambda: _env("FIREBASE_PROJECT_ID"))
@@ -84,7 +82,6 @@ class Config:
     install_groups: set[str] | None = field(default_factory=lambda: (
         {x.strip() for x in os.environ["ALI_INSTALL_GROUPS"].split(",") if x.strip()}
         if "ALI_INSTALL_GROUPS" in os.environ else None))
->>>>>>> 98afa3f (ali)
 
     # Telegram bot
     telegram_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))

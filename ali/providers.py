@@ -28,7 +28,7 @@ def _openai_client():
     global _openai
     if _openai is None:
         from openai import OpenAI
-        _openai = OpenAI(api_key=config.openai_api_key)
+        _openai = OpenAI(api_key=config.openai_api_key, timeout=60, max_retries=1)
     return _openai
 
 
@@ -67,7 +67,28 @@ def ask_all(prompt: str) -> dict[str, str]:
 
 
 def can_chat() -> bool:
-    return bool(config.gemini_api_key)
+    return bool(config.gemini_api_key or config.openai_api_key)
+
+
+def chat(system: str, history: list[dict], text: str, max_tokens: int = 1500,
+         json_mode: bool = False) -> tuple[str, str]:
+    """Try configured chat providers in order, without desktop tools or Claude billing."""
+    order=['openai','gemini'] if config.chat_provider=='openai' else ['gemini','openai']
+    for name in order:
+        if not getattr(config,name+'_api_key'):continue
+        try:
+            if name=='gemini':answer=gemini_chat(system,history,text,max_tokens,json_mode)
+            else:
+                options={'text':{'format':{'type':'json_object'}}} if json_mode else {}
+                response=_openai_client().responses.create(model=config.openai_model,
+                    instructions=system+('\nReturn valid JSON only.' if json_mode else ''),
+                    input=history+[{'role':'user','content':text}],max_output_tokens=max_tokens+4096,
+                    store=False,**options)
+                answer=response.output_text.strip()
+            if answer:return ('Gemini' if name=='gemini' else 'GPT'),answer
+        except Exception as error:
+            log.warning('%s chat unavailable: %s',name,type(error).__name__)
+    raise RuntimeError('Gemini va GPT javob bermadi. API kaliti, kvota yoki hisobga kirishni tekshiring.')
 
 
 def gemini_chat(system: str, history: list[dict], text: str, max_tokens: int = 1500, json_mode: bool = False,

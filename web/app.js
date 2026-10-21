@@ -680,7 +680,7 @@
     } catch { return; }
     if (!info.local || info.allowed === true) return;
     localAsked = true;
-    $('#localApps').innerHTML = info.apps.map((a) => `<li class="${a.ready ? 'ready' : ''}"><span>${esc(a.name)}</span><small>${a.ready ? 'O‘rnatilgan' : 'O‘rnatilmagan'}</small></li>`).join('');
+    $('#localApps').innerHTML = info.apps.map((a) => `<li class="${a.ready ? 'ready' : ''}"><span>${esc(a.name)}</span><small>${a.connected ? 'Ulangan' : a.installed ? 'O‘rnatilgan' : 'O‘rnatilmagan'}</small></li>`).join('');
     localSheet.classList.add('show');
     localSheet.setAttribute('aria-hidden', 'false');
     $('#localAllow').focus();

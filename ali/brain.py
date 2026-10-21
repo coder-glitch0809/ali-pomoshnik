@@ -413,16 +413,24 @@ class Brain:
 
     def _run_one(self, name: str, args) -> tuple[str | list, bool]:
         from . import permissions
+        from .device_access import is_desktop, local_request
         skill = self.registry.get(name)
         if skill is None:
             return f"Noma'lum vosita: {name}", True
         if error := skill.validate(args):
             return f"INVALID_INPUT: {error}", True
+        desktop=is_desktop(skill)
+        if desktop and not local_request.get():
+            return "Bu dastur Ali serveri kompyuterida. O‘z qurilmangizdagi dastur uchun Ali’ni o‘sha qurilmada ochib ruxsat bering.", True
         mode = permissions.mode(name, skill.dangerous)
         if mode == 'deny':
             permissions.audit(name, 'blocked')
             return "Bu amal Ruxsatlar bo‘limida taqiqlangan.", True
-        if mode == 'ask' and name in self.preapproved:
+        if desktop:
+            if not self.confirm(name,args):
+                permissions.audit(name,'declined')
+                return "Kompyuter dasturidan foydalanishga ruxsat berilmadi.",True
+        elif mode == 'ask' and name in self.preapproved:
             self.preapproved.discard(name)  # bir marta: tasdiqlangan so'rov uchun
         elif mode == 'ask' and not self.confirm(name, args):
             permissions.audit(name, 'declined')
@@ -488,4 +496,7 @@ class Brain:
             log.exception("Agent xatosi: %s", a.key)
             return f"Agent xatosi: {e}", True
         log.info("Agent %s tugadi", a.key)
-        return f"[{a.icon} {a.name} natijasi]\n" + ("".join(text).strip() or "(bo'sh)"), False
+        result = "".join(text).strip() or "(bo'sh)"
+        # Agent ishi ham xotirada qoladi: keyingi safar shu vazifaga tayyor javob topiladi
+        memory.log_message(self.session_id, f"agent:{a.key}", f"Vazifa: {args['task']}\n\nNatija:\n{result}")
+        return f"[{a.icon} {a.name} natijasi]\n" + result, False

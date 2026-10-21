@@ -60,7 +60,7 @@ INSTALL_GROUPS = {
     'files': {'projects', 'office'},
     'photoshop': {'photoshop'},
     'coreldraw': {'coreldraw'},
-    'ai': {'gemini', 'chatgpt'},
+    'ai': {'gemini', 'chatgpt', 'ai_apps'},
     'online': {'github', 'vercel', 'instagram'},
 }
 

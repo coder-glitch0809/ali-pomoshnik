@@ -18,9 +18,6 @@ def _start() -> tuple[bool, str]:
     _progid = find_progid("Photoshop.Application")
     if not _progid:
         return False, "Photoshop bu kompyuterda topilmadi"
-    if config.plugins_open_apps:
-        run_ps(f"$null = New-Object -ComObject {_progid}", timeout=240)
-        return True, "Ishga tushirildi"
     return True, "Tayyor (kerak bo'lganda ochiladi)"
 
 

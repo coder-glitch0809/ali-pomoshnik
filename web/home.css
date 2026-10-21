@@ -47,3 +47,44 @@
 body.home-dashboard .nav-item.on { background: #8b6cff20; box-shadow: inset 0 0 0 1px #a091eb; }
 @media (max-width: 1100px) { .home-columns { grid-template-columns: 1fr 1fr; } .home-columns > :last-child { grid-column: 1 / -1; min-height: auto; } .home-commands { grid-template-columns: repeat(6, 1fr); } }
 @media (max-width: 620px) { #view-home .page { padding: 20px 16px; } .home-metrics { grid-template-columns: repeat(2, 1fr); } .home-columns { grid-template-columns: 1fr; } .home-commands { grid-template-columns: repeat(3, 1fr); } .home-head-actions .live { display: none; } #view-home .page-head { align-items: flex-start; } .home-head-actions .btn { font-size: 11px; padding: 10px; white-space: nowrap; } .home-panel { padding: 16px; } }
+
+/* ---------- Bugun dunyoda ---------- */
+.home-world-head { display:flex;align-items:center;gap:12px;margin:22px 0 12px; }
+.home-world-head h2 { margin:0;font-size:17px; }
+.home-world-head span { color:var(--muted);font-size:11px;margin-right:auto; }
+.home-world { display:grid;grid-template-columns:1fr 1fr 1.2fr 1.6fr;gap:14px;align-items:stretch;margin-bottom:14px; }
+.home-world .home-panel header, .home-memory header { display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px; }
+.home-world .home-panel h2, .home-memory h2 { margin:0;font-size:14px; }
+.home-world small { color:var(--muted);font-size:11px; }
+.world-body { font-size:13px; }
+.w-now { display:flex;align-items:center;gap:12px; }
+.w-now .ico { font-size:38px;line-height:1; }
+.w-now b { font-size:32px;letter-spacing:-1px; }
+.w-now p { margin:0;color:var(--muted);font-size:12px; }
+.w-days { display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:14px; }
+.w-days div { text-align:center;padding:8px 4px;border-radius:10px;background:var(--card-2);font-size:12px; }
+.w-days small { display:block; }
+.tick { display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line); }
+.tick:last-child { border-bottom:0; }
+.tick span { color:var(--muted);font-size:11px; }
+.tick em { font-style:normal;font-size:12px;font-weight:600;min-width:58px;text-align:right; }
+.tick .up { color:var(--green); } .tick .down { color:var(--red); }
+.tick b { font-weight:600;font-variant-numeric:tabular-nums; }
+#worldMarkets .world-body, #worldNews .world-body { max-height:330px;overflow-y:auto; }
+.news-tabs { display:flex;gap:4px; }
+.news-tabs button { padding:4px 9px;border-radius:8px;border:1px solid var(--line);font-size:11.5px;color:var(--muted); }
+.news-tabs button.on { color:var(--text);border-color:var(--accent);background:var(--accent-soft); }
+.news-item { display:block;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text);text-decoration:none;line-height:1.4; }
+.news-item:hover { color:var(--accent); }
+.news-item small { display:block;color:var(--muted);margin-top:2px; }
+.home-memory { margin-bottom:14px; }
+.mem-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:10px; }
+.mem-grid div { padding:10px 12px;border-radius:12px;background:var(--card-2); }
+.mem-grid b { display:block;font-size:20px; }
+.mem-grid span { color:var(--muted);font-size:11px; }
+.mem-paths { margin:12px 0 0;font:11.5px/1.7 var(--mono, monospace);color:var(--muted);word-break:break-all; }
+.mem-paths b { color:var(--text);font-family:var(--font, sans-serif); }
+.mem-team { display:flex;flex-wrap:wrap;gap:6px;margin-top:10px; }
+.mem-team span { padding:4px 9px;border-radius:8px;border:1px solid var(--line);font-size:11.5px; }
+@media (max-width:1100px) { .home-world { grid-template-columns:1fr 1fr; } }
+@media (max-width:640px) { .home-world, .mem-grid { grid-template-columns:1fr 1fr; } .world-news, .world-weather { grid-column:1/-1; } }

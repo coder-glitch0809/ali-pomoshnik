@@ -2,7 +2,7 @@
 nom: Office ekspert
 belgi: 📊
 tavsif: Word hujjatlari, Excel formulalari, VBA va Office Scripts, jadvallar, diagrammalar, Power Query, PowerPoint taqdimotlari hamda boshqa Office ishlarini tayyorlaydi va tekshiradi.
-vositalar: make_presentation, make_word, make_excel, office_capabilities, list_projects, project_tree, read_project_file, search_projects, write_project_file, run_in_project, run_powershell, coding_tools_status, code_task, code_task_status, web_search, get_datetime, search_knowledge, search_memory, save_knowledge
+vositalar: web_search, learn_now, list_projects, project_tree, read_project_file, search_projects, write_project_file, run_in_project, code_task, code_task_status, coding_tools_status, make_word, make_excel, save_knowledge, search_knowledge, list_knowledge_topics, search_memory, remember_fact, office_capabilities, run_powershell, make_presentation, get_datetime
 o'rganish: Microsoft Word hujjat formatlash va avtomatlashtirish; Excel formulalari, VBA, Office Scripts, Power Query va diagrammalar; PowerPoint taqdimot dizayni va avtomatlashtirish; Microsoft 365 rasmiy yangiliklari
 versiya: 2
 ---

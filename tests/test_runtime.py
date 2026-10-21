@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 state = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "data")
 os.environ.update(ALI_STATE_DIR=state.name, ANTHROPIC_API_KEY="", TELEGRAM_BOT_TOKEN="",
                   ACCESS_PASSWORD="test-password", AUTO_LEARN="false", WATCH_PROJECTS="false",
-                  PLUGINS_OPEN_APPS="false")
+                  PLUGINS_OPEN_APPS="false", CHAT_PROVIDER="claude", GEMINI_API_KEY="", OPENAI_API_KEY="")
 
 from fastapi.testclient import TestClient
 from ali import agents, auth
@@ -30,6 +30,40 @@ def tearDownModule():
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_remote_request_cannot_launch_host_application(self):
+        from ali.device_access import local_request
+        token=local_request.set(False)
+        try:
+            with patch.object(brain,'confirm') as confirm:
+                result,error=brain._run_one('open_application',{'name':'photoshop'})
+                self.assertTrue(error);confirm.assert_not_called()
+        finally:local_request.reset(token)
+
+    def test_chat_provider_falls_back_to_gpt(self):
+        from ali import providers
+        from types import SimpleNamespace
+        client=SimpleNamespace(responses=SimpleNamespace(create=lambda **kw:SimpleNamespace(output_text='GPT reply')))
+        with patch.object(config,'gemini_api_key','test'),patch.object(config,'openai_api_key','test'),patch.object(config,'chat_provider','gemini'),patch.object(providers,'gemini_chat',side_effect=RuntimeError('quota')),patch.object(providers,'_openai_client',return_value=client):
+            self.assertEqual(providers.chat('system',[],'hello'),('GPT','GPT reply'))
+
+    def test_desktop_plugins_never_launch_on_start(self):
+        from ali.plugins import photoshop,coreldraw,autocad
+        for module in [photoshop,coreldraw,autocad]:
+            with patch.object(config,'plugins_open_apps',True),patch.object(module,'find_progid',return_value='Test.Application'),patch.object(module,'run_ps') as run:
+                self.assertTrue(module._start()[0]);run.assert_not_called()
+
+    def test_local_consent_does_not_transfer_to_another_device(self):
+        from ali import local_ai
+        with patch.object(local_ai,'ACCESS',Path(state.name)/'device-access.json'),patch.object(local_ai,'device_identity',return_value='device-a'):
+            local_ai.set_access(True);self.assertTrue(local_ai.access())
+            with patch.object(local_ai,'device_identity',return_value='device-b'):self.assertIsNone(local_ai.access())
+
+    def test_gemini_mode_skips_claude(self):
+        from ali import service,providers
+        with patch.object(config,'chat_provider','gemini'),patch.object(providers,'chat',return_value=('Gemini','Salom')),patch.object(brain,'ask') as claude:
+            self.assertIn('Salom',asyncio.run(service.run_ask('hello')))
+            claude.assert_not_called()
+
     def test_telegram_setup_rate_limit_does_not_block_and_is_cached(self):
         from types import SimpleNamespace
         from telegram.error import RetryAfter

@@ -5,6 +5,8 @@ Jadvallar:
   messages   - barcha suhbatlar jurnali (tarix, tahlil uchun)
   reminders  - eslatmalar
 """
+import difflib
+import re
 import sqlite3
 import threading
 from datetime import datetime
@@ -49,6 +51,45 @@ def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _norm(text: str) -> str:
+    return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
+
+
+# Xotiraning o'qiladigan nusxasi: loyiha ichidagi xotira/ papkasi (asl baza - data/ali.db)
+JOURNAL_DIR = config.data_dir.parent / "xotira"
+JOURNAL_README = """# Ali xotirasi
+
+Bu papka Ali xotirasining o'qiladigan nusxasi (Markdown). Asl xotira: `data/ali.db` (SQLite).
+
+- `suhbatlar/YYYY-MM-DD.md` - har kungi barcha yozishmalar (siz, Ali, agentlar ishi)
+- Faktlar va o'rganilgan bilimlar - `data/ali.db` (saytda: Vault · Xotira bo'limi)
+- Agentlarning tajribasi va saboqlari - `agents/*.md` (Tajriba bo'limi), eski nusxalar - `data/`
+
+Shu papkani va `data/` ni zaxira (backup) qilsangiz, Ali hech narsani unutmaydi.
+"""
+_journal_lock = threading.Lock()
+
+
+def journal(role: str, content: str) -> None:
+    """Har bir xabar kunlik Markdown faylga ham yoziladi - xotira aniq va ko'rinadigan joyda bo'lsin."""
+    try:
+        day = datetime.now().strftime("%Y-%m-%d")
+        folder = JOURNAL_DIR / "suhbatlar"
+        who = {"user": "👤 Siz", "assistant": "🧠 Ali"}.get(role, "🤖 " + role.replace("agent:", "Agent: "))
+        with _journal_lock:
+            folder.mkdir(parents=True, exist_ok=True)
+            readme = JOURNAL_DIR / "README.md"
+            if not readme.exists():
+                readme.write_text(JOURNAL_README, encoding="utf-8")
+            path = folder / f"{day}.md"
+            with path.open("a", encoding="utf-8") as f:
+                if f.tell() == 0:
+                    f.write(f"# Suhbatlar · {day}\n")
+                f.write(f"\n### {datetime.now().strftime('%H:%M:%S')} · {who}\n\n{content.strip()}\n")
+    except OSError:
+        pass  # jurnal - qo'shimcha nusxa; asl xotira bazada saqlangan
+
+
 class Memory:
     def __init__(self, path=config.db_path):
         self._lock = threading.Lock()
@@ -83,6 +124,38 @@ class Memory:
             "INSERT INTO messages(session_id, role, content, created_at) VALUES(?,?,?,?)",
             (session_id, role, content, _now()),
         )
+        journal(role, content)
+
+    def recall(self, question: str, min_ratio: float = 0.9, scan: int = 3000) -> dict | None:
+        """Avval aynan shunday (yoki deyarli shunday) savol berilgan bo'lsa - o'shanda berilgan javob.
+        {question, answer, at} yoki None."""
+        q = _norm(question)
+        if len(q) < 8:
+            return None
+        rows = self._exec("SELECT id, session_id, content, created_at FROM messages WHERE role='user' "
+                          "ORDER BY id DESC LIMIT ?", (scan,)).fetchall()
+        best = None
+        for r in rows:
+            ratio = difflib.SequenceMatcher(None, q, _norm(r["content"])).ratio()
+            if ratio >= min_ratio and (best is None or ratio > best[0]):
+                best = (ratio, r)
+                if ratio == 1.0:
+                    break
+        if not best:
+            return None
+        r = best[1]
+        answer = self._exec("SELECT content, created_at FROM messages WHERE session_id=? AND id>? AND role='assistant' "
+                            "ORDER BY id LIMIT 1", (r["session_id"], r["id"])).fetchone()
+        if not answer or not answer["content"].strip() or answer["content"].startswith(("⚠", "Xato")):
+            return None
+        return {"question": r["content"], "answer": answer["content"], "at": answer["created_at"]}
+
+    def stats(self) -> dict:
+        one = lambda sql: self._exec(sql).fetchone()[0]
+        return {"messages": one("SELECT count(*) FROM messages WHERE role IN ('user','assistant')"),
+                "agent_tasks": one("SELECT count(*) FROM messages WHERE role LIKE 'agent:%'"),
+                "facts": one("SELECT count(*) FROM facts"), "knowledge": one("SELECT count(*) FROM knowledge"),
+                "first": one("SELECT min(created_at) FROM messages") or ""}
 
     # --- Bilimlar bazasi (o'rganilgan mavzular) ---
     def recent_messages(self, session_id: str, limit: int = 80) -> list[dict]:

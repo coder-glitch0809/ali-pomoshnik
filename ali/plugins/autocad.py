@@ -18,9 +18,6 @@ def _start() -> tuple[bool, str]:
     _progid = find_progid("AutoCAD.Application")
     if not _progid:
         return False, "AutoCAD bu kompyuterda topilmadi"
-    if config.plugins_open_apps:
-        run_ps(_app(), timeout=300)
-        return True, "Ishga tushirildi"
     return True, "Tayyor (kerak bo'lganda ochiladi)"
 
 

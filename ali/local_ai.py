@@ -10,11 +10,15 @@ O'rnatish (ixtiyoriy, har biridan keyin terminalda bir marta kirish kerak):
     Gemini:       npm install -g @google/gemini-cli           -> gemini  (Google akkaunti bilan kirish)
 """
 import json
+import re
 import logging
 import os
 import shutil
 import subprocess
 import time
+import hashlib
+import platform
+import getpass
 from pathlib import Path
 
 from .config import config
@@ -28,17 +32,22 @@ NAMES = {"claude": "Claude", "codex": "ChatGPT", "gemini": "Gemini"}
 
 
 # --- ruxsat ---
+def device_identity():
+    return hashlib.sha256((platform.node()+'|'+getpass.getuser()+'|'+str(config.data_dir.resolve())).encode()).hexdigest()
+
 def access() -> bool | None:
     """True - ruxsat berilgan, False - rad etilgan, None - hali so'ralmagan."""
     try:
-        value = json.loads(ACCESS.read_text(encoding="utf-8")).get("allowed")
+        data = json.loads(ACCESS.read_text(encoding="utf-8"))
+        if data.get('device')!=device_identity():return None
+        value = data.get("allowed")
         return value if isinstance(value, bool) else None
     except (OSError, ValueError, AttributeError):
         return None
 
 
 def set_access(allowed: bool) -> None:
-    ACCESS.write_text(json.dumps({"allowed": bool(allowed), "at": time.strftime("%Y-%m-%d %H:%M:%S")}), encoding="utf-8")
+    ACCESS.write_text(json.dumps({"allowed": bool(allowed), "device":device_identity(), "at": time.strftime("%Y-%m-%d %H:%M:%S")}), encoding="utf-8")
     log.info("Kompyuterdagi AI ilovalariga ruxsat: %s", allowed)
 
 
@@ -55,15 +64,146 @@ def _claude_exe() -> str | None:
     return str(max(found, key=lambda p: p.stat().st_mtime)) if found else None
 
 
+def app_exe(key: str) -> str | None:
+    if key == "claude":
+        return _claude_exe()
+    # Server ishga tushgandan keyin o'rnatilgan bo'lsa, PATH hali yangilanmagan bo'ladi
+    npm_dir = Path(os.environ.get("APPDATA", "")) / "npm"
+    return shutil.which(key) or next((str(p) for p in (npm_dir / f"{key}.cmd", npm_dir / key) if p.exists()), None)
+
+
 def apps() -> dict[str, str]:
-    """O'rnatilgan ilovalar: {kalit: bajariladigan fayl} - ishlatish tartibida."""
-    found = {"claude": _claude_exe(), "codex": shutil.which("codex"), "gemini": shutil.which("gemini")}
-    return {k: v for k, v in found.items() if v}
+    """Ishlatiladigan ilovalar: {kalit: bajariladigan fayl}. Egasi ulagan (tekshirilgan) ilovalar birinchi."""
+    state = app_state()
+    found = {"gemini": app_exe("gemini"), "codex": app_exe("codex")}
+    if config.chat_provider == 'claude' or state.get("claude", {}).get("connected"):
+        found['claude'] = _claude_exe()
+    found = {k: v for k, v in found.items() if v and state.get(k, {}).get("connected") is not False}
+    return dict(sorted(found.items(), key=lambda kv: not state.get(kv[0], {}).get("connected")))
 
 
 def summary() -> dict:
-    found = apps()
-    return {"allowed": access(), "apps": [{"key": k, "name": NAMES[k], "ready": k in found} for k in NAMES]}
+    found, state = apps(), app_state()
+    return {"allowed": access(), "primary": state.get("_primary"), "coach": bool(state.get("_coach")),
+            "programs": programs(), "apps": [
+        {"key": k, "name": NAMES[k], "ready": k in found, "installed": bool(app_exe(k)),
+         "connected": state.get(k, {}).get("connected"), "at": state.get(k, {}).get("at", ""),
+         "error": state.get(k, {}).get("error", "")} for k in NAMES]}
+
+
+# --- boshqa dasturlar (kalit kerak emas - kompyuterda topiladi) ---
+def _vscode_exe() -> str | None:
+    if exe := shutil.which("code") or shutil.which("code.cmd"):
+        return exe
+    base = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Microsoft VS Code"
+    return next((str(p) for p in (base / "bin" / "code.cmd", base / "Code.exe") if p.exists()), None)
+
+
+PROGRAMS = {"vscode": ("VS Code", _vscode_exe)}
+
+
+def programs() -> list[dict]:
+    return [{"key": k, "name": name, "found": bool(find())} for k, (name, find) in PROGRAMS.items()]
+
+
+def open_program(key: str, path: str = "") -> None:
+    name, find = PROGRAMS[key]
+    exe = find()
+    if not exe:
+        raise RuntimeError(f"{name} topilmadi")
+    subprocess.Popen([exe, *([path] if path else [])], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+# --- ulanishni eslab qolish (data/ai_apps.json) ---
+STATE = config.data_dir / "ai_apps.json"
+PACKAGES = {"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex", "gemini": "@google/gemini-cli"}
+LOGIN_ARGS = {"claude": [], "codex": ["login"], "gemini": []}
+
+
+def app_state() -> dict:
+    try:
+        data = json.loads(STATE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def remember(key: str, connected: bool | None, error: str = "") -> None:
+    data = app_state()
+    if connected is None:
+        data.pop(key, None)
+    else:
+        data[key] = {"connected": connected, "at": time.strftime("%Y-%m-%d %H:%M"), "error": error[:300]}
+    STATE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    log.info("AI ilovasi %s: %s", key, "unutildi" if connected is None else ("ulandi" if connected else "ulanmadi"))
+
+
+def option(name: str):
+    """Saqlangan sozlama: _primary (asosiy Pro ilova), _coach (Murabbiy Pro orqali o'qitsin)."""
+    return app_state().get(name)
+
+
+def set_option(name: str, value) -> None:
+    data = app_state()
+    if value in (None, False, ""):
+        data.pop(name, None)
+    else:
+        data[name] = value
+    STATE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+def connected() -> list[str]:
+    """Egasi ulagan (tekshirilgan) ilovalar: asosiy (primary) birinchi."""
+    state, first = app_state(), option("_primary")
+    keys = [k for k in NAMES if state.get(k, {}).get("connected") and app_exe(k)]
+    return sorted(keys, key=lambda k: k != first)
+
+
+def ask_pro(prompt: str, timeout: int = TIMEOUT) -> tuple[str, str] | None:
+    """Ulangan Pro ilovalardan (asosiysi birinchi) javob: (ilova nomi, javob). Ruxsat bo'lmasa None."""
+    if access() is not True:
+        return None
+    for key in connected():
+        try:
+            return NAMES[key], ask_one(key, app_exe(key), prompt, timeout)
+        except RuntimeError as e:
+            log.warning("%s Pro ilovasi javob bermadi: %s", key, e)
+    return None
+
+
+def install(key: str) -> str:
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    if not npm:
+        raise RuntimeError("Node.js (npm) o'rnatilmagan: https://nodejs.org")
+    r = subprocess.run([npm, "install", "-g", PACKAGES[key]], capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=900, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if r.returncode != 0:
+        raise RuntimeError(f"O'rnatilmadi: {(r.stderr or r.stdout)[-400:]}")
+    return f"{NAMES[key]} o'rnatildi"
+
+
+def open_login(key: str) -> None:
+    """Kirish uchun kompyuterda terminal oynasini ochadi - parolni egasi o'zi kiritadi."""
+    exe = app_exe(key)
+    if not exe:
+        raise RuntimeError(f"{NAMES[key]} o'rnatilmagan")
+    subprocess.Popen(["cmd", "/k", exe, *LOGIN_ARGS[key]], env=clean_env(),
+                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+
+
+def verify(key: str) -> tuple[bool, str]:
+    """Ilova akkaunt bilan haqiqatan javob beradimi - tekshiradi va natijani eslab qoladi."""
+    exe = app_exe(key)
+    if not exe:
+        remember(key, False, "o'rnatilmagan")
+        return False, f"{NAMES[key]} o'rnatilmagan"
+    try:
+        ask_one(key, exe, "Faqat bitta so'z bilan javob ber: OK", timeout=180)
+    except RuntimeError as e:
+        remember(key, False, str(e))
+        return False, str(e)
+    remember(key, True)
+    return True, f"{NAMES[key]} ulandi va eslab qolindi"
 
 
 # --- so'rov ---
@@ -71,7 +211,7 @@ def _command(key: str, exe: str) -> list[str]:
     if key == "claude":
         return [exe, "-p", "--output-format", "text"]
     if key == "codex":
-        return [exe, "exec", "--skip-git-repo-check", "-"]
+        return [exe, "exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"]
     return [exe, "-p", "Quyidagi ko'rsatma va savolga javob ber."]
 
 
@@ -83,6 +223,33 @@ def _prompt(system: str, history: list[dict], text: str) -> str:
             + "\n</suhbat_tarixi>")
     lines.append(f"Foydalanuvchining yangi xabari:\n{text}\n\nFaqat javob matnini yoz (kod yoki fayl o'zgartirma).")
     return "\n\n".join(lines)
+
+
+def clean_env() -> dict:
+    """.env dagi API kalitlarisiz muhit - ilova akkaunt (obuna) bilan ishlashi uchun."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")}
+    # Gemini CLI faqat "ishonchli" papkada ishlaydi; WORKDIR - Ali'ning o'z bo'sh ish papkasi
+    env["GEMINI_CLI_TRUST_WORKSPACE"] = "true"
+    return env
+
+
+def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT) -> str:
+    """Bitta ilovaga so'rov (ruxsatni chaqiruvchi tekshiradi). Xatoda RuntimeError."""
+    WORKDIR.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(_command(key, exe), input=prompt, cwd=WORKDIR, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=timeout, env=clean_env(),
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{NAMES[key]} {timeout} soniyada javob bermadi")
+    except OSError as e:
+        raise RuntimeError(f"{NAMES[key]} ishga tushmadi: {e}")
+    answer = proc.stdout.strip()
+    if proc.returncode != 0 or not answer:
+        detail = re.sub(r"\x1b\[[0-9;]*m", "", proc.stderr or answer).strip()[-400:]
+        raise RuntimeError(f"{NAMES[key]} javob bermadi (exit {proc.returncode}): {detail}")
+    return answer
 
 
 def ask(system: str, history: list[dict], text: str) -> tuple[str, str] | None:

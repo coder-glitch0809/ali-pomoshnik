@@ -55,4 +55,69 @@
   document.querySelectorAll('[data-home-ask]').forEach(button => button.onclick = () => ask(button.dataset.homeAsk));
   window.AliHome = { update(status, mon) { if (status && Number.isFinite(status.facts)) $('memoryCount').textContent = status.facts; if (mon) $('activeCount').textContent = mon.agents.filter(a => a.status === 'running').length; } };
   render(); document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+
+  // ---------- Bugun dunyoda: ob-havo, kripto, bozorlar, yangiliklar ----------
+  const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const body = (id) => document.querySelector(`#${id} .world-body`);
+  const fmt = (n, d = 2) => Number(n).toLocaleString('en-US', { maximumFractionDigits: n >= 1000 ? 0 : n >= 1 ? d : 4 });
+  const pct = (c) => { const e = el('em', c >= 0 ? 'up' : 'down', `${c >= 0 ? '▲' : '▼'} ${Math.abs(c).toFixed(2)}%`); return e; };
+  let world = null, newsTab = 'uzbekiston';
+
+  function renderWeather(w) {
+    const b = body('worldWeather'); b.replaceChildren();
+    if (!w) { b.textContent = 'Ob-havo ma’lumoti olinmadi'; return; }
+    const now = el('div', 'w-now'); now.append(el('span', 'ico', w.icon));
+    const t = el('div'); t.append(el('b', '', `${w.temp}°`), el('p', '', `${w.place} · ${w.text}`), el('p', '', `His qilinadi ${w.feels}° · shamol ${w.wind} km/s · namlik ${w.humidity}%`));
+    now.append(t);
+    const days = el('div', 'w-days');
+    w.days.forEach((d, i) => { const c = el('div'); c.append(el('small', '', i ? new Date(d.date).toLocaleDateString('uz-UZ', { weekday: 'short' }) : 'Bugun'), el('span', '', `${d.icon} ${d.max}°/${d.min}°`), el('small', '', `💧${d.rain ?? 0}%`)); days.append(c); });
+    b.append(now, days);
+  }
+  function renderTicks(id, rows, label) {
+    const b = body(id); b.replaceChildren();
+    if (!rows.length) { b.textContent = 'Ma’lumot olinmadi'; return; }
+    for (const r of rows) { const row = el('div', 'tick'); const name = el('div'); name.append(el('div', '', label(r)[0]), el('span', '', label(r)[1])); row.append(name, el('b', '', fmt(r.price)), pct(r.change)); b.append(row); }
+  }
+  function renderNews() {
+    const b = body('worldNews'); b.replaceChildren();
+    const items = world?.news?.[newsTab] || [];
+    if (!items.length) { b.textContent = 'Yangiliklar olinmadi'; return; }
+    for (const n of items) {
+      const a = el('a', 'news-item', n.title); a.href = n.link; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.append(el('small', '', `${n.source}${n.ts ? ' · ' + new Date(n.ts * 1000).toLocaleString('uz-UZ', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) : ''}`));
+      b.append(a);
+    }
+  }
+  async function loadWorld(force) {
+    try { const r = await fetch('/api/dashboard' + (force ? '?refresh=1' : '')); if (!r.ok) return; world = await r.json(); } catch { return; }
+    $('worldUpdated').textContent = 'Yangilandi: ' + new Date(world.updated * 1000).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' });
+    renderWeather(world.weather);
+    renderTicks('worldCrypto', world.crypto, (r) => [r.symbol, 'USDT']);
+    renderTicks('worldMarkets', world.markets, (r) => [r.name, r.kind]);
+    renderNews();
+  }
+  document.querySelectorAll('.news-tabs button').forEach((b) => b.onclick = () => {
+    newsTab = b.dataset.news; document.querySelectorAll('.news-tabs button').forEach((x) => x.classList.toggle('on', x === b)); renderNews();
+  });
+  $('worldRefresh').onclick = () => loadWorld(true);
+
+  // ---------- Ali xotirasi: nima va qayerda saqlanadi ----------
+  async function loadMemory() {
+    let m; try { const r = await fetch('/api/memory-info'); if (!r.ok) return; m = await r.json(); } catch { return; }
+    const b = body('homeMemory'); b.replaceChildren();
+    const grid = el('div', 'mem-grid');
+    [[m.messages, 'yozishma'], [m.agent_tasks, 'agent ishi'], [m.facts, 'fakt'], [m.knowledge, 'o‘rganilgan bilim']].forEach(([n, t]) => { const c = el('div'); c.append(el('b', '', n), el('span', '', t)); grid.append(c); });
+    const paths = el('div', 'mem-paths');
+    [['Asl xotira (baza):', m.db], ['O‘qiladigan nusxa (har kun Markdown):', m.journal], ['Agentlar va ularning tajribasi:', m.agents_dir]].forEach(([t, p]) => { const line = el('div'); line.append(el('b', '', t + ' '), document.createTextNode(p)); paths.append(line); });
+    const team = el('div', 'mem-team');
+    for (const a of m.team) team.append(el('span', '', `${a.icon} ${a.name}: ${a.lessons} saboq · ${a.knowledge} bilim`));
+    b.append(grid, paths, team);
+    $('memoryOpen').hidden = !m.local;
+  }
+  $('memoryOpen').onclick = () => fetch('/api/memory-open', { method: 'POST' });
+
+  const refreshHome = () => { if (!document.getElementById('view-home').hidden) { loadWorld(); loadMemory(); } };
+  loadWorld(); loadMemory();  // birinchi ochilishda doim (bo'lim hali ko'rsatilmagan bo'lishi mumkin)
+  setInterval(refreshHome, 10 * 60 * 1000);
+  window.addEventListener('hashchange', () => { if (location.hash === '#home') refreshHome(); });
 })();

@@ -10,3 +10,5 @@ voices/samples/
 .venv-build/
 build/
 dist/
+xotira/
+node_modules/
