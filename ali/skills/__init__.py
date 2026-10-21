@@ -89,4 +89,6 @@ def load_all() -> dict[str, Skill]:
     for mod in pkgutil.iter_modules(__path__):
         if not mod.name.startswith("_"):
             importlib.import_module(f"{__name__}.{mod.name}")
+    from .. import plugins  # plaginlar ham o'z vositalarini shu reyestrga qo'shadi
+    plugins.load_all()
     return REGISTRY

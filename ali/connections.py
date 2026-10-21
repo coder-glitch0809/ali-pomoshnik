@@ -4,9 +4,9 @@ import os
 import re
 import httpx
 from dotenv import set_key
-from .config import config, ROOT
+from .config import config, STATE_ROOT
 
-ENV_FILE = ROOT / '.env'
+ENV_FILE = STATE_ROOT / '.env'
 _lock = asyncio.Lock()
 PROVIDERS = {
     'telegram': dict(name='Telegram bot', url='https://t.me/BotFather', link='BotFather orqali sozlash',
@@ -25,6 +25,14 @@ PROVIDERS = {
         steps=['Meta hisobingizga kiring va Business ilovasini tanlang.', 'Marketing API va reklama hisobiga tegishli ruxsatlarni sozlang.', 'Ali’da Meta Ads boshqaruv vositasi hali o‘rnatilmagan. Hozir bu sozlash yo‘riqnomasi.']),
     'channels': dict(name='Telegram kanallari', url='https://telegram.org/faq_channels', link='Kanalni ulash yo‘riqnomasi',
         steps=['Telegram’da o‘z kanalingiz sozlamalarini oching.', 'Ali botini administrator qilib qo‘shing, faqat post joylash ruxsatini bering.', 'Kanalga avtomatik post vositasi hali o‘rnatilmagan. Botni qo‘shishning o‘zi avtomatik postni yoqmaydi.']),
+    'gemini': dict(name='Gemini plagini', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
+        steps=['Google hisobingiz bilan AI Studio’ga kiring.', '“Create API key” tugmasi bilan kalit yarating.', 'Kalitni pastga kiriting - plagin avtomatik ishga tushadi.'], field='gemini_api_key', env='GEMINI_API_KEY'),
+    'chatgpt': dict(name='ChatGPT plagini', url='https://platform.openai.com/api-keys', link='OpenAI’da kalit olish', plugin='chatgpt',
+        steps=['OpenAI Platform hisobingizga kiring va balans borligini tekshiring.', '“Create new secret key” bilan Ali uchun kalit yarating.', 'Kalitni pastga kiriting - plagin avtomatik ishga tushadi.'], field='openai_api_key', env='OPENAI_API_KEY'),
+    'photoshop': dict(name='Photoshop plagini', url='https://www.adobe.com/products/photoshop.html', link='Adobe Photoshop', plugin='photoshop',
+        steps=['Photoshop shu kompyuterga o‘rnatilgan bo‘lsa, kalit kerak emas - Ali uni o‘zi topadi.', 'Ali kerak bo‘lganda Photoshop’ni o‘zi ochadi va dizaynni PSD/PNG qilib yuboradi.', 'Faqat Ali serveri shu Windows kompyuterda ishlaganda ishlaydi.']),
+    'coreldraw': dict(name='CorelDRAW plagini', url='https://www.coreldraw.com/', link='CorelDRAW', plugin='coreldraw',
+        steps=['CorelDRAW shu kompyuterga o‘rnatilgan bo‘lsa, kalit kerak emas - Ali uni o‘zi topadi.', 'Ali kerak bo‘lganda CorelDRAW’ni o‘zi ochadi va dizaynni CDR/PNG/PDF qilib yuboradi.', 'Faqat Ali serveri shu Windows kompyuterda ishlaganda ishlaydi.']),
 }
 
 def catalog(telegram_live=False):
@@ -35,6 +43,11 @@ def catalog(telegram_live=False):
         if key=='telegram' and telegram_live:status='Ulangan'
         if key=='voice':status=f'Sozlangan: {config.tts_backend}'
         if key in {'google','meta','channels'}:status='Integratsiya hali o‘rnatilmagan'
+        if 'plugin' in p:
+            from . import plugins
+            plug=plugins.PLUGINS.get(p['plugin'])
+            status=plug.status if plug else 'Plagin o‘chirilgan (PLUGINS_DISABLED)'
+            configured=bool(plug and plug.ready)
         result.append(dict(id=key,name=p['name'],status=status,url=p['url'],link=p['link'],steps=p['steps'],can_save='field' in p,configured=configured))
     return result
 
@@ -50,8 +63,11 @@ async def connect(key, token):
     elif key=='instagram':
         url=f'https://graph.facebook.com/{config.ig_graph_version}/me'
         headers={'Authorization':f'Bearer {token}'}
+    elif key=='gemini':
+        url='https://generativelanguage.googleapis.com/v1beta/models'
+        headers={'x-goog-api-key':token}
     else:
-        url={'github':'https://api.github.com/user','vercel':'https://api.vercel.com/v2/user'}[key]
+        url={'github':'https://api.github.com/user','vercel':'https://api.vercel.com/v2/user','chatgpt':'https://api.openai.com/v1/models'}[key]
         headers={'Authorization':f'Bearer {token}'}
     try:
         async with httpx.AsyncClient(timeout=15,follow_redirects=False) as client:
@@ -67,4 +83,7 @@ async def connect(key, token):
         except OSError:raise ValueError('Server sozlamani saqlay olmadi.') from None
         setattr(config,p['field'],token)
         os.environ[p['env']]=token
+    if 'plugin' in p:
+        from . import plugins
+        await asyncio.to_thread(plugins.restart,p['plugin'])
     return {'ok':True,'message':'Token tekshirildi va saqlandi.'+(' Botni yangilash uchun Ali serverini qayta ishga tushiring.' if key=='telegram' else '')}

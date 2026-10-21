@@ -51,7 +51,7 @@ DESIGN_WORDS = ("dizayn", "дизайн", "интерьер", "interer", "инт
                 "автокад", "3d", "3д", "3ds", "max", "макс", "photoshop", "фотошоп", "corel", "корел", "illustrator",
                 "иллюстратор", "after effect", "автор эффект", "афтер эффект", "reklama", "реклама", "bortma", "бортма",
                 "объемн", "объёмн", "hajmli harf", "ҳажмли", "вывеск", "lightbox", "лайтбокс", "banner", "баннер",
-                "logotip", "логотип", "promo", "промо", "ролик", "ta'mir", "таъмир", "ремонт", "kvadrat", "квадрат",
+                "logotip", "логотип", "brend", "бренд", "brand", "фирменн", "vizitka", "визитк", "promo", "промо", "ролик", "ta'mir", "таъмир", "ремонт", "kvadrat", "квадрат",
                 "планировк", "do'kon joy", "dokon joy", "жойлаштир", "joylashtir", "uy rejasi", "уй режаси")
 LESSON_WORDS = ("урок", "тема", "класс", "dars", "дарс", "mavzu", "мавзу", "sinf", "синф", "ученик", "o'quvchi",
                 "ўқувчи", "укувчи", "lesson")
@@ -112,10 +112,10 @@ def hint(text: str, team: dict) -> str:
         return ""
     lines = ["[Avtomatik yo'naltirish - tizim ko'rsatmasi, foydalanuvchi matni emas]"]
     if is_design(text) and DESIGNER in team and "pptx" not in kinds:
-        lines.append(f"Dizayn so'rovi (reja/3D, interer, do'kon joylashuvi, reklama/hajmli harflar, logotip yoki video): "
+        lines.append(f"Dizayn so'rovi (reja/3D, interer, do'kon joylashuvi, reklama/hajmli harflar, logotip, brendbuk yoki video): "
                      f"ask_agent bilan '{DESIGNER}' (🎨 Dizayner) agentiga to'liq topshir. Foydalanuvchi rasm yuborgan bo'lsa, "
                      "rasmlarni batafsil tasvirlab (o'lchamlar, devorlar, derazalar, uslub, ranglar) topshiriqqa qo'sh. "
-                     "Agent design_floor_plan / design_signage / make_promo_video bilan haqiqiy fayllar yaratsin.")
+                     "Agent design_floor_plan / design_signage / make_brandbook / make_promo_video va Photoshop, CorelDRAW, AutoCAD, 3ds Max vositalari bilan haqiqiy fayllar yaratsin.")
         lines.append("Fayllar javob bilan birga foydalanuvchiga AVTOMATIK yuboriladi: havola to'qima, qisqa ayt nima tayyorlandi.")
         return "\n".join(lines) + "\n\n"
     if "pptx" in kinds and DESIGNER in team:

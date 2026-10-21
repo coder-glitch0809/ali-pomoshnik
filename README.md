@@ -259,6 +259,22 @@ Hammasi Monitoring bo'limida jonli ko'rinadi.
 **Eslatma:** Ali kompyuteringizda ishlaydi — kompyuter o'chiq bo'lsa Ali ham ishlamaydi. 24/7 ishlashi uchun uni
 bulut serverga (VPS) qo'yish kerak; bunda kompyuterdagi loyihalar o'rniga GitHub/Vercel orqali ishlaydi.
 
+## Plaginlar
+
+`ali/plugins/` dagi har bir fayl — plagin. Ali ishga tushganda hammasi o'zi (fonda) ishga tushadi:
+Gemini, ChatGPT (`OPENAI_API_KEY`), Photoshop va CorelDRAW (o'rnatilgan bo'lsa, COM orqali).
+O'chirish: `PLUGINS_DISABLED=chatgpt`. Holat: Ruxsatlar → Ulanishlar.
+
+## Telefon ilovasi va Windows o'rnatuvchisi
+
+- **Telefon (Flutter)** — `mobile/`: Android va iPhone. Ism va har bir ruxsat alohida so'raladi, Firebase'da
+  akkaunt va suhbatlar saqlanadi, bulut serverdagi `/api/mobile/ask` javob beradi. Batafsil: [mobile/README.md](mobile/README.md).
+- **Firebase** — `firebase/`: Firestore xavfsizlik qoidalari (har kim faqat o'z ma'lumotini ko'radi).
+- **Windows** — `installer/`: `powershell -ExecutionPolicy Bypass -File installer\build_windows.ps1` →
+  `dist\Ali-Setup-1.0.0.exe`. O'rnatishda ism, ruxsatlar (kompyuter, ekran, dasturlar, fayllar, Photoshop,
+  CorelDRAW, AI, akkauntlar) va kalitlar so'raladi; ular `%LOCALAPPDATA%\Ali\.env` ga yoziladi.
+- Maxfiylik siyosati: `/privacy` (do'konlar talab qiladi).
+
 ## Xavfsizlik
 
 - Ali kompyuteringizda buyruq bajara oladi — saytga kirish paroli va Telegram ruxsatlari shu sababli majburiy.

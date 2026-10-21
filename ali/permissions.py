@@ -52,6 +52,37 @@ def save(rules, registry):
     return data
 
 
+# Windows o'rnatuvchisidagi ruxsat guruhlari -> vosita modullari (ali/skills/*.py, ali/plugins/*.py)
+INSTALL_GROUPS = {
+    'pc': {'pc', 'coding'},
+    'screen': set(),  # take_screenshot - nomi bo'yicha
+    'apps': {'system'},
+    'files': {'projects', 'office'},
+    'photoshop': {'photoshop'},
+    'coreldraw': {'coreldraw'},
+    'ai': {'gemini', 'chatgpt'},
+    'online': {'github', 'vercel', 'instagram'},
+}
+
+
+def _install_group(skill):
+    if skill.name == 'take_screenshot':
+        return 'screen'
+    module = skill.func.__module__.rsplit('.', 1)[-1]
+    return next((g for g, mods in INSTALL_GROUPS.items() if module in mods), None)
+
+
+def apply_install_choice(registry):
+    """Birinchi ishga tushishda: o'rnatishda belgilanmagan guruhlar vositalarini taqiqlaydi.
+    Keyin egasi Ruxsatlar bo'limida istalganini qayta yoqishi mumkin."""
+    allowed = config.install_groups
+    if allowed is None or PATH.exists():
+        return
+    rules = {s.name: 'deny' for s in registry.values() if (g := _install_group(s)) and g not in allowed}
+    save(rules, registry)
+    audit('install', 'applied')
+
+
 def audit(name, outcome):
     # Never record passwords, tool arguments, message bodies or tokens here.
     with LOCK:

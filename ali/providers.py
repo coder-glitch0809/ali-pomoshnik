@@ -18,7 +18,9 @@ def _gemini_client():
     global _gemini
     if _gemini is None:
         from google import genai
-        _gemini = genai.Client(api_key=config.gemini_api_key)
+        from google.genai import types
+        # Google javob bermasa so'rov cheksiz osilib qolmasin (millisekund)
+        _gemini = genai.Client(api_key=config.gemini_api_key, http_options=types.HttpOptions(timeout=90_000))
     return _gemini
 
 

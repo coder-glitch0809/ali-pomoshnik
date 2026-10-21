@@ -11,6 +11,9 @@
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const nodes = new Map();
   let members = [], active = new Set(), selected = '', online = false;
+  // Agent answered: the beam stays a moment longer and energy flows back to Ali.
+  const RETURN_MS = 3200, returning = new Map();
+  let runningJobs = new Map();
   let w = 1, h = 1, time = 0, previous = 0, raf = 0, visible = false, paused = reduced.matches;
   let seed = 3125;
   function random() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
@@ -83,7 +86,7 @@
     }
     ctx.lineTo(ex, ey); ctx.stroke();
   }
-  function beam(p, color, key) {
+  function beam(p, color, key, back = false) {
     const x = w / 2, y = h / 2;
     const pulse = .75 + .25 * Math.sin(time * 6 + key);
     const grad = ctx.createLinearGradient(x, y, p.x, p.y);
@@ -99,24 +102,26 @@
     ctx.shadowBlur = 14; ctx.strokeStyle = '#eafcff';
     ctx.lineWidth = 1.3; ctx.globalAlpha = .75; bolt(x, y, p.x, p.y, 26, key);
     ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.globalAlpha = .55; bolt(x, y, p.x, p.y, 40, key + 50);
-    // 4. Energy packets flowing from Ali to the agent
+    // 4. Energy packets: Ali -> agent while working, agent -> Ali while the answer returns
     for (let i = 0; i < 5; i++) {
-      const t = (time * .45 + i / 5) % 1, px = x + (p.x - x) * t, py = y + (p.y - y) * t;
+      const t = (time * (back ? .9 : .45) + i / 5) % 1, k = back ? 1 - t : t;
+      const px = x + (p.x - x) * k, py = y + (p.y - y) * k;
       const r = 2.5 + 2.5 * Math.sin(t * Math.PI);
       const glow = ctx.createRadialGradient(px, py, 0, px, py, r * 4);
       glow.addColorStop(0, '#ffffff'); glow.addColorStop(.3, color); glow.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.globalAlpha = .9 * Math.sin(t * Math.PI); ctx.fillStyle = glow; ctx.shadowBlur = 0;
       ctx.beginPath(); ctx.arc(px, py, r * 4, 0, Math.PI * 2); ctx.fill();
     }
-    // 5. Impact at the agent: charged halo and expanding rings
-    const halo = ctx.createRadialGradient(p.x, p.y, 10, p.x, p.y, 95);
+    // 5. Impact: at the agent while working, at Ali while the answer arrives
+    const ix = back ? x : p.x, iy = back ? y : p.y;
+    const halo = ctx.createRadialGradient(ix, iy, 10, ix, iy, 95);
     halo.addColorStop(0, color); halo.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.globalAlpha = .22 * pulse; ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(p.x, p.y, 95, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = .22 * pulse; ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(ix, iy, 95, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 12;
     for (let i = 0; i < 2; i++) {
       const t = (time * .8 + i / 2) % 1;
       ctx.globalAlpha = (1 - t) * .7; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(p.x, p.y, 55 + t * 45, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ix, iy, 55 + t * 45, 0, Math.PI * 2); ctx.stroke();
     }
     ctx.restore();
   }
@@ -133,7 +138,13 @@
     members.forEach((a, index) => {
       const p = position(index, members.length), node = nodes.get(a.key);
       node.style.left = `${p.x}px`; node.style.top = `${p.y}px`;
-      if (active.has(a.key) && online) beam(p, BOT_COLORS[node.dataset.robot] || '#79dfff', index * 13.7);
+      const color = BOT_COLORS[node.dataset.robot] || '#79dfff';
+      if (active.has(a.key) && online) beam(p, color, index * 13.7);
+      else if (returning.has(a.key) && online) {
+        const left = 1 - (Date.now() - returning.get(a.key)) / RETURN_MS;
+        if (left <= 0) { returning.delete(a.key); node.classList.remove('active'); setTimeout(refreshStatus, 0); }
+        else { ctx.save(); ctx.globalAlpha = Math.min(1, left * 2); beam(p, color, index * 13.7, true); ctx.restore(); }
+      }
     });
   }
   function tick(stamp) {
@@ -170,6 +181,12 @@
     fitAgents();
     root.classList.toggle('many-agents', members.length > 4);
     active = new Set((snapshot.jobs || []).filter(j => j.status === 'running').map(j => j.agent));
+    // A job that was running and is now finished: show the answer travelling back to Ali.
+    const nowRunning = new Map((snapshot.jobs || []).filter(j => j.status === 'running').map(j => [j.id, j.agent]));
+    for (const job of snapshot.jobs || []) {
+      if (runningJobs.has(job.id) && job.status !== 'running' && job.agent !== 'ali') returning.set(job.agent, Date.now());
+    }
+    runningJobs = nowRunning;
     // Running agent state also covers snapshots with a truncated job list.
     for (const a of snapshot.agents || []) if (a.status === 'running') active.add(a.key);
     for (const [key, node] of nodes) if (!members.some(a => a.key === key)) { node.remove(); nodes.delete(key); }
@@ -189,19 +206,20 @@
         node.append(figure, name, state); node.addEventListener('click', () => choose(a.key));
         layer.append(node); nodes.set(a.key, node);
       }
-      const working = active.has(a.key) && online;
-      node.classList.toggle('active', working);
+      const working = active.has(a.key) && online, answering = !working && returning.has(a.key) && online;
+      node.classList.toggle('active', working || answering);
       node.querySelector('.galaxy-agent-label').textContent = a.name;
-      node.querySelector('.galaxy-agent-status').textContent = !online ? 'Aloqa yo‘q' : working ? '● ISHLAYAPTI' : 'KUTMOQDA';
+      node.querySelector('.galaxy-agent-status').textContent = !online ? 'Aloqa yo‘q' : working ? '● ISHLAYAPTI' : answering ? '● JAVOB BERDI' : 'KUTMOQDA';
       node.title = `${a.name} · ${working ? a.current || 'Vazifa bajarilmoqda' : 'Vazifalarni ko‘rish'}`;
       node.setAttribute('aria-label', `${a.name}: ${working ? 'ishlayapti' : 'kutmoqda'}. Vazifalarni ko‘rish`);
     }
     core.classList.toggle('working', active.size > 0 && online);
     root.querySelector('#galaxyCoreState').textContent = !online ? 'Aloqa yo‘q' : active.size ? 'Vazifa bajarilmoqda' : 'Markaziy ong';
-    const n = members.filter(a => active.has(a.key)).length;
+    const n = members.filter(a => active.has(a.key) || returning.has(a.key)).length;
     root.querySelector('#galaxySummary').textContent = !online ? 'Jonli aloqa uzilgan' : `${members.length} agent tayyor · ${n} faol aloqa`;
     select(selected); draw(); schedule();
   }
+  function refreshStatus() { update(latest); }
   let latest = { agents: [], jobs: [] };
   window.AliGalaxy = {
     update(snapshot) { latest = snapshot; update(snapshot); },

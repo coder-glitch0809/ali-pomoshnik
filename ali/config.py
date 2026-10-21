@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 STATE_ROOT = Path(os.getenv("ALI_STATE_DIR", str(ROOT)))
+# O'rnatilgan Windows ilovasi: sozlamalar foydalanuvchi papkasida (%LOCALAPPDATA%\Ali\.env)
+load_dotenv(STATE_ROOT / ".env")
 
 
 def _env(name: str, default: str = "") -> str:
@@ -50,6 +52,7 @@ class Config:
     # Claude API ishlamasa (balans tugagan va h.k.) - Gemini javob bersin
     gemini_fallback: bool = field(default_factory=lambda: _env_bool("GEMINI_FALLBACK", True))
 
+<<<<<<< HEAD
     # Maslahatchi modellar (consult_experts): GPT va Gemini fikri, Claude solishtiradi
     openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5"))
@@ -59,6 +62,29 @@ class Config:
     # Serverda (Render) hech qachon yoqilmaydi.
     full_access: bool = field(default_factory=lambda: _env_bool("FULL_ACCESS", False) and not os.getenv("RENDER"))
     powershell_timeout: int = field(default_factory=lambda: int(_env("POWERSHELL_TIMEOUT", "300")))
+=======
+    # ChatGPT plagini (OpenAI API)
+    openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
+    openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5"))
+    openai_image_model: str = field(default_factory=lambda: _env("OPENAI_IMAGE_MODEL", "gpt-image-1"))
+
+    # Plaginlar: hammasi avtomatik ishga tushadi; o'chirish uchun PLUGINS_DISABLED=chatgpt,coreldraw
+    plugins_disabled: set[str] = field(default_factory=lambda: {
+        x.strip().lower() for x in _env("PLUGINS_DISABLED").split(",") if x.strip()
+    })
+    # Ali ishga tushganda Photoshop/CorelDRAW ham darhol ochilsinmi (false - faqat kerak bo'lganda)
+    plugins_open_apps: bool = field(default_factory=lambda: _env_bool("PLUGINS_OPEN_APPS", True))
+
+    # Telefon ilovasi: Firebase loyihasi (kirish tokenlarini tekshirish) va kunlik bepul savollar
+    firebase_project_id: str = field(default_factory=lambda: _env("FIREBASE_PROJECT_ID"))
+    mobile_daily_questions: int = field(default_factory=lambda: int(_env("MOBILE_DAILY_QUESTIONS", "30")))
+
+    # Windows o'rnatuvchisida ruxsat berilgan guruhlar (pc,screen,apps,files,photoshop,coreldraw,ai,online).
+    # None - o'rnatuvchisiz ishga tushirilgan (cheklov yo'q)
+    install_groups: set[str] | None = field(default_factory=lambda: (
+        {x.strip() for x in os.environ["ALI_INSTALL_GROUPS"].split(",") if x.strip()}
+        if "ALI_INSTALL_GROUPS" in os.environ else None))
+>>>>>>> 98afa3f (ali)
 
     # Telegram bot
     telegram_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))

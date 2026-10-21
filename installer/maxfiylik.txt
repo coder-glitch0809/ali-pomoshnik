@@ -1,0 +1,25 @@
+ALI - MAXFIYLIK VA RUXSATLAR
+
+Ali - kompyuteringizda ishlaydigan shaxsiy AI yordamchi. O'rnatishdan oldin quyidagilar bilan tanishing.
+
+1. RUXSATLAR
+Keyingi sahifada Ali nimalarni qila olishini o'zingiz belgilaysiz: kompyuterni boshqarish, ekranni ko'rish,
+dasturlar va saytlarni ochish, fayllarni o'qish, Photoshop va CorelDRAW'da ishlash, Gemini va ChatGPT'ga
+savol yuborish. Belgilanmaganlari taqiqlanadi. Keyin Ali panelidagi "Ruxsatlar" bo'limida istalgan vaqtda
+o'zgartirasiz. Buyruq bajarish kabi xavfli amallar uchun Ali har safar alohida tasdiq so'raydi.
+
+2. MA'LUMOTLAR QAYERDA SAQLANADI
+Ismingiz, sozlamalar, API kalitlari, xotira va suhbatlar faqat shu kompyuterda saqlanadi:
+%LOCALAPPDATA%\Ali. Ali panelini faqat shu kompyuterdan ochish mumkin.
+
+3. TASHQI XIZMATLAR
+Savolingizga javob tayyorlash uchun savol matni siz kalitini kiritgan AI xizmatiga yuboriladi:
+Anthropic (Claude), Google (Gemini) yoki OpenAI (ChatGPT). Ular ma'lumotni o'z maxfiylik siyosatlariga
+muvofiq qayta ishlaydi.
+
+4. O'CHIRISH
+Ali'ni "Ilovalar va imkoniyatlar" orqali o'chirasiz. Shaxsiy ma'lumotlaringiz qolishini istamasangiz,
+%LOCALAPPDATA%\Ali papkasini ham o'chiring.
+
+To'liq maxfiylik siyosati: https://ali-pomoshnik.vercel.app/privacy
+Aloqa: abbosbek8225@gmail.com

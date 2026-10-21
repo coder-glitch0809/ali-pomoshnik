@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, patch
 
 state = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "data")
 os.environ.update(ALI_STATE_DIR=state.name, ANTHROPIC_API_KEY="", TELEGRAM_BOT_TOKEN="",
-                  ACCESS_PASSWORD="test-password", AUTO_LEARN="false", WATCH_PROJECTS="false")
+                  ACCESS_PASSWORD="test-password", AUTO_LEARN="false", WATCH_PROJECTS="false",
+                  PLUGINS_OPEN_APPS="false")
 
 from fastapi.testclient import TestClient
 from ali import agents, auth
@@ -534,7 +535,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(agents.upgrade_defaults(source, target), [])
         repo = {k: agents._parse(k, (Path(__file__).resolve().parents[1] / "agents" / f"{k}.md").read_text(encoding="utf-8"))
                 for k in ("treyder", "dizayner", "office", "informatika")}
-        self.assertEqual(repo["dizayner"].version, 2)
+        self.assertEqual(repo["dizayner"].version, 3)
         from ali.skills import REGISTRY
         for key in ("dizayner", "office", "informatika"):
             self.assertTrue(set(repo[key].tools) - {"web_search"} <= set(REGISTRY), key)

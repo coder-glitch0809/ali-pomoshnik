@@ -30,6 +30,9 @@ services:
         sync: false
       - key: FREE_PROVIDER
         value: gemini
+      # Telefon ilovasi kirishini tekshirish uchun Firebase loyiha ID
+      - key: FIREBASE_PROJECT_ID
+        sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: ACCESS_PASSWORD

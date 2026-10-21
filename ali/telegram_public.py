@@ -250,18 +250,8 @@ class PublicTelegram:
 
     async def ask_model(self,pro,system,history,text,max_tokens,json_mode=False):
         """Bepul tarif - Gemini (FREE_PROVIDER=gemini), Pro - Claude. Claude ishlamasa (balans tugagan) - Gemini."""
-        from . import providers
-        if not pro and config.free_provider=='gemini' and providers.can_chat():
-            return await asyncio.to_thread(providers.gemini_chat,system,history,text,max_tokens,json_mode)
-        tier={'model':config.model,'max_tokens':max_tokens} if pro else {'model':config.free_model,'max_tokens':max_tokens,'output_config':{'effort':'low'}}
-        try:
-            async with anthropic.AsyncAnthropic(timeout=120 if pro else 60,max_retries=1) as client:
-                response=await client.messages.create(**tier,system=system,messages=history+[{'role':'user','content':text}])
-            return ''.join(b.text for b in response.content if b.type=='text')
-        except anthropic.APIError as e:
-            if not (config.gemini_fallback and providers.can_chat()):raise
-            log.warning('Claude javob bermadi (%s) - Gemini zaxirasi ishlatildi',type(e).__name__)
-            return await asyncio.to_thread(providers.gemini_chat,system,history,text,max_tokens,json_mode)
+        from . import public_ai
+        return await public_ai.ask_model(pro,system,history,text,max_tokens,json_mode)
 
     async def classify_guest(self,text):
         from .service import brain

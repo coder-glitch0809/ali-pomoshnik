@@ -16,7 +16,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from ali import agents, auth, autopilot, providers, scheduler, tts
+from ali import agents, auth, autopilot, plugins, providers, scheduler, tts
 from ali.config import ROOT, config
 from ali.hub import hub
 from ali.memory import memory
@@ -76,6 +76,9 @@ async def lifespan(_app):
 app = FastAPI(title="Ali", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
+from ali.mobile_api import router as mobile_router  # noqa: E402 - telefon ilovasi API'si
+app.include_router(mobile_router)
+
 
 @app.get("/healthz")
 async def health():
@@ -87,6 +90,12 @@ async def index(request: Request):
     if not is_authed(request.cookies):
         return RedirectResponse("/login")
     return FileResponse(WEB / "index.html")
+
+
+@app.get("/privacy")
+async def privacy_page():
+    # App Store va Play Market talab qiladigan maxfiylik siyosati
+    return FileResponse(WEB / "privacy.html")
 
 
 @app.get("/login")
@@ -145,6 +154,7 @@ async def status(request: Request):
         },
         "devices": hub.summary(),
         "agents": [a.summary() for a in brain.agents.values()],
+        "plugins": plugins.summary(),
         "telegram": bool(hub.listeners),
         "voice": voice.get("name") if voice["provider"] == "elevenlabs" else voice.get("voice"),
         "facts": len(memory.all_facts()),

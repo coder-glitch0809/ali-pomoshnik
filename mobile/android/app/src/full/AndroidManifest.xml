@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Faqat "full" APK: boshqa ilovalarni boshqarish va barcha fayllarga kirish (Play Market'da cheklangan ruxsatlar). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <application>
+        <service
+            android:name=".AliAccessibilityService"
+            android:exported="false"
+            android:label="Ali"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ali_accessibility" />
+        </service>
+    </application>
+</manifest>

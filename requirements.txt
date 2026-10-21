@@ -31,3 +31,5 @@ numpy
 pygame-ce
 ezdxf>=1.3,<2
 imageio-ffmpeg>=0.5
+# Telefon ilovasi: Firebase kirish tokenlarini tekshirish
+firebase-admin>=6.5

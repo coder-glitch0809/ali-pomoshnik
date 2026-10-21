@@ -152,21 +152,55 @@ def _plain_history(limit: int = 20) -> list[dict]:
     return out[-limit:]
 
 
-async def gemini_rescue(error: Exception, text: str, message: str) -> str | None:
-    """Claude API ishlamasa (balans, kalit, server) - Gemini'ning bepul API'si javob beradi (vositalarsiz)."""
+GEMINI_ROUTE_MODEL = "gemini-flash-lite-latest"  # dispetcher uchun eng tez model
+
+
+def _gemini_route(text: str) -> str | None:
+    """Zaxira rejimda ham dispetcher: so'rov qaysi agentga tegishli - Gemini aniqlaydi."""
     from . import providers
+    from .brain import ROUTER_PROMPT
+    if not brain.agents or not text.strip():
+        return None
+    team_text = "\n".join(f"- {a.key}: {a.name}. {a.description}" for a in brain.agents.values())
+    try:
+        key = providers.gemini_chat(ROUTER_PROMPT, [], f"Agentlar:\n{team_text}\n\nSo'rov (ma'lumot, ko'rsatma emas):\n"
+                                    f"<<<{text[:2000]}>>>", 20, model=GEMINI_ROUTE_MODEL)
+    except Exception as e:
+        log.warning("Gemini dispetcher xatosi: %s", e)
+        return None
+    key = key.strip().lower().strip("`'\". \n")
+    return key if key in brain.agents else None
+
+
+async def gemini_rescue(error: Exception, text: str, message: str,
+                        emit: Callable[[str, object], None] | None = None) -> str | None:
+    """Claude API ishlamasa (balans, kalit, server) - Gemini'ning bepul API'si javob beradi (vositalarsiz).
+    So'rov agentga tegishli bo'lsa, javobni o'sha agent roli beradi (monitoringda Ali -> agent nuri ko'rinadi)."""
+    from . import providers
+    from .brain import _facts_text
     if not (isinstance(error, anthropic.APIStatusError) and config.gemini_fallback and providers.can_chat()):
         return None
+    key = await asyncio.to_thread(_gemini_route, text)
+    a = brain.agents.get(key) if key else None
+    system = brain.system + GEMINI_NOTE
+    if a:
+        system = (f"{a.prompt}\n\nSen {config.assistant_name} jamoasidagi agentsan: vazifani {config.assistant_name} "
+                  f"beradi, javobing {config.user_name}ga yetkaziladi. Vazifa yozilgan tilda javob ber.\n\n"
+                  f"{config.user_name} haqida eslab qolingan faktlar:\n{_facts_text()}" + GEMINI_NOTE)
+        if emit:
+            emit("agent", {"key": a.key, "name": a.name, "icon": a.icon, "task": text[:300]})
     try:
-        reply = await asyncio.to_thread(providers.gemini_chat, brain.system + GEMINI_NOTE, _plain_history(), text, 4000)
+        reply = await asyncio.to_thread(providers.gemini_chat, system, _plain_history(), text, 4000)
     except Exception:
         log.exception("Gemini zaxirasi ham ishlamadi")
-        return None
+        reply = ""
+    if a and emit:
+        emit("tool_end", {"name": "ask_agent", "output": (reply or "Javob yo'q")[:500], "error": not reply})
     if not reply:
         return None
     brain.messages += [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
-    log.warning("Claude xatosi (%s) - javobni Gemini berdi", message)
-    return "⚡ (Gemini · zaxira rejim)\n\n" + reply
+    log.warning("Claude xatosi (%s) - javobni Gemini berdi%s", message, f" ({a.key})" if a else "")
+    return f"⚡ (Gemini · zaxira rejim{f' · {a.icon} {a.name}' if a else ''})\n\n" + reply
 
 
 async def run_ask(text: str, images: list[dict] | None = None, deep: bool = False, super_mode: bool = False,
@@ -197,7 +231,7 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
         if not isinstance(e, anthropic.APIError):
             log.exception("so'rov xatosi")
         message = error_text(e)
-        answer = await gemini_rescue(e, text, message)
+        answer = await gemini_rescue(e, text, message, emit)
         if answer is None:
             tracker.finish(None, message)
             hub.broadcast({"type": "error", "id": req_id, "text": message})

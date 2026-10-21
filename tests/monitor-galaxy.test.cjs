@@ -84,3 +84,14 @@ test('selecting an agent highlights it without hiding other active links', () =>
   assert.equal(f.nodes.filter(n => n.classes.has('selected')).length, 1);
   assert.equal(f.beams(), 4);
 });
+test('finished assignment sends a short return beam back to Ali', () => {
+  const f = fixture(); f.api.setOnline(true);
+  const agents = ['ali', ...keys].map(key => ({ key, name: key, status: key === 'kontent' ? 'running' : 'idle' }));
+  f.api.update({ agents, jobs: [{ id: 'j1', agent: 'kontent', status: 'running' }] });
+  assert.equal(f.beams(), 1);
+  f.api.update({ agents: agents.map(a => ({ ...a, status: 'idle' })), jobs: [{ id: 'j1', agent: 'kontent', status: 'done' }] });
+  assert.equal(f.beams(), 1);
+  const node = f.nodes.find(n => n.dataset.key === 'kontent');
+  assert.ok(node.classes.has('active'));
+  assert.equal(node.children[2].textContent, '● JAVOB BERDI');
+});
