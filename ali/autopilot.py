@@ -98,9 +98,8 @@ def learn(brain, key: str) -> str:
         return run_agent(brain, key, LEARN_TASK.format(topics=topics, key=key), f"O'z-o'zini o'qitish: {topics}",
                          extra_tools=("web_search", "search_knowledge", "save_knowledge", "get_datetime"), strict=True)
     except RuntimeError:
-        if pro_ready:  # Claude API ishlamasa - Pro ilovalardan
-            return pro_learn(brain, key)
-        raise
+        # Claude API ishlamasa - Pro ilovalardan, ular ham bo'lmasa - bepul Gemini'dan
+        return pro_learn(brain, key) if pro_ready else gemini_learn(brain, key)
 
 
 PRO_LEARN_TASK = """Sen {app}san va Ali jamoasidagi "{name}" agentini o'qityapsan. Agent vazifasi: {description}
@@ -124,9 +123,9 @@ def pro_learn(brain, key: str) -> str:
     if a is None:
         return "Bunday agent yo'q."
     apps = local_ai.connected() if local_ai.access() is True else []
-    if not apps:
-        return "Ulangan Pro ilova yo'q (Ruxsatlar -> AI ilovalari)."
     topics = "; ".join(a.learn) or a.description
+    if not apps:
+        return gemini_learn(brain, key)
     tracker = Tracker("murabbiy" if "murabbiy" in brain.agents else key, f"Pro AI'lardan o'qitish: {a.name}", "avtopilot")
 
     def ask(app):
@@ -149,11 +148,44 @@ def pro_learn(brain, key: str) -> str:
                 memory.add_knowledge(f"[{key}] {topic}", f"{content}\n\nManba: {name} ({time.strftime('%Y-%m-%d')})")
                 saved += 1
         lines.append(f"{name}: {len(notes)} ta bilim")
+    if not saved:  # Pro ilovalar javob bermadi (limit, internet) - bepul Gemini API
+        tracker.finish(None, "Pro ilovalar bilim qaytarmadi - Gemini'ga o'tildi")
+        return gemini_learn(brain, key)
     summary = f"{a.icon} {a.name}: {saved} ta yangi bilim xotiraga yozildi ({', '.join(lines)})"
-    tracker.finish(summary if saved else None, None if saved else "Pro ilovalar bilim qaytarmadi")
+    tracker.finish(summary)
     state = _load()
     state["learn"][key] = time.time()
     _save(state)
+    return summary
+
+
+def gemini_learn(brain, key: str) -> str:
+    """Oxirgi zaxira: Gemini'ning bepul API'si orqali o'qitish. Bu ham ishlamasa - RuntimeError (keyinroq qayta)."""
+    import json as _json
+
+    from . import providers
+    from .service import Tracker
+
+    a = brain.agents[key]
+    if not providers.can_chat():
+        raise RuntimeError("Claude API, Pro ilovalar va Gemini - hech biri ishlamadi")
+    topics = "; ".join(a.learn) or a.description
+    tracker = Tracker("murabbiy" if "murabbiy" in brain.agents else key, f"Gemini'dan o'qitish: {a.name}", "avtopilot")
+    prompt = PRO_LEARN_TASK.format(app="Gemini", name=a.name, description=a.description, topics=topics)
+    try:
+        raw = providers.gemini_chat("Sen tajribali o'qituvchisan. Faqat so'ralgan JSON'ni qaytar.", [], prompt, 3000, json_mode=True)
+        notes = _json.loads(raw[raw.index("{"):raw.rindex("}") + 1]).get("notes", [])
+    except Exception as e:
+        tracker.finish(None, f"Gemini ham javob bermadi: {str(e)[:150]}")
+        raise RuntimeError(f"O'rganish manbalari javob bermadi: {str(e)[:150]}") from e
+    saved = 0
+    for n in notes[:5]:
+        topic, content = str(n.get("topic", "")).strip()[:120], str(n.get("content", "")).strip()[:3000]
+        if topic and content:
+            memory.add_knowledge(f"[{key}] {topic}", f"{content}\n\nManba: Gemini ({time.strftime('%Y-%m-%d')})")
+            saved += 1
+    summary = f"{a.icon} {a.name}: {saved} ta yangi bilim xotiraga yozildi (Gemini)"
+    tracker.finish(summary)
     return summary
 
 
@@ -252,10 +284,11 @@ def _tick(brain) -> None:
                     "last_success": finished, "next_at": finished + config.auto_learn_hours * 3600,
                     "added": added, "summary": result[:800]}
                 log.info("O'rganish tekshirildi: %s, yangi yozuvlar=%s", key, added)
-            except Exception:
+            except Exception as e:
                 log.exception("O'rganish bajarilmadi: %s", key)
+                # Internet yoki limit vaqtincha - 15 daqiqadan keyin qayta urinadi
                 state["learning"][key] = {**entry, "status": "error", "last_attempt": now,
-                    "next_at": time.time() + 3600, "summary": "O'rganish bajarilmadi. API ulanishi yoki balansini Monitoring orqali tekshiring."}
+                    "next_at": time.time() + 900, "summary": f"Vaqtincha bajarilmadi, 15 daqiqada qayta urinadi: {str(e)[:200]}"}
             finally:
                 try:
                     _save(state)

@@ -78,6 +78,17 @@ async def lifespan(_app):
 app = FastAPI(title="Ali", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=WEB), name="static")
 
+
+@app.middleware("http")
+async def fresh_assets(request: Request, call_next):
+    """Brauzer sahifa va JS/CSS ning eski nusxasini ko'rsatmasin: har safar serverdan tekshiradi (o'zgarmagan
+    bo'lsa 304 - tez). Aks holda yangilanishdan keyin localhost va boshqa manzillarda sayt har xil ko'rinadi."""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/") or path in ("/", "/miniapp", "/login"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
 from ali.mobile_api import router as mobile_router  # noqa: E402 - telefon ilovasi API'si
 app.include_router(mobile_router)
 
