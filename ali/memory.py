@@ -150,6 +150,28 @@ class Memory:
             return None
         return {"question": r["content"], "answer": answer["content"], "at": answer["created_at"]}
 
+    def relevant_knowledge(self, query: str, prefix: str = "", limit: int = 6, scan: int = 3000) -> list[dict]:
+        """Savolga eng mos bilimlar (mazmuni bilan): so'zlar qancha ko'p mos kelsa, shuncha yuqori.
+        prefix - faqat shu agent bilimlari ("[kontent] ")."""
+        words = {w for w in _norm(query).split() if len(w) > 3}
+        if not words:
+            return []
+        stems = {w[:6] for w in words}  # o'zbekcha qo'shimchalar uchun so'z o'zagi
+        sql = "SELECT topic, content, created_at FROM knowledge"
+        args: tuple = ()
+        if prefix:
+            sql += " WHERE substr(topic,1,?)=?"
+            args = (len(prefix), prefix)
+        rows = self._exec(sql + " ORDER BY id DESC LIMIT ?", (*args, scan)).fetchall()
+        scored = []
+        for r in rows:
+            text = _norm(r["topic"] + " " + r["content"])
+            score = sum(2 if s in _norm(r["topic"]) else 1 for s in stems if s in text)
+            if score:
+                scored.append((score, dict(r)))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [r for _, r in scored[:limit]]
+
     def stats(self) -> dict:
         one = lambda sql: self._exec(sql).fetchone()[0]
         return {"messages": one("SELECT count(*) FROM messages WHERE role IN ('user','assistant')"),

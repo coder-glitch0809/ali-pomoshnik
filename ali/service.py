@@ -204,14 +204,44 @@ def agent_system(a) -> str:
             f"{config.user_name} haqida eslab qolingan faktlar:\n{_facts_text()}" + LOCAL_NOTE)
 
 
+MEMORY_NOTE = """
+
+XOTIRA: foydalanuvchi o'zi haqida muhim ma'lumot aytsa (ism, kasb, ish joyi, oila, maqsad, loyiha, afzallik, sana)
+yoki "eslab qol" desa - javobing OXIRIGA har bir fakt uchun alohida qator qo'sh (foydalanuvchiga ko'rinmaydi):
+<<ESLA: qisqa kalit = qiymat>>
+Masalan: <<ESLA: kasbi = reklama agentligi egasi>>. Vaqtinchalik yoki shubhali gaplarni yozma."""
+REMEMBER_RE = re.compile(r"<<\s*ESLA\s*:\s*(.+?)\s*=\s*(.+?)\s*>>")
+
+
+def knowledge_block(text: str, key: str | None) -> str:
+    """Savolga mos o'rganilgan bilimlar (mazmuni bilan) - agent o'z bilimidan foydalansin."""
+    rows = memory.relevant_knowledge(text, f"[{key}] ", 5) if key else []
+    if len(rows) < 3:  # agentning o'zida kam bo'lsa - umumiy bilimlardan ham
+        rows += [r for r in memory.relevant_knowledge(text, "", 4) if r not in rows]
+    if not rows:
+        return ""
+    body = "\n\n".join(f"### {r['topic']} ({r['created_at'][:10]})\n{r['content'][:1500]}" for r in rows[:6])
+    return ("\n\nO'RGANGAN BILIMLARING (shu savolga mos - avval shularga tayan, eskirgan bo'lsa ayt):\n" + body)
+
+
+def save_remembered(reply: str) -> str:
+    """Javobdagi <<ESLA: ...>> belgilaridan faktlarni xotiraga yozadi va belgilarni olib tashlaydi."""
+    for k, v in REMEMBER_RE.findall(reply):
+        memory.set_fact(k.strip()[:80], v.strip()[:500])
+        log.info("Xotiraga fakt yozildi: %s", k.strip()[:80])
+    return REMEMBER_RE.sub("", reply).rstrip()
+
+
 async def team_reply(text: str, emit: Callable[[str, object], None] | None, ready: list[str],
                      direct: str | None = None) -> str:
     """Matnli rejimda Ali - boshliq: savolni mos agentga beradi, agent javob beradi, Ali javobni yetkazadi.
-    Javob manbasi: tanlangan AI -> Pro ilovalar (Claude/ChatGPT obunasi) -> Bedrock/Gemini/GPT API."""
+    Javob manbasi: tanlangan AI -> Pro ilovalar (Claude/ChatGPT obunasi) -> Bedrock/Gemini/GPT API.
+    Agent o'rgangan bilimlarining mazmunini oladi; foydalanuvchi aytgan muhim faktlar xotiraga yoziladi."""
     from . import local_ai, providers
     key = None if direct else await asyncio.to_thread(route, text, ready)
     a = brain.agents.get(key) if key else None
-    system = agent_system(a) if a else brain.system + LOCAL_NOTE
+    system = ((agent_system(a) if a else brain.system + LOCAL_NOTE)
+              + await asyncio.to_thread(knowledge_block, text, key) + MEMORY_NOTE)
     if a and emit:
         emit("agent", {"key": a.key, "name": a.name, "icon": a.icon, "task": text[:300]})
     history, source, reply = _plain_history(), "", ""
@@ -237,6 +267,7 @@ async def team_reply(text: str, emit: Callable[[str, object], None] | None, read
                                "tekshiring (Ruxsatlar → Ilovalar orqali ulanish)")
         raise RuntimeError("Hozir hech bir AI javob bermadi: kompyuterdagi Claude/ChatGPT ilovalari ulanganini va "
                            "Gemini/Bedrock limitini tekshiring.")
+    reply = save_remembered(reply)
     if a:
         memory.log_message(brain.session_id, f"agent:{a.key}", f"Vazifa: {text}\n\nNatija:\n{reply}")
     log.info("Javobni %s berdi%s", source, f" ({a.key} agenti)" if a else "")
