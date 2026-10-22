@@ -57,6 +57,10 @@ class Config:
     # Maslahatchi modellar (consult_experts): GPT va Gemini fikri, Claude solishtiradi
     openai_api_key: str = field(default_factory=lambda: _env("OPENAI_API_KEY"))
     openai_model: str = field(default_factory=lambda: _env("OPENAI_MODEL", "gpt-5"))
+    # Amazon Bedrock (Claude AWS orqali): Bedrock API kaliti, mintaqa va model (bo'sh - avtomatik topiladi)
+    bedrock_api_key: str = field(default_factory=lambda: _env("BEDROCK_API_KEY") or _env("AWS_BEARER_TOKEN_BEDROCK"))
+    bedrock_region: str = field(default_factory=lambda: _env("BEDROCK_REGION", "us-east-1"))
+    bedrock_model: str = field(default_factory=lambda: _env("BEDROCK_MODEL"))
     gemini_model: str = field(default_factory=lambda: _env("GEMINI_MODEL", "gemini-pro-latest"))
 
     # To'liq ruxsat (faqat o'z kompyuterida, start-full.bat): barcha vositalar tasdiqsiz, internet doim ochiq.

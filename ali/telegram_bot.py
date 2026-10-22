@@ -41,6 +41,7 @@ TOOL_LABELS = {
 
 COMMANDS = [
     ("start", "Ali Pomoshnik — bosh menyu"),
+    ("ai", "Kim javob bersin: Ali, Claude Pro, ChatGPT Pro, Bedrock"),
     ("menu", "Xizmatlarni tanlash"),
     ("ob_havo", "Hudud va kundalik ob-havo"),
     ("sorovlar", "Administrator: kelgan so‘rovlar"),
@@ -136,6 +137,8 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("ovoz_standart", self.cmd_default_voice))
         a.add_handler(CommandHandler("holat", self.cmd_status))
         a.add_handler(CommandHandler("agent", self.cmd_agent))
+        a.add_handler(CommandHandler("ai", self.cmd_ai))
+        a.add_handler(CallbackQueryHandler(self.on_ai_button, pattern=r"^ai:"))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
         a.add_handler(CallbackQueryHandler(self.public_button, pattern=r"^(pub:|own:)"))
@@ -199,7 +202,7 @@ class TelegramBot(PublicTelegram, Listener):
         return False
 
     def pref(self, chat_id: int) -> dict:
-        return self.prefs.setdefault(chat_id, {"deep": False, "super": True, "voice": True, "agent": None})
+        return self.prefs.setdefault(chat_id, {"deep": False, "super": True, "voice": True, "agent": None, "ai": None})
 
     # ---------- buyruqlar ----------
     def owner_menu(self):
@@ -297,6 +300,31 @@ class TelegramBot(PublicTelegram, Listener):
         if not await self._guard(update):
             return
         await update.message.reply_text("Topshiriqni Aliga yozing. Agentlarni Ali o'zi tanlaydi va boshqaradi.")
+
+    AI_CHOICES = {"": "🧠 Ali (avtomatik)", "claude": "✳️ Claude Pro", "codex": "◎ ChatGPT Pro", "bedrock": "☁️ Bedrock (Claude)"}
+
+    async def cmd_ai(self, update: Update, ctx):
+        """/ai - kim javob berishini tanlash: Ali o'zi yoki to'g'ridan-to'g'ri Claude Pro / ChatGPT Pro / Bedrock."""
+        if not await self._guard(update):
+            return
+        cur = self.pref(update.effective_chat.id).get("ai") or ""
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(("✅ " if k == cur else "") + label, callback_data=f"ai:{k}")]
+                                         for k, label in self.AI_CHOICES.items()])
+        await update.message.reply_text("Kim javob bersin?", reply_markup=keyboard)
+
+    async def on_ai_button(self, update: Update, ctx):
+        query = update.callback_query
+        if query.from_user.id not in self.users:
+            await query.answer("Ruxsat yo'q")
+            return
+        key = query.data.split(":", 1)[1]
+        key = key if key in self.AI_CHOICES else ""
+        self.pref(query.message.chat.id)["ai"] = key or None
+        await query.answer(self.AI_CHOICES[key])
+        try:
+            await query.edit_message_text(f"Endi javob beradi: {self.AI_CHOICES[key]}")
+        except BadRequest:
+            pass
 
     async def on_agent_button(self, update: Update, ctx):
         query = update.callback_query
@@ -437,7 +465,7 @@ class TelegramBot(PublicTelegram, Listener):
         editor = asyncio.create_task(live_editor())
         try:
             answer = await run_ask(text, images, p["deep"], p["super"], source="telegram", on_event=on_event,
-                                   agent=p["agent"])
+                                   agent=p["agent"], direct=p.get("ai"))
         except AskError as e:
             await status.edit_text(f"⚠️ {e}")
             return

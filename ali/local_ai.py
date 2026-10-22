@@ -253,11 +253,12 @@ def connected() -> list[str]:
     return sorted(keys, key=lambda k: k != first)
 
 
-def ask_pro(prompt: str, timeout: int = TIMEOUT) -> tuple[str, str] | None:
-    """Ulangan Pro ilovalardan (asosiysi birinchi) javob: (ilova nomi, javob). Ruxsat bo'lmasa None."""
+def ask_pro(prompt: str, timeout: int = TIMEOUT, only: str | None = None) -> tuple[str, str] | None:
+    """Ulangan Pro ilovalardan (asosiysi birinchi) javob: (ilova nomi, javob). only - faqat shu ilova.
+    Ruxsat bo'lmasa yoki hech biri javob bermasa None."""
     if access() is not True:
         return None
-    for key in connected():
+    for key in ([only] if only else connected()):
         try:
             return NAMES[key], ask_one(key, app_exe(key), prompt, timeout)
         except RuntimeError as e:
@@ -303,7 +304,8 @@ def verify(key: str) -> tuple[bool, str]:
 # --- so'rov ---
 def _command(key: str, exe: str) -> list[str]:
     if key == "claude":
-        return [exe, "-p", "--output-format", "text"]
+        # bilmagan narsani internetdan qidirib aniqlasin (faqat o'qish vositalari)
+        return [exe, "-p", "--output-format", "text", "--allowedTools", "WebSearch", "WebFetch"]
     if key == "codex":
         return [exe, "exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"]
     return [exe, "-p", "Quyidagi ko'rsatma va savolga javob ber."]
@@ -341,7 +343,13 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT) -> str:
         raise RuntimeError(f"{NAMES[key]} ishga tushmadi: {e}")
     answer = proc.stdout.strip()
     if proc.returncode != 0 or not answer:
+        raw = (proc.stderr or "") + answer
         detail = re.sub(r"\x1b\[[0-9;]*m", "", proc.stderr or answer).strip()[-400:]
+        if "IneligibleTierError" in raw:
+            detail = ("Google Gemini CLI'ni shaxsiy akkauntlar uchun to'xtatgan - bu ilova endi ishlamaydi. "
+                      "Gemini'dan API kaliti orqali foydalaning.")
+        elif "usage limit" in raw.lower():
+            detail = "obuna limiti tugagan, keyinroq tiklanadi"
         raise RuntimeError(f"{NAMES[key]} javob bermadi (exit {proc.returncode}): {detail}")
     return answer
 

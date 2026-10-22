@@ -557,7 +557,8 @@ async def handle_ask(device_id: str, msg: dict, allow_local: bool = False):
         return
     try:
         await run_ask(text, images, bool(msg.get("deep")), bool(msg.get("super")),
-                      source=device_id, req_id=msg.get("id"), agent=str(msg.get("agent") or "") or None, allow_local=allow_local)
+                      source=device_id, req_id=msg.get("id"), agent=str(msg.get("agent") or "") or None, allow_local=allow_local,
+                      direct=(str(msg.get("ai") or "") if str(msg.get("ai") or "") in {"claude", "codex", "bedrock"} else None))
     except AskError:
         pass  # xato allaqachon ekranlarga yuborilgan
 

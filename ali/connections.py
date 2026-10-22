@@ -28,6 +28,8 @@ PROVIDERS = {
         steps=['Telegram’da o‘z kanalingiz sozlamalarini oching.', 'Ali botini administrator qilib qo‘shing, faqat post joylash ruxsatini bering.', 'Kanalga avtomatik post vositasi hali o‘rnatilmagan. Botni qo‘shishning o‘zi avtomatik postni yoqmaydi.']),
     'firebase': dict(name='Firebase (xotira nusxasi)', url='https://console.firebase.google.com/', link='Firebase Console', json=True,
         steps=['Firebase Console’da loyihangizni oching → Build → Firestore Database → yoqilganini tekshiring (yo‘q bo‘lsa “Create database”).', 'Project settings (⚙) → Service accounts → “Generate new private key” → JSON fayl yuklanadi.', 'Faylni Bloknot bilan oching, butun matnni nusxalab pastga joylang. Ali tekshiradi va har daqiqada xotirani Firebase’ga yozadi.', 'Kalit faqat shu kompyuterda (data/ papkasida) saqlanadi va GitHub’ga chiqmaydi.']),
+    'bedrock': dict(name='Amazon Bedrock (Claude)', url='https://console.aws.amazon.com/bedrock/home#/api-keys', link='AWS Bedrock → API keys',
+        steps=['AWS Console’da Amazon Bedrock → API keys bo‘limini oching va “Generate long-term API key” bilan kalit yarating.', 'Bedrock → Model access bo‘limida Anthropic Claude modellariga ruxsat yoqilganini tekshiring.', 'Kalitni pastga kiriting. Mintaqa us-east-1 emas bo‘lsa, oldiga yozing: “eu-central-1 ABSK…”. Ali modelni o‘zi topadi va tekshiradi.', 'Bedrock pullik (AWS hisobingizdan). Ali uni Pro ilovalardan keyin, bepul Gemini’dan oldin ishlatadi.'], field='bedrock_api_key', env='BEDROCK_API_KEY'),
     'gemini': dict(name='Gemini plagini', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
         steps=['Google hisobingiz bilan AI Studio’ga kiring.', '“Create API key” tugmasi bilan kalit yarating.', 'Kalitni pastga kiriting - plagin avtomatik ishga tushadi.'], field='gemini_api_key', env='GEMINI_API_KEY'),
     'chatgpt': dict(name='ChatGPT plagini', url='https://platform.openai.com/api-keys', link='OpenAI’da kalit olish', plugin='chatgpt',
@@ -51,6 +53,7 @@ def catalog(telegram_live=False):
             from . import local_ai
             if local_ai.app_state().get(key,{}).get('connected'):
                 status,configured='Ulangan (ilova orqali) · Ruxsatlar → Ilovalar',True
+        if key=='bedrock' and config.bedrock_api_key:status=f'Ulangan · {config.bedrock_model or "model avtomatik"} ({config.bedrock_region})'
         if key=='firebase':
             from . import cloud
             configured=cloud.configured()
@@ -66,6 +69,7 @@ def catalog(telegram_live=False):
 
 async def connect(key, token):
     if key=='firebase':return await connect_firebase(token)
+    if key=='bedrock':return await connect_bedrock(token)
     p=PROVIDERS.get(key)
     if not p or 'field' not in p:raise ValueError('Bu xizmat uchun hozir faqat yo‘riqnoma mavjud.')
     if not isinstance(token,str) or not 12<=len(token)<=4096 or re.search(r'\s',token):
@@ -135,3 +139,23 @@ async def connect_firebase(text):
     try:result=await asyncio.to_thread(cloud.sync_once)
     except Exception as e:return {'ok':True,'message':f'Kalit saqlandi ({data["project_id"]}), lekin birinchi nusxa xato berdi: {str(e)[:200]}'}
     return {'ok':True,'message':f'Firebase ulandi ({data["project_id"]}). Birinchi nusxa: {result["pushed"]} ta yozuv yuborildi. Endi har daqiqada avtomatik.'}
+
+
+async def connect_bedrock(text):
+    """Bedrock API kaliti: modelni topadi, qisqa so'rov bilan tekshiradi, kalit va modelni saqlaydi."""
+    from . import providers
+    parts=(text or '').strip().split()
+    if not parts or len(parts)>2:raise ValueError('Kalitni kiriting (kerak bo‘lsa oldiga mintaqa: “eu-central-1 ABSK…”).')
+    region,key=(parts[0],parts[1]) if len(parts)==2 else (config.bedrock_region,parts[0])
+    if not re.fullmatch(r'[a-z]{2}(-[a-z]+)+-\d',region):raise ValueError('Mintaqa noto‘g‘ri (masalan us-east-1).')
+    models=await asyncio.to_thread(providers.bedrock_models,key,region)
+    model=config.bedrock_model or (models[0] if models else '')
+    if not model:raise ValueError('Kalit ishladi, lekin Claude modeli topilmadi. Bedrock → Model access’da Anthropic’ni yoqing.')
+    try:answer=await asyncio.to_thread(providers.bedrock_chat,'Qisqa javob ber.',[],'Faqat OK deb yoz',20,model,key,region)
+    except RuntimeError as e:raise ValueError(f'Bedrock tekshiruvdan o‘tmadi: {str(e)[:250]}') from None
+    if not answer:raise ValueError('Bedrock javob qaytarmadi.')
+    async with _lock:
+        for env,value,attr in (('BEDROCK_API_KEY',key,'bedrock_api_key'),('BEDROCK_REGION',region,'bedrock_region'),('BEDROCK_MODEL',model,'bedrock_model')):
+            await asyncio.to_thread(set_key,str(ENV_FILE),env,value)
+            setattr(config,attr,value);os.environ[env]=value
+    return {'ok':True,'message':f'Bedrock ulandi: {model} ({region}). Ali endi Pro ilovalardan keyin Bedrock’dan foydalanadi.'}

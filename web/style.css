@@ -452,3 +452,5 @@ code { font: 12.5px var(--mono); padding: 1px 6px; border-radius: 6px; backgroun
 .local-apps li { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); font-size: 14px; }
 .local-apps small { color: var(--muted, #9aa4b8); }
 .local-apps li.ready small { color: #4ade80; }
+.ai-pick select { background:transparent;border:0;color:inherit;font:inherit;cursor:pointer;padding:0 2px; }
+.ai-pick select option { color:#111; }

@@ -258,8 +258,12 @@ def recall_answer(text: str) -> str | None:
 async def run_ask(text: str, images: list[dict] | None = None, deep: bool = False, super_mode: bool = False,
                   source: str = "web", req_id: str | None = None,
                   on_event: Callable[[str, object], None] | None = None, agent: str | None = None,
-                  allow_local: bool = False) -> str:
-    """So'rovni bajaradi va jarayonni barcha ochiq ekranlarga uzatadi. Xatoda AskError."""
+                  allow_local: bool = False, direct: str | None = None) -> str:
+    """So'rovni bajaradi va jarayonni barcha ochiq ekranlarga uzatadi. Xatoda AskError.
+    direct - foydalanuvchi to'g'ridan-to'g'ri tanlagan AI: claude | codex | gemini (ilovalar) | bedrock."""
+    # Egasi: shu kompyuterdagi brauzer yoki shaxsiy Telegram bot (ommaviy bot boshqa yo'ldan ishlaydi).
+    # Egasi uchun kompyuterdagi Pro ilovalar (Claude, ChatGPT obunasi) oddiy suhbatda ham ishlatiladi.
+    owner = allow_local or source == "telegram"
     if brain.lock.locked() or ask_lock.locked():
         raise AskError("Ali hozir boshqa vazifa ustida - biroz kuting.")
     # Every public channel talks to Ali. Specialists remain internal tools.
@@ -282,11 +286,22 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
             from . import local_ai
             pro = None
             # Avval shu savolga javob berilgan bo'lsa - tayyor javob xotiradan (vaqtga bog'liq savollar bundan mustasno)
-            recalled = None if images else await asyncio.to_thread(recall_answer, text)
-            # Egasi asosiy qilib tanlagan Pro ilova (Claude/ChatGPT/Gemini obunasi) - faqat shu kompyuterdan
-            if not recalled and allow_local and local_ai.access() is True and local_ai.option('_primary') in local_ai.connected():
+            recalled = None if images or direct else await asyncio.to_thread(recall_answer, text)
+            # Pro ilovalar (egasining Claude/ChatGPT obunasi): to'g'ridan-to'g'ri tanlangan, asosiy qilingan yoki
+            # Ali API'siz rejimda ishlayotgan bo'lsa - birinchi navbatda shular javob beradi
+            ready = local_ai.connected() if owner and local_ai.access() is True else []
+            wanted = (direct in ready) or local_ai.option('_primary') in ready or (
+                bool(ready) and config.chat_provider in {'gemini', 'openai', 'auto'})
+            if direct == "bedrock":
+                from . import providers
+                pro = ("Bedrock", await asyncio.to_thread(providers.bedrock_chat, brain.system + LOCAL_NOTE,
+                                                          _plain_history(), text, 4000))
+            elif not recalled and wanted:
                 prompt = local_ai._prompt(brain.system + LOCAL_NOTE, _plain_history(), text)
-                pro = await asyncio.to_thread(local_ai.ask_pro, prompt)
+                pro = await asyncio.to_thread(local_ai.ask_pro, prompt, local_ai.TIMEOUT, direct if direct in ready else None)
+            if direct and not pro and direct != "bedrock":
+                raise RuntimeError(f"{local_ai.NAMES.get(direct, direct)} hozir javob bermadi - ilova ulanganini va "
+                                   "limitini tekshiring (Ruxsatlar → Ilovalar orqali ulanish)")
             if recalled or pro:
                 answer = recalled or pro[1]
                 if pro:
@@ -303,7 +318,7 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                 try:
                     provider,reply=await asyncio.to_thread(providers.chat,system,_plain_history(),text,4000)
                 except RuntimeError:
-                    local=await asyncio.to_thread(_rescue_local,system,text) if allow_local else None
+                    local=await asyncio.to_thread(_rescue_local,system,text) if owner else None
                     if not local:raise
                     provider,reply=local
                 answer=reply
@@ -322,7 +337,7 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
         if not isinstance(e, anthropic.APIError):
             log.exception("so'rov xatosi")
         message = error_text(e)
-        answer = await gemini_rescue(e, text, message, emit, allow_local)
+        answer = None if direct else await gemini_rescue(e, text, message, emit, owner)
         if answer is None:
             tracker.finish(None, message)
             hub.broadcast({"type": "error", "id": req_id, "text": message})

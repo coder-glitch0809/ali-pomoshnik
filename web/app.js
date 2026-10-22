@@ -541,7 +541,7 @@
     stopSpeaking();
     const id = Math.random().toString(36).slice(2, 10);
     const images = attachments.map((a) => ({ media_type: 'image/jpeg', data: a.data }));
-    if (!wsSend({ type: 'ask', id, text, images, deep: modes.deep, super: modes.super, agent })) { toast('Server bilan aloqa yo‘q'); return; }
+    if (!wsSend({ type: 'ask', id, text, images, deep: modes.deep, super: modes.super, agent, ai: aiPick?.value || '' })) { toast('Server bilan aloqa yo‘q'); return; }
     busy = true;
     addUser(text, attachments.map((a) => a.src), true);
     addTurn(id, agent);
@@ -641,6 +641,12 @@
   });
 
   // ---------- Agentlar ----------
+  // To'g'ridan-to'g'ri AI tanlash: Ali (avtomatik) yoki Claude Pro / ChatGPT Pro (ilovalar) / Bedrock
+  const aiPick = document.getElementById('aiPick');
+  if (aiPick) {
+    aiPick.value = store.get('ai', '');
+    aiPick.addEventListener('change', () => { store.set('ai', aiPick.value); toast(aiPick.value ? `Endi ${aiPick.selectedOptions[0].text} javob beradi` : 'Ali o‘zi tanlaydi'); });
+  }
   function renderAgents() {
     el.input.placeholder = `${status.assistant || 'Ali'}ga yozing yoki gapiring…`;
   }
