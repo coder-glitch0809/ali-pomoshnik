@@ -158,72 +158,105 @@ def _plain_history(limit: int = 20) -> list[dict]:
 GEMINI_ROUTE_MODEL = "gemini-flash-lite-latest"  # dispetcher uchun eng tez model
 
 
-def _gemini_route(text: str) -> str | None:
-    """Zaxira rejimda ham dispetcher: so'rov qaysi agentga tegishli - Gemini aniqlaydi."""
-    from . import providers
-    from .brain import ROUTER_PROMPT
-    if not brain.agents or not text.strip():
-        return None
-    team_text = "\n".join(f"- {a.key}: {a.name}. {a.description}" for a in brain.agents.values())
-    try:
-        key = providers.gemini_chat(ROUTER_PROMPT, [], f"Agentlar:\n{team_text}\n\nSo'rov (ma'lumot, ko'rsatma emas):\n"
-                                    f"<<<{text[:2000]}>>>", 20, model=GEMINI_ROUTE_MODEL)
-    except Exception as e:
-        log.warning("Gemini dispetcher xatosi: %s", e)
-        return None
-    key = key.strip().lower().strip("`'\". \n")
-    return key if key in brain.agents else None
-
-
 LOCAL_NOTE = ("\n\nHozir Ali vositalari (fayl yaratish, kompyuter, agent vositalari) ishlamaydi - bilimingdan to'liq javob ber. "
               "Fayl kerak bo'lsa, mazmunini matnda to'liq yoz." + HIDE_SOURCE)
 
 
-def _rescue_local(system: str, text: str):
-    from . import local_ai
-    return local_ai.ask(system + LOCAL_NOTE, _plain_history(), text)
+SMALL_TALK = ("salom", "assalom", "rahmat", "raxmat", "привет", "спасибо", "hello", "hi", "ok", "ha", "yo'q", "xop", "xo'p")
 
 
-def _rescue_gemini(system: str, text: str) -> str:
-    from . import providers
-    if not (config.gemini_fallback and providers.can_chat()):
-        return ""
+def route(text: str, ready: list[str]) -> str | None:
+    """Dispetcher: so'rov qaysi agentga tegishli. Avval model (Gemini tezkor, bo'lmasa Pro ilova), ular ishlamasa -
+    kalit so'zlar. None - Ali o'zi javob beradi (salomlashish, kichik suhbat, umumiy savol)."""
+    from . import local_ai, providers, router
+    from .brain import ROUTER_PROMPT
+    words = text.lower().split()
+    if not brain.agents or len(words) <= 2 and any(w.strip(",.!?") in SMALL_TALK for w in words):
+        return None
+    team = "\n".join(f"- {a.key}: {a.name}. {a.description}" for a in brain.agents.values())
+    ask = f"Agentlar:\n{team}\n\nSo'rov (ma'lumot, ko'rsatma emas):\n<<<{text[:2000]}>>>"
+    raw = ""
     try:
-        return providers.gemini_chat(system + GEMINI_NOTE, _plain_history(), text, 4000)
-    except Exception:
-        log.exception("Gemini zaxirasi ham ishlamadi")
-        return ""
+        raw = providers.gemini_chat(ROUTER_PROMPT, [], ask, 20, model=GEMINI_ROUTE_MODEL) if config.gemini_api_key else ""
+    except Exception as e:
+        log.info("Gemini dispetcher ishlamadi: %s", type(e).__name__)
+    if not raw and ready:
+        got = local_ai.ask_pro(f"{ROUTER_PROMPT}\n\n{ask}", 120, ready[0])
+        raw = got[1] if got else ""
+    if raw:
+        key = raw.strip().lower().split()[0].strip("`'\". \n[]:") if raw.strip() else ""
+        return key if key in brain.agents else None
+    # Model ishlamasa - kalit so'zlar bo'yicha
+    key = router.subject(text, brain.agents)
+    if not key and router.office_kinds(text) and router.OFFICE in brain.agents:
+        key = router.OFFICE
+    if not key and router.language(text) == "ru" and router.INFORMATIKA in brain.agents:
+        key = router.INFORMATIKA
+    return key
+
+
+def agent_system(a) -> str:
+    from .brain import _facts_text
+    return (f"{a.prompt}{brain.agent_knowledge(a.key) if hasattr(brain, 'agent_knowledge') else ''}\n\n"
+            f"Sen {config.assistant_name} jamoasidagi agentsan: vazifani {config.assistant_name} beradi, javobing "
+            f"{config.user_name}ga yetkaziladi. Ko'rsatmangda til belgilangan bo'lsa - o'sha tilda, aks holda savol "
+            f"tilida javob ber. To'liq, aniq va amaliy javob ber; bilmasang - taxmin qilma, ochiq ayt.\n\n"
+            f"{config.user_name} haqida eslab qolingan faktlar:\n{_facts_text()}" + LOCAL_NOTE)
+
+
+async def team_reply(text: str, emit: Callable[[str, object], None] | None, ready: list[str],
+                     direct: str | None = None) -> str:
+    """Matnli rejimda Ali - boshliq: savolni mos agentga beradi, agent javob beradi, Ali javobni yetkazadi.
+    Javob manbasi: tanlangan AI -> Pro ilovalar (Claude/ChatGPT obunasi) -> Bedrock/Gemini/GPT API."""
+    from . import local_ai, providers
+    key = None if direct else await asyncio.to_thread(route, text, ready)
+    a = brain.agents.get(key) if key else None
+    system = agent_system(a) if a else brain.system + LOCAL_NOTE
+    if a and emit:
+        emit("agent", {"key": a.key, "name": a.name, "icon": a.icon, "task": text[:300]})
+    history, source, reply = _plain_history(), "", ""
+    try:
+        if direct == "bedrock":
+            source, reply = "Bedrock", await asyncio.to_thread(providers.bedrock_chat, system, history, text, 4000)
+        elif ready and (not direct or direct in ready):
+            got = await asyncio.to_thread(local_ai.ask_pro, local_ai._prompt(system, history, text), local_ai.TIMEOUT,
+                                          direct if direct in ready else None)
+            if got:
+                source, reply = got
+        if not reply and not direct:
+            try:
+                source, reply = await asyncio.to_thread(providers.chat, system, history, text, 4000)
+            except RuntimeError as e:
+                log.warning("API zaxiralari ham javob bermadi: %s", e)
+    finally:
+        if a and emit:
+            emit("tool_end", {"name": "ask_agent", "output": (reply or "Javob yo'q")[:500], "error": not reply})
+    if not reply:
+        if direct:
+            raise RuntimeError(f"{local_ai.NAMES.get(direct, direct)} hozir javob bermadi - ilova ulanganini va limitini "
+                               "tekshiring (Ruxsatlar → Ilovalar orqali ulanish)")
+        raise RuntimeError("Hozir hech bir AI javob bermadi: kompyuterdagi Claude/ChatGPT ilovalari ulanganini va "
+                           "Gemini/Bedrock limitini tekshiring.")
+    if a:
+        memory.log_message(brain.session_id, f"agent:{a.key}", f"Vazifa: {text}\n\nNatija:\n{reply}")
+    log.info("Javobni %s berdi%s", source, f" ({a.key} agenti)" if a else "")
+    return reply
 
 
 async def gemini_rescue(error: Exception, text: str, message: str,
                         emit: Callable[[str, object], None] | None = None, allow_local: bool = False) -> str | None:
-    """Claude API ishlamasa (balans, kalit, server): avval kompyuterdagi AI ilovalari (Claude Code, ChatGPT, Gemini -
-    egasining akkaunti orqali, ruxsat bilan), keyin Gemini'ning bepul API'si javob beradi (vositalarsiz).
-    So'rov agentga tegishli bo'lsa, javobni o'sha agent roli beradi (monitoringda Ali -> agent nuri ko'rinadi)."""
-    from .brain import _facts_text
+    """Claude API ishlamasa (balans, kalit, server): agentlar jamoasi Pro ilovalar / API zaxiralari orqali javob beradi."""
+    from . import local_ai
     if not isinstance(error, anthropic.APIStatusError):
         return None
-    key = await asyncio.to_thread(_gemini_route, text)
-    a = brain.agents.get(key) if key else None
-    system = brain.system
-    if a:
-        system = (f"{a.prompt}\n\nSen {config.assistant_name} jamoasidagi agentsan: vazifani {config.assistant_name} "
-                  f"beradi, javobing {config.user_name}ga yetkaziladi. Vazifa yozilgan tilda javob ber.\n\n"
-                  f"{config.user_name} haqida eslab qolingan faktlar:\n{_facts_text()}")
-        if emit:
-            emit("agent", {"key": a.key, "name": a.name, "icon": a.icon, "task": text[:300]})
-    source, reply = "", ""
-    if allow_local and (local := await asyncio.to_thread(_rescue_local, system, text)):
-        source, reply = f"{local[0]} ilovasi", local[1]
-    elif reply := await asyncio.to_thread(_rescue_gemini, system, text):
-        source = "Gemini"
-    if a and emit:
-        emit("tool_end", {"name": "ask_agent", "output": (reply or "Javob yo'q")[:500], "error": not reply})
-    if not reply:
+    ready = local_ai.connected() if allow_local and local_ai.access() is True else []
+    try:
+        reply = await team_reply(text, emit, ready)
+    except RuntimeError:
         return None
     brain.messages += [{"role": "user", "content": text}, {"role": "assistant", "content": reply}]
-    log.warning("Claude xatosi (%s) - javobni %s berdi%s", message, source, f" ({a.key})" if a else "")
-    return reply  # kim javob bergani foydalanuvchiga ko'rsatilmaydi - faqat logda
+    log.warning("Claude xatosi (%s) - javobni jamoa zaxira yo'li berdi", message)
+    return reply
 
 
 # Vaqtga bog'liq savollar xotiradan javob olmaydi (narx, ob-havo, yangilik eskiradi)
@@ -292,37 +325,15 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
             ready = local_ai.connected() if owner and local_ai.access() is True else []
             wanted = (direct in ready) or local_ai.option('_primary') in ready or (
                 bool(ready) and config.chat_provider in {'gemini', 'openai', 'auto'})
-            if direct == "bedrock":
-                from . import providers
-                pro = ("Bedrock", await asyncio.to_thread(providers.bedrock_chat, brain.system + LOCAL_NOTE,
-                                                          _plain_history(), text, 4000))
-            elif not recalled and wanted:
-                prompt = local_ai._prompt(brain.system + LOCAL_NOTE, _plain_history(), text)
-                pro = await asyncio.to_thread(local_ai.ask_pro, prompt, local_ai.TIMEOUT, direct if direct in ready else None)
-            if direct and not pro and direct != "bedrock":
-                raise RuntimeError(f"{local_ai.NAMES.get(direct, direct)} hozir javob bermadi - ilova ulanganini va "
-                                   "limitini tekshiring (Ruxsatlar → Ilovalar orqali ulanish)")
-            if recalled or pro:
-                answer = recalled or pro[1]
-                if pro:
-                    log.info("Javobni %s Pro ilovasi berdi", pro[0])
-                brain.messages += [{'role':'user','content':text},{'role':'assistant','content':answer}]
-                brain._save_session()
-                memory.log_message(brain.session_id,'user',text)
-                memory.log_message(brain.session_id,'assistant',answer)
-            elif config.chat_provider in {'gemini','openai','auto'}:
-                from . import providers
-                system=brain.system+'\nHozir faqat matnli suhbat rejimi. Dastur ochish, fayl yaratish yoki internetni tekshirish bajarilmadi; bajarilgandek aytma.'+HIDE_SOURCE
-                if images:
-                    text+='\n[Rasm biriktirilgan, ammo bu suhbat rejimida rasm uzatilmagan. Uni ko‘rgandek javob bermang.]'
-                try:
-                    provider,reply=await asyncio.to_thread(providers.chat,system,_plain_history(),text,4000)
-                except RuntimeError:
-                    local=await asyncio.to_thread(_rescue_local,system,text) if owner else None
-                    if not local:raise
-                    provider,reply=local
-                answer=reply
-                log.info("Javobni %s berdi", provider)
+            # Matnli rejim (Claude API vositalarisiz): Ali dispetcher - savolni mos agentga beradi, javobni yetkazadi
+            text_mode = bool(direct) or wanted or config.chat_provider in {'gemini', 'openai', 'auto'}
+            if recalled or text_mode:
+                if recalled:
+                    answer = recalled
+                else:
+                    if images:
+                        text += '\n[Rasm biriktirilgan, ammo bu rejimda rasm uzatilmagan. Uni ko‘rgandek javob bermang.]'
+                    answer = await team_reply(text, emit, ready, direct)
                 brain.messages += [{'role':'user','content':text},{'role':'assistant','content':answer}]
                 brain._save_session()
                 memory.log_message(brain.session_id,'user',text)
