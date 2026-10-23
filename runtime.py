@@ -57,6 +57,8 @@ async def lifespan(_app):
     autopilot.start(brain)
     from ali import cloud
     cloud.start()  # xotiraning Firebase'dagi nusxasi (kalit bo'lsa)
+    from ali import obsidian
+    obsidian.start()  # xotira Obsidian omborida (Ali papkasi), o'rnatilgan bo'lsa
     bot = None
     if config.telegram_token:
         from ali.telegram_bot import TelegramBot
@@ -297,6 +299,7 @@ async def memory_info(request: Request):
         return JSONResponse({}, status_code=401)
     from ali import agents as agents_mod
     from ali.agents import split_lessons
+    from ali import obsidian
     from ali.memory import JOURNAL_DIR
     team = []
     for a in agents_mod.load().values():
@@ -304,7 +307,8 @@ async def memory_info(request: Request):
         team.append({"key": a.key, "name": a.name, "icon": a.icon, "lessons": len(lessons), "learn": len(a.learn),
                      "knowledge": memory.agent_knowledge_summary(a.key)["count"]})
     return {**memory.stats(), "db": str(config.db_path.resolve()), "journal": str(JOURNAL_DIR.resolve()),
-            "agents_dir": str(agents_mod.AGENTS_DIR.resolve()), "team": team, "local": is_local(request)}
+            "agents_dir": str(agents_mod.AGENTS_DIR.resolve()), "team": team, "local": is_local(request),
+            "obsidian": str(obsidian.root() or ""), "obsidian_uri": obsidian.open_uri()}
 
 
 @app.post("/api/memory-open")

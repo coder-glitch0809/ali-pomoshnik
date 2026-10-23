@@ -108,11 +108,16 @@
     const grid = el('div', 'mem-grid');
     [[m.messages, 'yozishma'], [m.agent_tasks, 'agent ishi'], [m.facts, 'fakt'], [m.knowledge, 'o‘rganilgan bilim']].forEach(([n, t]) => { const c = el('div'); c.append(el('b', '', n), el('span', '', t)); grid.append(c); });
     const paths = el('div', 'mem-paths');
-    [['Asl xotira (baza):', m.db], ['O‘qiladigan nusxa (har kun Markdown):', m.journal], ['Agentlar va ularning tajribasi:', m.agents_dir]].forEach(([t, p]) => { const line = el('div'); line.append(el('b', '', t + ' '), document.createTextNode(p)); paths.append(line); });
+    [['Asl xotira (baza):', m.db], ['O‘qiladigan nusxa (har kun Markdown):', m.journal], ['Agentlar va ularning tajribasi:', m.agents_dir], ...(m.obsidian ? [['Obsidian ombori:', m.obsidian]] : [])].forEach(([t, p]) => { const line = el('div'); line.append(el('b', '', t + ' '), document.createTextNode(p)); paths.append(line); });
     const team = el('div', 'mem-team');
     for (const a of m.team) team.append(el('span', '', `${a.icon} ${a.name}: ${a.lessons} saboq · ${a.knowledge} bilim`));
     b.append(grid, paths, team);
     $('memoryOpen').hidden = !m.local;
+    if (m.obsidian_uri) {  // Obsidian'da ochish: ilova o'zi ochiladi
+      const ob = el('a', 'link', 'Obsidian’da ochish →'); ob.href = m.obsidian_uri; ob.style.marginLeft = '12px';
+      $('memoryOpen').parentElement.querySelector('.obsidian-link')?.remove(); ob.classList.add('obsidian-link');
+      $('memoryOpen').after(ob);
+    }
   }
   $('memoryOpen').onclick = () => fetch('/api/memory-open', { method: 'POST' });
 
