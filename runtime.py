@@ -432,6 +432,24 @@ async def ai_app_action(key: str, action: str, request: Request):
     return {"message": message, **local_ai.summary()}
 
 
+@app.post("/api/permissions/preset/{name}")
+async def permissions_preset(name: str, request: Request):
+    """Tayyor rejim: computer - kompyuterdagi ishlar so'ramasdan, tashqi amallar tasdiq bilan; safe - hammasi tasdiq bilan.
+    Faqat shu kompyuterdan."""
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if not is_local(request):
+        return JSONResponse({"error": "Rejimni faqat shu kompyuterdan o'zgartirish mumkin"}, status_code=403)
+    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+        return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
+    from ali import permissions
+    try:
+        permissions.apply_preset(name, brain.registry)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True}
+
+
 @app.post("/api/permissions")
 async def permissions_save(request: Request):
     if not is_authed(request.cookies):

@@ -52,6 +52,31 @@ def save(rules, registry):
     return data
 
 
+# Tayyor rejimlar. "computer": kompyuterdagi ishlar so'ramasdan; tashqariga chiqadiganlar (joylash, xabar, push,
+# redeploy) tasdiq bilan, o'chirish taqiqlangan. "safe": barcha xavfli amallar tasdiq bilan.
+OUTWARD = {'instagram_publish', 'instagram_reply_comment', 'instagram_hide_comment', 'instagram_delete_comment',
+           'instagram_send_message', 'github_create_issue', 'github_push_file', 'vercel_redeploy'}
+NEVER = {'delete_agent'}
+
+
+def apply_preset(name, registry):
+    if name not in {'computer', 'safe'}:
+        raise ValueError('Noma’lum rejim')
+    rules = dict(load().get('rules', {}))
+    for s in registry.values():
+        if not (s.dangerous or s.name in REVIEW_DEFAULT):
+            continue
+        if s.name in NEVER:
+            rules[s.name] = 'deny'
+        elif name == 'safe' or s.name in OUTWARD:
+            rules[s.name] = 'ask'
+        else:
+            rules[s.name] = 'auto'
+    save(rules, registry)
+    audit('preset', name)
+    return rules
+
+
 # Windows o'rnatuvchisidagi ruxsat guruhlari -> vosita modullari (ali/skills/*.py, ali/plugins/*.py)
 INSTALL_GROUPS = {
     'pc': {'pc', 'coding'},

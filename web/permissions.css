@@ -42,3 +42,5 @@ html[data-theme="light"] .connection-save { background:linear-gradient(110deg,#2
 .brand-ico { width:28px;height:28px;flex:none;border-radius:8px;display:block; }
 .connection-dialog h2 .brand-ico { display:inline-block;vertical-align:middle;margin-right:4px; }
 .connection-dialog textarea { width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1px solid var(--line-strong);background:var(--bg);color:var(--text);font:inherit;resize:vertical; }
+.permission-presets { display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:14px 0; }
+.permission-presets span { color:var(--muted);font-size:12px; }

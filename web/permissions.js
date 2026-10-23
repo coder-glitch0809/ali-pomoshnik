@@ -122,6 +122,12 @@
   }
   async function refreshAiApps(){try{const r=await fetch('/api/local-access');if(r.ok)renderAiApps(await r.json());}catch{}}
 
+  document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=async()=>{
+    const st=$('presetStatus');st.textContent='Saqlanmoqda…';
+    try{const r=await fetch('/api/permissions/preset/'+b.dataset.preset,{method:'POST'});const d=await r.json().catch(()=>({}));
+      if(!r.ok)throw Error(d.error||'Saqlanmadi');dirty=false;st.textContent=b.dataset.preset==='computer'?'Kompyuterdagi ishlar endi so‘ramasdan bajariladi':'Barcha xavfli amallar tasdiq so‘raydi';await refresh();}
+    catch(e){st.textContent=e.message;}
+  });
   async function refresh(){
     refreshAiApps();
     if(dirty)return;
