@@ -253,14 +253,15 @@ def connected() -> list[str]:
     return sorted(keys, key=lambda k: k != first)
 
 
-def ask_pro(prompt: str, timeout: int = TIMEOUT, only: str | None = None) -> tuple[str, str] | None:
+def ask_pro(prompt: str, timeout: int = TIMEOUT, only: str | None = None,
+            images: list[str] | None = None) -> tuple[str, str] | None:
     """Ulangan Pro ilovalardan (asosiysi birinchi) javob: (ilova nomi, javob). only - faqat shu ilova.
     Ruxsat bo'lmasa yoki hech biri javob bermasa None."""
     if access() is not True:
         return None
     for key in ([only] if only else connected()):
         try:
-            return NAMES[key], ask_one(key, app_exe(key), prompt, timeout)
+            return NAMES[key], ask_one(key, app_exe(key), prompt, timeout, images)
         except RuntimeError as e:
             log.warning("%s Pro ilovasi javob bermadi: %s", key, e)
     return None
@@ -302,12 +303,14 @@ def verify(key: str) -> tuple[bool, str]:
 
 
 # --- so'rov ---
-def _command(key: str, exe: str) -> list[str]:
+def _command(key: str, exe: str, images: list[str] | None = None) -> list[str]:
     if key == "claude":
-        # bilmagan narsani internetdan qidirib aniqlasin (faqat o'qish vositalari)
-        return [exe, "-p", "--output-format", "text", "--allowedTools", "WebSearch", "WebFetch"]
+        # bilmagan narsani internetdan qidirib aniqlasin; rasm bo'lsa - Read bilan ko'radi (faqat o'qish vositalari)
+        return [exe, "-p", "--output-format", "text", "--allowedTools", "WebSearch", "WebFetch",
+                *(["Read"] if images else [])]
     if key == "codex":
-        return [exe, "exec", "--sandbox", "read-only", "--skip-git-repo-check", "-"]
+        return [exe, "exec", "--sandbox", "read-only", "--skip-git-repo-check",
+                *[arg for img in images or [] for arg in ("-i", img)], "-"]
     return [exe, "-p", "Quyidagi ko'rsatma va savolga javob ber."]
 
 
@@ -330,11 +333,13 @@ def clean_env() -> dict:
     return env
 
 
-def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT) -> str:
-    """Bitta ilovaga so'rov (ruxsatni chaqiruvchi tekshiradi). Xatoda RuntimeError."""
+def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: list[str] | None = None) -> str:
+    """Bitta ilovaga so'rov (ruxsatni chaqiruvchi tekshiradi). images - rasm fayllari yo'llari. Xatoda RuntimeError."""
     WORKDIR.mkdir(parents=True, exist_ok=True)
+    if images and key == "claude":  # Claude Code rasmni fayl sifatida o'qib ko'radi
+        prompt += "\n\nBiriktirilgan rasm(lar) - Read vositasi bilan ochib, diqqat bilan ko'r:\n" + "\n".join(images)
     try:
-        proc = subprocess.run(_command(key, exe), input=prompt, cwd=WORKDIR, capture_output=True, text=True,
+        proc = subprocess.run(_command(key, exe, images), input=prompt, cwd=WORKDIR, capture_output=True, text=True,
                               encoding="utf-8", errors="replace", timeout=timeout, env=clean_env(),
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:

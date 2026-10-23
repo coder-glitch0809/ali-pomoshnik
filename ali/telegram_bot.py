@@ -144,6 +144,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CallbackQueryHandler(self.public_button, pattern=r"^(pub:|own:)"))
         a.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
         a.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
+        a.add_handler(MessageHandler(filters.Document.ALL, self.on_document))
         a.add_handler(MessageHandler(filters.LOCATION, self.on_location))
         a.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
         await a.initialize()
@@ -388,9 +389,86 @@ class TelegramBot(PublicTelegram, Listener):
         if not self.is_private(update): return
         if await self.menu_text(update,ctx,update.message.text):return
         if update.effective_user.id==self.owner_id:
-            await self.process(update, ctx, update.message.text)
+            text = update.message.text
+            # Uzatilgan (forward) xabar - o'rganiladigan material; havolalar - sahifasi o'qiladi va o'rganiladi
+            if getattr(update.message, "forward_origin", None):
+                self.learn_bg(update, " ".join(text.split()[:8]), text, "Telegram (uzatilgan xabar)")
+            text = await self.read_links(update, text)
+            await self.process(update, ctx, text)
         else:
             await self.public_process(update,ctx,update.message.text)
+
+    # ---------- yuborilgan materialdan o'rganish ----------
+    def learn_bg(self, update: Update, title: str, text: str, source: str, images: list[str] | None = None,
+                 hint: str = "") -> None:
+        """Materialni fonda o'rganib, mos agent bazasiga yozadi va natijani egasiga xabar qiladi."""
+        from . import ingest
+        chat_id = update.effective_chat.id
+
+        async def run():
+            try:
+                r = await asyncio.to_thread(ingest.learn, title, text, source, images, hint)
+            except Exception as e:
+                log.exception("Materialdan o'rganilmadi: %s", title)
+                await self.app.bot.send_message(chat_id, f"⚠️ «{title[:60]}» o'rganilmadi: {str(e)[:200]}")
+                return
+            msg = f"📚 {r['icon']} {r['name']} bazasiga {r['saved']} ta bilim qo'shildi: «{title[:80]}»"
+            await self.app.bot.send_message(chat_id, msg + (f"\n\n{r['summary'][:600]}" if r["summary"] else ""))
+
+        task = asyncio.create_task(run())
+        self.learn_tasks = getattr(self, "learn_tasks", set())
+        self.learn_tasks.add(task)
+        task.add_done_callback(self.learn_tasks.discard)
+
+    async def read_links(self, update: Update, text: str) -> str:
+        """Xabardagi havolalar (2 tagacha) ochib o'qiladi, o'rganiladi va javob uchun matnga qo'shiladi."""
+        from . import ingest
+        extra = []
+        for url in dict.fromkeys(ingest.URL_RE.findall(text or "")).keys():
+            if len(extra) >= 2:
+                break
+            try:
+                page = await asyncio.to_thread(ingest.fetch_url, url)
+            except Exception as e:
+                log.info("Havola o'qilmadi %s: %s - Claude WebFetch bilan ochadi", url, e)
+                page = ""
+            title = (page.split("\n", 1)[0][:100] if page.strip() else "") or url
+            self.learn_bg(update, title, page, url, hint=text)
+            extra.append(f"[Havola mazmuni: {url}]\n{page[:8000]}" if page.strip()
+                         else f"[Havola: {url} - sahifani WebFetch bilan o'zing ochib o'qi]")
+        return text + ("\n\n" + "\n\n".join(extra) if extra else "")
+
+    async def on_document(self, update: Update, ctx):
+        """Fayl (PDF, Word, Excel, PowerPoint, matn, kod, rasm): o'qiladi, javob beriladi va bilim bo'ladi."""
+        from . import ingest
+        if self.is_private(update) and update.effective_user.id != self.owner_id:
+            await update.message.reply_text("Fayllarni hozircha faqat administrator yubora oladi. Savolingizni matn qilib yozing.")
+            return
+        if not await self._guard(update):
+            return
+        doc = update.message.document
+        if doc.file_size and doc.file_size > 20 * 1024 * 1024:
+            await update.message.reply_text("Fayl juda katta (Telegram botlar 20 MB gacha yuklab oladi).")
+            return
+        file = await doc.get_file()
+        path = await asyncio.to_thread(ingest.save_upload, doc.file_name or "fayl", bytes(await file.download_as_bytearray()))
+        caption = update.message.caption or ""
+        if path.suffix.lower() in ingest.IMAGE_EXT:
+            data = base64.b64encode(path.read_bytes()).decode()
+            self.learn_bg(update, f"Rasm: {path.name}", caption, "Telegram (rasm fayl)", [str(path)], hint=caption)
+            await self.process(update, ctx, caption, [{"media_type": "image/jpeg", "data": data}])
+            return
+        try:
+            text = await asyncio.to_thread(ingest.extract_text, path)
+        except RuntimeError as e:
+            await update.message.reply_text(f"⚠️ {e}")
+            return
+        if not text.strip():
+            await update.message.reply_text("Fayldan matn topilmadi (skanerlangan PDF bo'lishi mumkin - rasm qilib yuboring).")
+            return
+        self.learn_bg(update, doc.file_name or path.name, text, f"Telegram fayl: {doc.file_name}", hint=caption)
+        question = caption or "Shu faylni o'qib chiq: asosiy mazmuni, muhim raqam va xulosalarini qisqa ayt."
+        await self.process(update, ctx, f"{question}\n\n[Fayl: {doc.file_name}]\n{text[:12000]}")
 
     async def on_voice(self, update: Update, ctx):
         if self.is_private(update) and update.effective_user.id!=self.owner_id:
@@ -432,9 +510,16 @@ class TelegramBot(PublicTelegram, Listener):
             return
         if not await self._guard(update):
             return
+        from . import ingest
         file = await update.message.photo[-1].get_file()
-        data = base64.b64encode(bytes(await file.download_as_bytearray())).decode()
-        await self.process(update, ctx, update.message.caption or "", [{"media_type": "image/jpeg", "data": data}])
+        raw = bytes(await file.download_as_bytearray())
+        data = base64.b64encode(raw).decode()
+        caption = update.message.caption or ""
+        # Rasm ham o'rganiladi: Pro ilova ko'radi, mos agent bazasiga tavsif va bilim yoziladi
+        path = await asyncio.to_thread(ingest.save_upload, "telegram_rasm.jpg", raw)
+        self.learn_bg(update, f"Rasm {time.strftime('%Y-%m-%d %H:%M')}" + (f": {caption[:60]}" if caption else ""),
+                      caption, "Telegram (rasm)", [str(path)], hint=caption)
+        await self.process(update, ctx, caption, [{"media_type": "image/jpeg", "data": data}])
 
     async def on_location(self, update: Update, ctx):
         if not self.is_private(update):

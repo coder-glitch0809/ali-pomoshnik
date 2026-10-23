@@ -233,7 +233,7 @@ def save_remembered(reply: str) -> str:
 
 
 async def team_reply(text: str, emit: Callable[[str, object], None] | None, ready: list[str],
-                     direct: str | None = None) -> str:
+                     direct: str | None = None, images: list[str] | None = None) -> str:
     """Matnli rejimda Ali - boshliq: savolni mos agentga beradi, agent javob beradi, Ali javobni yetkazadi.
     Javob manbasi: tanlangan AI -> Pro ilovalar (Claude/ChatGPT obunasi) -> Bedrock/Gemini/GPT API.
     Agent o'rgangan bilimlarining mazmunini oladi; foydalanuvchi aytgan muhim faktlar xotiraga yoziladi."""
@@ -250,7 +250,7 @@ async def team_reply(text: str, emit: Callable[[str, object], None] | None, read
             source, reply = "Bedrock", await asyncio.to_thread(providers.bedrock_chat, system, history, text, 4000)
         elif ready and (not direct or direct in ready):
             got = await asyncio.to_thread(local_ai.ask_pro, local_ai._prompt(system, history, text), local_ai.TIMEOUT,
-                                          direct if direct in ready else None)
+                                          direct if direct in ready else None, images)
             if got:
                 source, reply = got
         if not reply and not direct:
@@ -362,9 +362,12 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                 if recalled:
                     answer = recalled
                 else:
-                    if images:
-                        text += '\n[Rasm biriktirilgan, ammo bu rejimda rasm uzatilmagan. Uni ko‘rgandek javob bermang.]'
-                    answer = await team_reply(text, emit, ready, direct)
+                    # Rasm(lar) faylga saqlanadi - Pro ilova (Claude, ChatGPT) ularni ko'radi
+                    from . import ingest
+                    paths = [str(ingest.save_image_b64(i["data"])) for i in images or []]
+                    if paths and not ready:
+                        text += '\n[Rasm biriktirilgan, lekin hozir rasmni ko‘ra oladigan AI ulanmagan. Ko‘rgandek javob berma.]'
+                    answer = await team_reply(text, emit, ready, direct, paths or None)
                 brain.messages += [{'role':'user','content':text},{'role':'assistant','content':answer}]
                 brain._save_session()
                 memory.log_message(brain.session_id,'user',text)
