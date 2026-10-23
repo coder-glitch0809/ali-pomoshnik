@@ -30,6 +30,8 @@ PROVIDERS = {
         steps=['Firebase Console’da loyihangizni oching → Build → Firestore Database → yoqilganini tekshiring (yo‘q bo‘lsa “Create database”).', 'Project settings (⚙) → Service accounts → “Generate new private key” → JSON fayl yuklanadi.', 'Faylni Bloknot bilan oching, butun matnni nusxalab pastga joylang. Ali tekshiradi va har daqiqada xotirani Firebase’ga yozadi.', 'Kalit faqat shu kompyuterda (data/ papkasida) saqlanadi va GitHub’ga chiqmaydi.']),
     'bedrock': dict(name='Amazon Bedrock (Claude)', url='https://console.aws.amazon.com/bedrock/home#/api-keys', link='AWS Bedrock → API keys',
         steps=['AWS Console’da Amazon Bedrock → API keys bo‘limini oching va “Generate long-term API key” bilan kalit yarating.', 'Bedrock → Model access bo‘limida Anthropic Claude modellariga ruxsat yoqilganini tekshiring.', 'Kalitni pastga kiriting. Mintaqa us-east-1 emas bo‘lsa, oldiga yozing: “eu-central-1 ABSK…”. Ali modelni o‘zi topadi va tekshiradi.', 'Bedrock pullik (AWS hisobingizdan). Ali uni Pro ilovalardan keyin, bepul Gemini’dan oldin ishlatadi.'], field='bedrock_api_key', env='BEDROCK_API_KEY'),
+    'tg_account': dict(name='Telegram akkaunt (kanallar)', url='https://my.telegram.org/apps', link='my.telegram.org → API development tools',
+        steps=['my.telegram.org saytiga telefon raqamingiz bilan kiring → “API development tools” → ilova yarating (nomi: Ali).', 'Chiqqan api_id (raqam) va api_hash ni pastga bo‘sh joy bilan kiriting: “12345678 abcdef0123…”.', 'Kompyuterda oyna ochiladi: telefon raqamingiz, Telegram yuborgan kod va (bo‘lsa) 2 bosqichli parolni O‘ZINGIZ kiritasiz.', 'Ali faqat O‘QIYDI: kanal va guruhlardagi post va fayllardan o‘rganadi, hech narsa yubormaydi.'], field='tg_api_hash', env='TG_API_HASH'),
     'gemini': dict(name='Gemini plagini', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
         steps=['Google hisobingiz bilan AI Studio’ga kiring.', '“Create API key” tugmasi bilan kalit yarating.', 'Kalitni pastga kiriting - plagin avtomatik ishga tushadi.'], field='gemini_api_key', env='GEMINI_API_KEY'),
     'chatgpt': dict(name='ChatGPT plagini', url='https://platform.openai.com/api-keys', link='OpenAI’da kalit olish', plugin='chatgpt',
@@ -54,6 +56,10 @@ def catalog(telegram_live=False):
             if local_ai.app_state().get(key,{}).get('connected'):
                 status,configured='Ulangan (ilova orqali) · Ruxsatlar → Ilovalar',True
         if key=='bedrock' and config.bedrock_api_key:status=f'Ulangan · {config.bedrock_model or "model avtomatik"} ({config.bedrock_region})'
+        if key=='tg_account':
+            from . import tg_account
+            status='Ulangan (faqat o‘qish)' if tg_account.configured() else ('Kalit bor · kirish kerak (qayta “Sozlash”)' if tg_account.credentials() else 'Sozlanmagan')
+            configured=tg_account.configured()
         if key=='firebase':
             from . import cloud
             configured=cloud.configured()
@@ -69,6 +75,7 @@ def catalog(telegram_live=False):
 
 async def connect(key, token):
     if key=='firebase':return await connect_firebase(token)
+    if key=='tg_account':return await connect_tg_account(token)
     if key=='bedrock':return await connect_bedrock(token)
     p=PROVIDERS.get(key)
     if not p or 'field' not in p:raise ValueError('Bu xizmat uchun hozir faqat yo‘riqnoma mavjud.')
@@ -159,3 +166,19 @@ async def connect_bedrock(text):
             await asyncio.to_thread(set_key,str(ENV_FILE),env,value)
             setattr(config,attr,value);os.environ[env]=value
     return {'ok':True,'message':f'Bedrock ulandi: {model} ({region}). Ali endi Pro ilovalardan keyin Bedrock’dan foydalanadi.'}
+
+
+async def connect_tg_account(text):
+    """Telegram API (api_id + api_hash) ni saqlaydi va kompyuterda kirish oynasini ochadi."""
+    from . import tg_account
+    parts=(text or '').split()
+    if len(parts)==1 and tg_account.credentials():parts=[]  # faqat qayta kirish
+    if parts:
+        if len(parts)!=2 or not parts[0].isdigit() or not re.fullmatch(r'[0-9a-f]{32}',parts[1]):
+            raise ValueError('api_id (raqam) va api_hash (32 belgi) ni bo‘sh joy bilan kiriting: “12345678 abcdef…”.')
+        async with _lock:
+            for env,value in (('TG_API_ID',parts[0]),('TG_API_HASH',parts[1])):
+                await asyncio.to_thread(set_key,str(ENV_FILE),env,value);os.environ[env]=value
+    try:await asyncio.to_thread(tg_account.open_login)
+    except RuntimeError as e:raise ValueError(str(e)) from None
+    return {'ok':True,'message':'Kompyuterda oyna ochildi: telefon raqamingiz va Telegram yuborgan kodni o‘zingiz kiriting. Kirgach, Telegram’da Ali’ga “/kanallar” deb yozing.'}

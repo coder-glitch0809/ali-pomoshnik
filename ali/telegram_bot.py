@@ -42,6 +42,8 @@ TOOL_LABELS = {
 COMMANDS = [
     ("start", "Ali Pomoshnik — bosh menyu"),
     ("ai", "Kim javob bersin: Ali, Claude Pro, ChatGPT Pro, Bedrock"),
+    ("kanallar", "Telegram kanal va guruhlarim"),
+    ("kanal", "Kanalni o'qib o'rganish: /kanal NOMI"),
     ("menu", "Xizmatlarni tanlash"),
     ("ob_havo", "Hudud va kundalik ob-havo"),
     ("sorovlar", "Administrator: kelgan so‘rovlar"),
@@ -138,6 +140,8 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("holat", self.cmd_status))
         a.add_handler(CommandHandler("agent", self.cmd_agent))
         a.add_handler(CommandHandler("ai", self.cmd_ai))
+        a.add_handler(CommandHandler("kanallar", self.cmd_channels))
+        a.add_handler(CommandHandler("kanal", self.cmd_channel))
         a.add_handler(CallbackQueryHandler(self.on_ai_button, pattern=r"^ai:"))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
@@ -393,10 +397,76 @@ class TelegramBot(PublicTelegram, Listener):
             # Uzatilgan (forward) xabar - o'rganiladigan material; havolalar - sahifasi o'qiladi va o'rganiladi
             if getattr(update.message, "forward_origin", None):
                 self.learn_bg(update, " ".join(text.split()[:8]), text, "Telegram (uzatilgan xabar)")
+            if await self.channel_in_text(update, text):  # «X kanalini o'rgan» - kanal o'qiladi
+                return
             text = await self.read_links(update, text)
             await self.process(update, ctx, text)
         else:
             await self.public_process(update,ctx,update.message.text)
+
+    # ---------- Telegram kanallaridan o'rganish (shaxsiy akkaunt, faqat o'qish) ----------
+    async def cmd_channels(self, update: Update, ctx):
+        from . import tg_account
+        if not await self._guard(update):
+            return
+        try:
+            items = await asyncio.to_thread(tg_account.channels)
+        except Exception as e:
+            await update.message.reply_text(f"⚠️ {e}")
+            return
+        lines = [f"{'📢' if c['kind'] == 'kanal' else '👥'} {c['title']}" + (f" (@{c['username']})" if c["username"] else "")
+                 for c in items[:80]]
+        await update.message.reply_text(f"Kanal va guruhlaringiz ({len(items)}):\n\n" + "\n".join(lines)
+                                        + "\n\nO'rganish uchun: /kanal NOMI  (yoki shunchaki «NOMI kanalini o'rgan»)")
+
+    async def cmd_channel(self, update: Update, ctx):
+        if not await self._guard(update):
+            return
+        name = " ".join(ctx.args or []).strip()
+        if not name:
+            await update.message.reply_text("Kanal nomini yozing: /kanal Kanal nomi")
+            return
+        self.learn_channel_bg(update, name)
+
+    def learn_channel_bg(self, update: Update, name: str) -> None:
+        """Kanalni fonda o'qib o'rganadi; har bir natija va yakuniy hisobot Telegram'ga keladi."""
+        from . import tg_account
+        chat_id = update.effective_chat.id
+        loop = asyncio.get_running_loop()
+
+        def progress(msg):
+            asyncio.run_coroutine_threadsafe(self.app.bot.send_message(chat_id, msg), loop)
+
+        async def run():
+            await self.app.bot.send_message(chat_id, f"📖 «{name}» kanalini o'qiyapman - post va fayllarni o'rganib, "
+                                                     "mos agentlarga bilim qilaman…")
+            try:
+                r = await asyncio.to_thread(tg_account.learn_channel, name, 100, progress)
+            except Exception as e:
+                await self.app.bot.send_message(chat_id, f"⚠️ {str(e)[:500]}")
+                return
+            if not r["posts"] and not r["files"]:
+                await self.app.bot.send_message(chat_id, f"«{r['channel']}»: yangi post yoki fayl yo'q (avvalgilari o'rganilgan).")
+                return
+            await self.app.bot.send_message(chat_id, f"✅ «{r['channel']}» o'rganildi: {r['posts']} ta post, {r['files']} ta fayl → "
+                                                     f"{r['saved']} ta bilim.\nAgentlar: {', '.join(r['agents']) or '-'}")
+
+        task = asyncio.create_task(run())
+        self.learn_tasks = getattr(self, "learn_tasks", set())
+        self.learn_tasks.add(task)
+        task.add_done_callback(self.learn_tasks.discard)
+
+    async def channel_in_text(self, update: Update, text: str) -> bool:
+        """«... kanalini o'rgan / ko'r» kabi xabar - kanal o'rganiladi. True - ishlov berildi."""
+        from . import tg_account
+        low = text.lower()
+        if not tg_account.configured() or not any(w in low for w in ("kanal", "канал", "guruh", "группа", "@")):
+            return False
+        ch = await asyncio.to_thread(tg_account.find_in_text, text)
+        if ch is None:
+            return False
+        self.learn_channel_bg(update, ch["title"])
+        return True
 
     # ---------- yuborilgan materialdan o'rganish ----------
     def learn_bg(self, update: Update, title: str, text: str, source: str, images: list[str] | None = None,
