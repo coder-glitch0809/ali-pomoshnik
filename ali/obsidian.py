@@ -1,6 +1,6 @@
 """Obsidian: Ali xotirasi Obsidian omborida (vault) bog'langan eslatmalar sifatida.
 
-Omborning "Ali" papkasiga har 5 daqiqada yoziladi:
+Omborning "Ali" papkasiga har daqiqada yoziladi (faqat yangilari):
   Ali/Ali.md                       - bosh sahifa (agentlar, statistika)
   Ali/Agentlar/<Agent>.md          - agent: tavsif, vositalar, tajriba saboqlari, bilimlariga havolalar
   Ali/Bilimlar/<agent>/<mavzu>.md  - har bir o'rganilgan bilim ([[Agent]] havolasi, teglar bilan)
@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import threading
 import time
 from pathlib import Path
@@ -22,7 +21,7 @@ from .config import config
 
 log = logging.getLogger("ali.obsidian")
 
-INTERVAL = 300
+INTERVAL = 60  # har daqiqada: faqat yangi yozuvlar, shuning uchun yengil
 STATE = config.data_dir / "obsidian_state.json"
 INBOX = "Mening yozuvlarim"
 _BAD = re.compile(r'[\\/:*?"<>|#^\[\]]+')
@@ -84,7 +83,7 @@ def _yaml(**fields) -> str:
 def sync() -> dict:
     from . import agents
     from .agents import split_lessons
-    from .memory import JOURNAL_DIR, memory
+    from .memory import memory
 
     base = root()
     if base is None:
@@ -126,13 +125,21 @@ def sync() -> dict:
     written += _write(base / "Xotira" / "Faktlar.md", _yaml(tags=["ali", "ali/xotira"]) + "# Men haqimda eslab qolinganlar\n\n"
                       + ("\n".join(f"- **{k}**: {v}" for k, v in facts.items()) or "- hali yo'q") + "\n")
 
-    # 4) Suhbatlar - kunlik jurnal nusxasi
-    for src in sorted((JOURNAL_DIR / "suhbatlar").glob("*.md")) if (JOURNAL_DIR / "suhbatlar").exists() else []:
-        dst = base / "Suhbatlar" / src.name
-        if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-            written += 1
+    # 4) Suhbatlar - to'g'ridan-to'g'ri bazadan, birinchi kundan boshlab (faqat yangi xabarlar kelgan kunlar)
+    last_msg = state.get("messages", 0)
+    days = [r[0] for r in memory._exec("SELECT DISTINCT substr(created_at,1,10) FROM messages WHERE id>?",
+                                       (last_msg,)).fetchall()]
+    for day in days:
+        msgs = memory._exec("SELECT role, content, created_at FROM messages WHERE substr(created_at,1,10)=? ORDER BY id",
+                            (day,)).fetchall()
+        parts = [_yaml(sana=day, tags=["ali", "ali/suhbat"]) + f"# Suhbatlar · {day}"]
+        for m in msgs:
+            who = {"user": "👤 Siz", "assistant": "🧠 Ali"}.get(m["role"], "🤖 " + m["role"].replace("agent:", "Agent: "))
+            if m["role"].startswith("agent:") and (k := m["role"][6:]) in names:
+                who = f"🤖 [[{names[k]}]]"
+            parts.append(f"### {m['created_at'][11:19]} · {who}\n\n{m['content'].strip()}")
+        written += _write(base / "Suhbatlar" / f"{day}.md", "\n\n".join(parts) + "\n")
+    state["messages"] = memory._exec("SELECT coalesce(max(id),0) FROM messages").fetchone()[0]
 
     # 5) Siz yozgan eslatmalar -> Ali bilimi
     inbox = base / INBOX
