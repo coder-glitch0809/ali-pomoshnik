@@ -259,9 +259,41 @@ def _improve_tick(brain, state: dict, now: float) -> bool:
     return True
 
 
+TG_CHANNELS_HOURS = 6   # kanallardan yangi post/fayllarni o'rganish
+TG_CHATS_HOURS = 3      # yozishmalardan faktlar va rejalar (eslatmalar)
+
+
+def _telegram_tick(state: dict, now: float) -> None:
+    """Shaxsiy Telegram akkaunt (faqat o'qish): kanallardan o'rganish va yozishmalarni ko'rib chiqish."""
+    from . import tg_account
+    if not tg_account.configured():
+        return
+    if now - state.get("tg_chats", 0) >= TG_CHATS_HOURS * 3600:
+        state["tg_chats"] = now
+        _save(state)
+        try:
+            r = tg_account.review_chats()
+            if r["reminders"]:
+                hub.notify("📅 Yozishmalaringizdan rejalar topildi, eslatma qo'yildi:\n" + "\n".join(r["reminders"]))
+            log.info("Yozishmalar ko'rildi: %s fakt, %s eslatma", r["facts"], len(r["reminders"]))
+        except Exception as e:
+            log.warning("Yozishmalarni ko'rib bo'lmadi: %s", e)
+    if now - state.get("tg_channels", 0) >= TG_CHANNELS_HOURS * 3600:
+        state["tg_channels"] = now
+        _save(state)
+        try:
+            results = tg_account.learn_all_channels()
+            if results:
+                hub.notify("📢 Kanallardan o'rganildi:\n" + "\n".join(
+                    f"• {r['channel']}: {r['posts']} post, {r['files']} fayl → {r['saved']} bilim" for r in results)[:3500])
+        except Exception as e:
+            log.warning("Kanallardan o'rganib bo'lmadi: %s", e)
+
+
 def _tick(brain) -> None:
     state = _load()
     now = time.time()
+    _telegram_tick(state, now)
     if config.self_improve and not _improve_tick(brain, state, now):
         return
     if config.auto_learn:

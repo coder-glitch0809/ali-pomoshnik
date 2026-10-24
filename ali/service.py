@@ -232,6 +232,53 @@ def save_remembered(reply: str) -> str:
     return REMEMBER_RE.sub("", reply).rstrip()
 
 
+OFFICE_TOOLS = {"pptx": "make_presentation", "docx": "make_word", "xlsx": "make_excel"}
+
+
+def _ask_json(prompt: str, ready: list[str]) -> dict:
+    """Pro ilova (bo'lmasa API) dan JSON javob."""
+    from . import local_ai, providers
+    raw = ""
+    if ready:
+        got = local_ai.ask_pro(prompt, local_ai.TIMEOUT)
+        raw = got[1] if got else ""
+    if not raw:
+        raw = providers.chat("Faqat so'ralgan JSON'ni qaytar.", [], prompt, 8000, True)[1]
+    return json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+
+
+async def office_reply(text: str, kind: str, a, ready: list[str]) -> str | None:
+    """API kalitisiz Office fayl: AI to'liq mazmunni vosita argumentlari (JSON) qilib beradi, Ali faylni o'zi yasaydi.
+    Fayl javob bilan birga avtomatik yuboriladi (outbox)."""
+    from . import router
+    lesson = kind == "pptx" and any(w in text.lower() for w in router.LESSON_WORDS)
+    name = "make_lesson_presentation" if lesson and "make_lesson_presentation" in brain.registry else OFFICE_TOOLS[kind]
+    skill = brain.registry.get(name)
+    if skill is None:
+        return None
+    schema = json.dumps(skill.to_tool()["input_schema"], ensure_ascii=False)
+    prompt = (f"{agent_system(a) if a else brain.system}\n\nVAZIFA: foydalanuvchi so'rovi bo'yicha {kind.upper()} fayl uchun "
+              f"TO'LIQ, aniq va professional mazmun tayyorla (taqdimot bo'lsa 8-14 slayd, har birida aniq matn).\n"
+              f"Vosita: {name}\nVosita tavsifi: {skill.description}\nArgumentlar JSON sxemasi: {schema}\n"
+              f"FAQAT shu sxemaga mos bitta JSON obyekt (vosita argumentlari) qaytar, boshqa hech narsa yozma.\n\n"
+              f"Foydalanuvchi so'rovi:\n{text}")
+    for attempt in range(2):
+        try:
+            args = await asyncio.to_thread(_ask_json, prompt, ready)
+        except (ValueError, RuntimeError) as e:
+            log.warning("Fayl mazmuni olinmadi (%s): %s", name, e)
+            continue
+        args = {k: v for k, v in args.items() if k in skill.params}
+        if error := skill.validate(args):
+            prompt += f"\n\nOldingi javobda xato: {error}. Sxemaga aniq mos JSON qaytar."
+            continue
+        result = await asyncio.to_thread(skill.func, **args)
+        log.info("API'siz fayl yaratildi: %s", name)
+        # Vosita natijasidagi model uchun ko'rsatmani ("Fayl javob bilan birga...") foydalanuvchiga ko'rsatmaymiz
+        return (result.split(" Fayl javob")[0].strip() if isinstance(result, str) else "") or "✅ Fayl tayyor."
+    return None
+
+
 async def team_reply(text: str, emit: Callable[[str, object], None] | None, ready: list[str],
                      direct: str | None = None, images: list[str] | None = None) -> str:
     """Matnli rejimda Ali - boshliq: savolni mos agentga beradi, agent javob beradi, Ali javobni yetkazadi.
@@ -244,6 +291,13 @@ async def team_reply(text: str, emit: Callable[[str, object], None] | None, read
               + await asyncio.to_thread(knowledge_block, text, key) + MEMORY_NOTE)
     if a and emit:
         emit("agent", {"key": a.key, "name": a.name, "icon": a.icon, "task": text[:300]})
+    # Fayl so'ralgan (taqdimot, Word, Excel) - API kalitisiz ham haqiqiy fayl yasaladi
+    from . import router
+    kinds = [] if direct else router.office_kinds(text)
+    if kinds and (done := await office_reply(text, kinds[0], a, ready)):
+        if a and emit:
+            emit("tool_end", {"name": "ask_agent", "output": done[:500], "error": False})
+        return done
     history, source, reply = _plain_history(), "", ""
     try:
         if direct == "bedrock":

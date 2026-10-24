@@ -178,6 +178,111 @@ def learn_channel(name: str, limit: int = 100, progress=None) -> dict:
     return {"channel": ch["title"], "posts": len(posts), "files": len(files), "saved": total, "agents": agents}
 
 
+def learn_all_channels(progress=None, limit: int = 100) -> list[dict]:
+    """Barcha kanallardagi yangi post va fayllardan o'rganish (avtopilot)."""
+    results = []
+    for ch in [c for c in channels() if c["kind"] == "kanal"]:
+        try:
+            r = learn_channel(ch["title"], limit, progress)
+        except Exception as e:
+            log.warning("Kanal o'rganilmadi %s: %s", ch["title"], e)
+            continue
+        if r["posts"] or r["files"]:
+            results.append(r)
+    return results
+
+
+REVIEW_TASK = """Bugun {today}. Quyida egamning ({owner}) Telegram'dagi shaxsiy yozishmalari (oxirgi {hours} soat).
+"Men" - egam. Diqqat bilan o'qib chiq va FAQAT JSON qaytar:
+{{"facts": [{{"key": "qisqa kalit", "value": "egam haqida aniq fakt (ish, loyiha, odamlar, afzallik, manzil...)"}}],
+  "plans": [{{"when": "YYYY-MM-DD HH:MM yoki YYYY-MM-DD (vaqt aytilmagan bo'lsa)", "with": "kim bilan", "what": "nima qilish/uchrashish/to'lash"}}],
+  "summary": "3-6 gapda bugungi muhim gaplar"}}
+Faqat egam KELISHGAN aniq reja va va'dalarni plans ga yoz (uchrashuv, qo'ng'iroq, to'lov, topshirish, yetkazish).
+Taxmin qilma. Faktlar faqat egam haqida va aniq bo'lsin. Parol, kod, karta raqami kabi maxfiy narsalarni yozma.
+
+Yozishmalar:
+{chats}"""
+
+
+def recent_chats(hours: int = 36, max_dialogs: int = 40, per_dialog: int = 80) -> str:
+    """Shaxsiy (odamlar bilan) yozishmalar matni - oxirgi N soat. Botlar va kanallar kirmaydi."""
+    from datetime import datetime, timedelta, timezone
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    async def go(client):
+        parts, n = [], 0
+        async for d in client.iter_dialogs():
+            if not d.is_user or getattr(d.entity, "bot", False) or d.date is None or d.date < since:
+                continue
+            msgs = []
+            async for m in client.iter_messages(d.id, limit=per_dialog, offset_date=None):
+                if m.date < since:
+                    break
+                if m.text:
+                    who = "Men" if m.out else d.name
+                    msgs.append(f"[{m.date.astimezone().strftime('%m-%d %H:%M')}] {who}: {m.text[:1500]}")
+            if msgs:
+                parts.append(f"### {d.name}\n" + "\n".join(reversed(msgs)))
+                n += 1
+                if n >= max_dialogs:
+                    break
+        return "\n\n".join(parts)
+    return _run(go)
+
+
+def review_chats(hours: int = 36) -> dict:
+    """Yozishmalarni ko'rib chiqadi: faktlar xotiraga, bugungi/yaqin rejalar eslatmaga. Hech narsa yuborilmaydi."""
+    from datetime import datetime, timedelta
+
+    from . import local_ai
+    from .memory import memory
+    from .service import _ask_json
+    chats = recent_chats(hours)
+    if not chats.strip():
+        return {"facts": 0, "reminders": [], "summary": "Yangi yozishma yo'q."}
+    ready = local_ai.connected() if local_ai.access() is True else []
+    data = _ask_json(REVIEW_TASK.format(today=time.strftime("%Y-%m-%d %H:%M"), owner=config.user_name, hours=hours,
+                                        chats=chats[:60000]), ready)
+    facts = 0
+    for f in data.get("facts") or []:
+        k, v = str(f.get("key", "")).strip()[:80], str(f.get("value", "")).strip()[:500]
+        if k and v:
+            memory.set_fact(k, v)
+            facts += 1
+    state = _state()
+    made = set(state.get("_reminders", []))
+    reminders = []
+    now = datetime.now()
+    for p in data.get("plans") or []:
+        what, who, when = str(p.get("what", "")).strip(), str(p.get("with", "")).strip(), str(p.get("when", "")).strip()
+        if not what:
+            continue
+        try:
+            due = datetime.strptime(when, "%Y-%m-%d %H:%M")
+            notify_at = max(due - timedelta(minutes=30), now + timedelta(minutes=1))  # 30 daqiqa oldin eslatadi
+        except ValueError:
+            try:
+                day = datetime.strptime(when[:10], "%Y-%m-%d")
+                notify_at = max(day.replace(hour=9), now + timedelta(minutes=1))  # vaqtsiz - o'sha kuni 09:00 da
+                due = day
+            except ValueError:
+                continue
+        if due.date() < now.date():
+            continue
+        text = f"📅 {what}" + (f" — {who}" if who else "") + (f" ({when})" if when else "")
+        if text in made:
+            continue
+        memory.add_reminder(text, notify_at)
+        made.add(text)
+        reminders.append(text)
+    state["_reminders"] = sorted(made)[-300:]
+    STATE.write_text(json.dumps(state), encoding="utf-8")
+    summary = str(data.get("summary", "")).strip()
+    if summary:
+        memory.add_knowledge(f"[umumiy] Yozishmalar xulosasi {time.strftime('%Y-%m-%d %H:%M')}", summary)
+    return {"facts": facts, "reminders": reminders, "summary": summary}
+
+
 if __name__ == "__main__":  # kirish oynasi: python -m ali.tg_account
     from telethon.sync import TelegramClient
     creds = credentials()

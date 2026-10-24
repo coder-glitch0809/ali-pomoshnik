@@ -44,6 +44,8 @@ COMMANDS = [
     ("ai", "Kim javob bersin: Ali, Claude Pro, ChatGPT Pro, Bedrock"),
     ("kanallar", "Telegram kanal va guruhlarim"),
     ("kanal", "Kanalni o'qib o'rganish: /kanal NOMI"),
+    ("kanallar_organ", "Barcha kanallardan hozir o'rganish"),
+    ("bugun", "Yozishmalardan bugungi rejalar va eslatmalar"),
     ("menu", "Xizmatlarni tanlash"),
     ("ob_havo", "Hudud va kundalik ob-havo"),
     ("sorovlar", "Administrator: kelgan so‘rovlar"),
@@ -142,6 +144,8 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("ai", self.cmd_ai))
         a.add_handler(CommandHandler("kanallar", self.cmd_channels))
         a.add_handler(CommandHandler("kanal", self.cmd_channel))
+        a.add_handler(CommandHandler("bugun", self.cmd_today))
+        a.add_handler(CommandHandler("kanallar_organ", self.cmd_learn_all))
         a.add_handler(CallbackQueryHandler(self.on_ai_button, pattern=r"^ai:"))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
@@ -427,6 +431,45 @@ class TelegramBot(PublicTelegram, Listener):
             await update.message.reply_text("Kanal nomini yozing: /kanal Kanal nomi")
             return
         self.learn_channel_bg(update, name)
+
+    async def cmd_today(self, update: Update, ctx):
+        """/bugun - yozishmalarni hozir ko'rib chiqadi: faktlar xotiraga, rejalar eslatmaga."""
+        from . import tg_account
+        if not await self._guard(update):
+            return
+        msg = await update.message.reply_text("📖 Yozishmalaringizni o'qib, rejalar va faktlarni ajratyapman…")
+        try:
+            r = await asyncio.to_thread(tg_account.review_chats)
+        except Exception as e:
+            await msg.edit_text(f"⚠️ {str(e)[:400]}")
+            return
+        text = (f"✅ Ko'rib chiqildi: {r['facts']} ta fakt xotiraga yozildi.\n\n"
+                + ("📅 Eslatmalar:\n" + "\n".join(r["reminders"]) if r["reminders"] else "📅 Yangi reja topilmadi.")
+                + (f"\n\n📝 {r['summary']}" if r["summary"] else ""))
+        await msg.edit_text(text[:4000])
+
+    async def cmd_learn_all(self, update: Update, ctx):
+        """/kanallar_organ - barcha kanallardagi yangi post va fayllardan hozir o'rganish."""
+        from . import tg_account
+        if not await self._guard(update):
+            return
+        chat_id = update.effective_chat.id
+        loop = asyncio.get_running_loop()
+        progress = lambda m: asyncio.run_coroutine_threadsafe(self.app.bot.send_message(chat_id, m), loop)
+        await update.message.reply_text("📚 Barcha kanallarni o'qishni boshladim - har birining natijasini yozib boraman.")
+
+        async def run():
+            try:
+                results = await asyncio.to_thread(tg_account.learn_all_channels, progress)
+            except Exception as e:
+                await self.app.bot.send_message(chat_id, f"⚠️ {str(e)[:400]}")
+                return
+            total = sum(r["saved"] for r in results)
+            await self.app.bot.send_message(chat_id, f"✅ Tugadi: {len(results)} ta kanaldan {total} ta bilim.")
+        task = asyncio.create_task(run())
+        self.learn_tasks = getattr(self, "learn_tasks", set())
+        self.learn_tasks.add(task)
+        task.add_done_callback(self.learn_tasks.discard)
 
     def learn_channel_bg(self, update: Update, name: str) -> None:
         """Kanalni fonda o'qib o'rganadi; har bir natija va yakuniy hisobot Telegram'ga keladi."""
