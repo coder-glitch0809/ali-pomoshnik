@@ -52,6 +52,9 @@ def _run(coro_fn):
         try:
             if not await client.is_user_authorized():
                 raise RuntimeError("Telegram akkauntga kirilmagan: Ruxsatlar -> Telegram akkaunt -> Kirish")
+            if (await client.get_me()).bot:
+                raise RuntimeError("Kirishda telefon raqami o'rniga BOT tokeni kiritilgan - bot kanallarni ko'ra olmaydi. "
+                                   "Ruxsatlar -> Telegram akkaunt -> Sozlash: qayta kiring va TELEFON RAQAMINGIZNI yozing.")
             return await coro_fn(client)
         finally:
             await client.disconnect()
@@ -181,8 +184,28 @@ if __name__ == "__main__":  # kirish oynasi: python -m ali.tg_account
     if not creds:
         print("TG_API_ID va TG_API_HASH .env da yo'q")
         sys.exit(1)
-    print("Telegram akkauntga kirish. Telefon raqamingizni (+998...) va Telegram yuborgan kodni kiriting.\n"
+    session_file = Path(str(SESSION) + ".session")
+    # Oldingi sessiya bot bo'lsa (bot tokeni kiritilgan) - o'chiramiz, akkaunt bilan qayta kirish kerak
+    c = TelegramClient(str(SESSION), *creds)
+    c.connect()
+    stale = c.is_user_authorized() and c.get_me().bot
+    c.disconnect()
+    if stale:
+        session_file.unlink(missing_ok=True)
+        print("Oldingi kirish BOT bilan qilingan edi - u o'chirildi. Endi shaxsiy akkauntingiz bilan kiring.\n")
+    print("Telegram akkauntga kirish (kanallarni o'qish uchun).\n"
+          "Bot tokeni EMAS - o'zingizning TELEFON RAQAMINGIZNI kiriting (+998...), keyin Telegram yuborgan kodni.\n"
           "Ma'lumotlaringiz faqat shu kompyuterda (data/telegram_user.session) qoladi.\n")
-    with TelegramClient(str(SESSION), *creds) as c:
-        me = c.get_me()
-        print(f"\nTayyor: {me.first_name} (@{me.username or '-'}) bilan kirildi. Oynani yopishingiz mumkin.")
+
+    def ask_phone():
+        while True:
+            phone = input("Telefon raqamingiz (+998...): ").strip().replace(" ", "")
+            if re.fullmatch(r"\+?\d{9,15}", phone):
+                return phone
+            print("Bu telefon raqami emas (bot tokeni kiritmang). Masalan: +998901234567")
+
+    c = TelegramClient(str(SESSION), *creds)
+    c.start(phone=ask_phone)  # kod va (bo'lsa) 2 bosqichli parolni Telethon o'zi so'raydi
+    me = c.get_me()
+    c.disconnect()
+    print(f"\nTayyor: {me.first_name} (@{me.username or '-'}) bilan kirildi. Oynani yopishingiz mumkin.")
