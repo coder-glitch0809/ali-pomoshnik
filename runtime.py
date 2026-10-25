@@ -59,6 +59,8 @@ async def lifespan(_app):
     cloud.start()  # xotiraning Firebase'dagi nusxasi (kalit bo'lsa)
     from ali import obsidian
     obsidian.start()  # xotira Obsidian omborida (Ali papkasi), o'rnatilgan bo'lsa
+    from ali import schedule
+    schedule.start(hub.notify)  # dars jadvali: kun rejasi va darsdan oldin ogohlantirish
     bot = None
     if config.telegram_token:
         from ali.telegram_bot import TelegramBot

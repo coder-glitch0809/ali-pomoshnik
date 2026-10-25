@@ -46,6 +46,8 @@ COMMANDS = [
     ("kanal", "Kanalni o'qib o'rganish: /kanal NOMI"),
     ("kanallar_organ", "Barcha kanallardan hozir o'rganish"),
     ("bugun", "Yozishmalardan bugungi rejalar va eslatmalar"),
+    ("jadval", "Dars jadvalim"),
+    ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
     ("menu", "Xizmatlarni tanlash"),
     ("ob_havo", "Hudud va kundalik ob-havo"),
     ("sorovlar", "Administrator: kelgan so‘rovlar"),
@@ -145,6 +147,8 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("kanallar", self.cmd_channels))
         a.add_handler(CommandHandler("kanal", self.cmd_channel))
         a.add_handler(CommandHandler("bugun", self.cmd_today))
+        a.add_handler(CommandHandler("jadval", self.cmd_schedule))
+        a.add_handler(CommandHandler("dars", self.cmd_lesson))
         a.add_handler(CommandHandler("kanallar_organ", self.cmd_learn_all))
         a.add_handler(CallbackQueryHandler(self.on_ai_button, pattern=r"^ai:"))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
@@ -431,6 +435,33 @@ class TelegramBot(PublicTelegram, Listener):
             await update.message.reply_text("Kanal nomini yozing: /kanal Kanal nomi")
             return
         self.learn_channel_bg(update, name)
+
+    async def cmd_schedule(self, update: Update, ctx):
+        """/jadval - haftalik dars jadvali (bugun va ertangi kun bilan)."""
+        from . import schedule
+        if not await self._guard(update):
+            return
+        from datetime import date, timedelta
+        await update.message.reply_text(schedule.week_text() + "\n\n" + schedule.day_text(date.today())
+                                        + "\n" + schedule.day_text(date.today() + timedelta(days=1)))
+
+    async def cmd_lesson(self, update: Update, ctx):
+        """/dars 5-A [mavzu] - shu sinfga mos dars taqdimoti (API kalitisiz ham)."""
+        from . import schedule
+        if not await self._guard(update):
+            return
+        args = " ".join(ctx.args or [])
+        cls = schedule.class_from(args)
+        if not cls:
+            nxt = schedule.next_lesson()
+            if not nxt:
+                await update.message.reply_text("Sinfni yozing: /dars 5-A [mavzu]")
+                return
+            cls = nxt["class"]
+        topic = re.sub(r"^\s*\d{1,2}\s*[-–]?\s*[A-Za-zА-Яа-яЁё]\b", "", args).strip()
+        if topic:
+            schedule.remember_topic(cls, topic)
+        await self.process(update, ctx, schedule.lesson_request(cls, topic))
 
     async def cmd_today(self, update: Update, ctx):
         """/bugun - yozishmalarni hozir ko'rib chiqadi: faktlar xotiraga, rejalar eslatmaga."""

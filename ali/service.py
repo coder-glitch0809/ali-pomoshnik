@@ -405,6 +405,18 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
             pro = None
             # Avval shu savolga javob berilgan bo'lsa - tayyor javob xotiradan (vaqtga bog'liq savollar bundan mustasno)
             recalled = None if images or direct else await asyncio.to_thread(recall_answer, text)
+            # Dars jadvali: rasm yuborilsa - o'qib saqlanadi; "dars jadvalim / bugun qaysi sinf" - aniq jadval darhol
+            from . import schedule
+            if owner and images and schedule.is_schedule_photo(text):
+                from . import ingest
+                path = str(ingest.save_image_b64(images[0]["data"]))
+                try:
+                    data = await asyncio.to_thread(schedule.parse_image, path)
+                    recalled = f"✅ Dars jadvalingiz saqlandi ({schedule.summary(data)}).\n\n{schedule.week_text(data)}"
+                except (RuntimeError, ValueError) as e:
+                    recalled = f"⚠️ Jadvalni rasmdan o'qib bo'lmadi: {e}. Hozirgi jadval:\n\n{schedule.week_text()}"
+            elif owner and not images and (kind := schedule.is_query(text)):
+                recalled = schedule.answer(kind)
             # Pro ilovalar (egasining Claude/ChatGPT obunasi): to'g'ridan-to'g'ri tanlangan, asosiy qilingan yoki
             # Ali API'siz rejimda ishlayotgan bo'lsa - birinchi navbatda shular javob beradi
             ready = local_ai.connected() if owner and local_ai.access() is True else []
