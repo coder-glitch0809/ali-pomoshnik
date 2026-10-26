@@ -24,9 +24,26 @@ def chatplace_tools() -> str:
     required=["tool"],
 )
 def chatplace_read(tool: str, arguments: dict | None = None) -> str:
-    if not any(w in tool.lower() for w in ("list", "get", "search", "find", "stat", "read", "show", "count")):
-        return "Bu vosita ma'lumotni o'zgartirishi mumkin - chatplace_action dan foydalan (tasdiq so'raladi)."
+    if is_write(tool):
+        return "Bu vosita ma'lumotni o'zgartiradi - chatplace_action dan foydalan (tasdiq so'raladi)."
     return mcp_client.call_tool("chatplace", tool, arguments or {})
+
+
+WRITE_WORDS = ("create", "update", "delete", "send", "set", "change", "apply", "register", "open", "close", "connect",
+               "attach", "detach", "start", "stop", "cancel", "add", "remove", "upload", "assign", "unassign", "edit",
+               "publish", "reply", "hide", "copy", "duplicate", "move", "enable", "disable", "pause", "resume", "test")
+
+
+READ_WORDS = ("list", "get", "analytics", "report", "status", "clients", "messages", "dashboard", "recommendations",
+              "balance", "estimate", "examples", "reference", "predict", "questions", "stats")
+WRITE_WORDS += ("setup", "unpublish", "generate", "quick", "build", "import", "sync", "subscribe", "unsubscribe")
+
+
+def is_write(tool: str) -> bool:
+    """Xavfsiz tomonga: nomida aniq o'qish so'zi bo'lib, hech qanday o'zgartirish so'zi bo'lmasa - o'qish.
+    Qolgan hammasi (yaratish, yuborish, sozlash, AI generatsiya - balans sarflaydi) tasdiq bilan."""
+    words = set(tool.lower().replace("-", "_").split("_"))
+    return bool(words & set(WRITE_WORDS)) or not (words & set(READ_WORDS))
 
 
 @skill(
