@@ -1,6 +1,6 @@
 """Kontent reja: Instagram statistikasi tahlili -> har bir yo'nalish uchun alohida reja -> kunlik eslatmalar.
 
-Yo'nalishlar: asosiy - targetolog (shaxsiy brend) va tashqi reklama agentligi; o'qituvchilik - faqat 10 kunda bir marta.
+Yo'nalishlar: asosiy - targetolog (shaxsiy brend) va tashqi reklama agentligi; o'qituvchilik - faqat oyning 1-kuni, 15-kuni va oxirgi kuni.
 data/content_plan.json:
   {"created": "...", "analysis": "...", "items": [{"id", "date", "time", "brand", "platform", "format", "topic",
    "hook", "script", "caption", "hashtags", "done"}]}
@@ -23,10 +23,10 @@ EARLIEST = "13:00"      # Instagram ishi har kuni shu vaqtdan keyin (darslar tug
 BRANDS = {
     "target": "🎯 Targetolog (shaxsiy brend: xizmatlar, keyslar, natijalar, foydali maslahatlar)",
     "agentlik": "🏢 Tashqi reklama agentligi (hajmli harflar, bannerlar, vizitkalar, lightbox: ishlar, jarayon, mijozlar)",
-    "ustoz": "💻 Informatika o'qituvchisi (KAMDAN-KAM: faqat 10 kunda 1 marta)",
+    "ustoz": "💻 Informatika o'qituvchisi (faqat oyning 1-kuni, 15-kuni va oxirgi kuni - bittadan)",
 }
 MAIN_BRANDS = ("target", "agentlik")   # asosiy yo'nalishlar
-TEACHER_EVERY = 10                      # o'qituvchilik kontenti - 10 kunda bir marta (oyiga ~3 ta)
+TEACHER_DAYS = (1, 15)                  # o'qituvchilik kontenti: 1-kun, 15-kun va oy oxiri (oyiga 3 ta)
 QUERY_WORDS = ("kontent reja", "kontent plan", "контент план", "контент режа", "content plan")
 TODAY_WORDS = ("bugungi kontent", "бугунги контент", "bugun nima joylay", "bugun qanday kontent")
 
@@ -70,29 +70,9 @@ def _save(data: dict) -> None:
     PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-TEACHER_HISTORY = config.data_dir / "content_teacher.json"
-
-
-def _last_teacher(before: date | None = None) -> date | None:
-    """Oxirgi (o'tib ketgan) o'qituvchilik kontenti sanasi - eski rejalar tarixidan."""
-    before = before or date.today()
-    try:
-        days = [date.fromisoformat(d) for d in json.loads(TEACHER_HISTORY.read_text(encoding="utf-8"))]
-    except (OSError, ValueError):
-        days = []
-    days += [date.fromisoformat(i["date"]) for i in load().get("items", []) if i.get("brand") == "ustoz"]
-    past = [d for d in days if d < before]
-    return max(past) if past else None
-
-
-def _remember_teacher_history() -> None:
-    """Reja almashtirilishidan oldin o'tgan o'qituvchilik kunlari tarixga yoziladi."""
-    try:
-        hist = set(json.loads(TEACHER_HISTORY.read_text(encoding="utf-8")))
-    except (OSError, ValueError):
-        hist = set()
-    hist |= {i["date"] for i in load().get("items", []) if i.get("brand") == "ustoz" and i["date"] < date.today().isoformat()}
-    TEACHER_HISTORY.write_text(json.dumps(sorted(hist)[-50:]), encoding="utf-8")
+def _is_teacher_day(d: date) -> bool:
+    """O'qituvchilik kontenti kuni: oyning 1-kuni, 15-kuni va oxirgi kuni."""
+    return d.day in TEACHER_DAYS or (d + timedelta(days=1)).day == 1
 
 
 def _teacher_rule(start: date, days: int) -> str:
@@ -102,25 +82,18 @@ def _teacher_rule(start: date, days: int) -> str:
 
 
 def teacher_dates(start: date, days: int) -> list[str]:
-    """Shu reja davrida o'qituvchilik kontenti qo'yiladigan kunlar (10 kunda bir)."""
-    last = _last_teacher(start)
-    first = start if last is None else max(start, last + timedelta(days=TEACHER_EVERY))
-    out, d = [], first
-    while d < start + timedelta(days=days):
-        out.append(d.isoformat())
-        d += timedelta(days=TEACHER_EVERY)
-    return out
+    """Shu reja davridagi o'qituvchilik kunlari (1, 15 va oy oxiri)."""
+    return [(start + timedelta(days=i)).isoformat() for i in range(days) if _is_teacher_day(start + timedelta(days=i))]
 
 
 def _limit_teacher(items: list[dict], start: date) -> list[dict]:
-    """Kodda ham qat'iy: o'qituvchilik kontenti 10 kundan tez-tez bo'lmaydi; ortiqchasi olib tashlanadi."""
-    last, keep = _last_teacher(start), []
+    """Kodda ham qat'iy: o'qituvchilik kontenti faqat 1, 15 va oy oxirida va shu kunda bitta; boshqalari olib tashlanadi."""
+    keep, used = [], set()
     for it in sorted(items, key=lambda x: (x["date"], x["time"])):
         if it["brand"] == "ustoz":
-            d = date.fromisoformat(it["date"])
-            if last is not None and (d - last).days < TEACHER_EVERY:
+            if not _is_teacher_day(date.fromisoformat(it["date"])) or it["date"] in used:
                 continue
-            last = d
+            used.add(it["date"])
         keep.append(it)
     return keep
 
@@ -198,7 +171,6 @@ def generate(days: int = 14) -> dict:
     for n, it in enumerate(items, 1):
         it["id"] = n
     plan = {"created": time.strftime("%Y-%m-%d %H:%M"), "analysis": str(data.get("analysis", "")).strip(), "items": items}
-    _remember_teacher_history()
     _save(plan)
     memory.add_knowledge(f"[kontent] Kontent reja {start.isoformat()} ({days} kun)",
                          plan["analysis"] + "\n\n" + "\n".join(f"- {i['date']} {i['time']} [{i['brand']}] {i['format']}: {i['topic']}"
