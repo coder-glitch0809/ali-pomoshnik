@@ -18,7 +18,8 @@ log = logging.getLogger("ali.content_plan")
 
 PATH = config.data_dir / "content_plan.json"
 STATE = config.data_dir / "content_plan_state.json"
-MORNING = "07:40"
+MORNING = "13:00"       # kunlik kontent ro'yxati - darslardan keyin
+EARLIEST = "13:00"      # Instagram ishi har kuni shu vaqtdan keyin (darslar tugagach)
 BRANDS = {
     "target": "🎯 Targetolog (shaxsiy brend: xizmatlar, keyslar, natijalar, foydali maslahatlar)",
     "ustoz": "💻 Informatika o'qituvchisi (o'quvchilar, ota-onalar va o'qituvchilar uchun foydali kontent)",
@@ -40,8 +41,13 @@ Band vaqtlari (dars jadvali - bu vaqtlarga kontent qo'yma, suratga olish ham bo'
 {busy}
 
 VAZIFA: {start} dan boshlab {days} kunlik kontent reja tuz. Har kuni 1-3 ta kontent, uchala yo'nalish muvozanatli
-(haftasiga har biriga kamida 3 ta). Formatlar: Reels, karusel, post, stories. Joylash vaqti - auditoriya faol
-vaqtida (statistikaga qarab; bo'lmasa 12:30-13:30 yoki 19:00-21:00) va band vaqtdan tashqarida.
+(haftasiga har biriga kamida 3 ta). Formatlar: Reels, karusel, post, stories.
+VAQT QOIDASI (qat'iy): egam har kuni darsda - Instagram uchun BARCHA ish (suratga olish, montaj, joylash) faqat
+har kuni {earliest} dan KEYIN. Joylash vaqti {earliest} dan keyin, auditoriya faol vaqtida (statistikaga qarab;
+bo'lmasa 13:30-14:30 yoki 19:00-21:00).
+Ssenariyni shu tartibga mosla: darsdan keyin 30-60 daqiqada telefon bilan suratga olsa bo'ladigan, oddiy va tez
+tayyorlanadigan qil (maktab yoki ofis/ustaxonadagi real joylar, ish jarayoni, ekran yozuvi). Har ssenariyga qisqa
+"Tayyorlash" qatorini qo'sh: soat nechada nima qilish kerak (masalan "13:00 suratga olish, 13:40 montaj, 19:00 joylash").
 Har kontent uchun aniq, tayyor ishlatiladigan narsa yoz: hook (birinchi 3 soniya), qisqa ssenariy yoki slaydlar,
 caption va 5-10 hashtag.
 FAQAT JSON qaytar:
@@ -77,6 +83,20 @@ def _analytics() -> str:
     return "\n\n".join(parts)
 
 
+def earliest_on(d: date) -> str:
+    """Shu kuni Instagram ishi boshlanadigan eng erta vaqt: 13:00 yoki oxirgi dars tugagach 15 daqiqa (kechrog'i)."""
+    from . import schedule
+    ends = [l["end"] for l in schedule.lessons_on(d.weekday()) if l["end"] != "?"]
+    after = (datetime.strptime(max(ends), "%H:%M") + timedelta(minutes=15)).strftime("%H:%M") if ends else "00:00"
+    return max(EARLIEST, after)
+
+
+def fit_time(d: date, hhmm: str) -> str:
+    """Vaqt darslar/13:00 dan oldin bo'lsa - eng erta ruxsat etilgan vaqtga suriladi."""
+    low = earliest_on(d)
+    return hhmm if hhmm >= low else low
+
+
 def _busy() -> str:
     from . import schedule
     data = schedule.load()
@@ -97,10 +117,10 @@ def generate(days: int = 14) -> dict:
     kontent = brain.agents.get("kontent")
     prompt = ((kontent.prompt + "\n\n") if kontent else "") + PLAN_TASK.format(
         brands="\n".join(f"- {k}: {v}" for k, v in BRANDS.items()), analytics=_analytics(), facts=_facts_text(),
-        busy=_busy(), start=start.isoformat(), days=days)
+        busy=_busy(), start=start.isoformat(), days=days, earliest=EARLIEST)
     prompt += knowledge_block("Instagram kontent reja Reels hook targetolog reklama agentligi o'qituvchi", "kontent")
     ready = local_ai.connected() if local_ai.access() is True else []
-    data = _ask_json(prompt, ready)
+    data = _ask_json(prompt, ready, 900)  # batafsil ssenariylar uzun - 15 daqiqagacha
     items = []
     for i, it in enumerate(data.get("items") or []):
         try:
@@ -110,7 +130,7 @@ def generate(days: int = 14) -> dict:
             continue
         if it.get("brand") not in BRANDS:
             it["brand"] = "target"
-        items.append({"id": i + 1, "date": d.isoformat(), "time": str(it.get("time", "19:00")),
+        items.append({"id": i + 1, "date": d.isoformat(), "time": fit_time(d, str(it.get("time", "19:00"))),
                       **{k: str(it.get(k, "")).strip() for k in ("brand", "platform", "format", "topic", "hook",
                                                                   "script", "caption", "hashtags")}, "done": False})
     if not items:

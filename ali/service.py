@@ -235,12 +235,12 @@ def save_remembered(reply: str) -> str:
 OFFICE_TOOLS = {"pptx": "make_presentation", "docx": "make_word", "xlsx": "make_excel"}
 
 
-def _ask_json(prompt: str, ready: list[str]) -> dict:
-    """Pro ilova (bo'lmasa API) dan JSON javob."""
+def _ask_json(prompt: str, ready: list[str], timeout: int | None = None) -> dict:
+    """Pro ilova (bo'lmasa API) dan JSON javob. timeout - uzun ishlar (masalan kontent reja) uchun ko'proq vaqt."""
     from . import local_ai, providers
     raw = ""
     if ready:
-        got = local_ai.ask_pro(prompt, local_ai.TIMEOUT)
+        got = local_ai.ask_pro(prompt, timeout or local_ai.TIMEOUT)
         raw = got[1] if got else ""
     if not raw:
         raw = providers.chat("Faqat so'ralgan JSON'ni qaytar.", [], prompt, 8000, True)[1]
