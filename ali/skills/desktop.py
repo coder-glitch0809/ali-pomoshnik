@@ -191,11 +191,14 @@ def _read_xlsx(p):
     import openpyxl
     wb = openpyxl.load_workbook(str(p), data_only=True, read_only=True)
     parts = []
-    for ws in wb.worksheets:
-        parts.append(f"\n[Varaq: {ws.title}]")
-        for row in ws.iter_rows(max_row=500, values_only=True):
-            if any(v is not None for v in row):
-                parts.append(" | ".join("" if v is None else str(v) for v in row))
+    try:
+        for ws in wb.worksheets:
+            parts.append(f"\n[Varaq: {ws.title}]")
+            for row in ws.iter_rows(max_row=500, values_only=True):
+                if any(v is not None for v in row):
+                    parts.append(" | ".join("" if v is None else str(v) for v in row))
+    finally:
+        wb.close()  # read_only rejimda fayl ochiq qoladi - Windows'da band bo'lib qolmasin
     return "\n".join(parts)
 
 
