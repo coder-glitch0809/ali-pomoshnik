@@ -245,6 +245,17 @@ class RuntimeTests(unittest.TestCase):
         asyncio.run(bot.send_request(update,'agent','boshqa matn'))
         self.assertEqual(bot.public.get_request(rid)['text'],'reklama video agenti')
 
+    def test_second_instance_cannot_take_lock(self):
+        import subprocess, sys
+        from ali import instance
+        self.assertTrue(instance.acquire())
+        self.assertTrue(instance.acquire())  # shu jarayonda qayta - xavfsiz
+        code = "from ali import instance; print(instance.acquire())"
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60,
+                             env={**os.environ}, cwd=Path(__file__).resolve().parents[1]).stdout.strip()
+        self.assertEqual(out, "False")  # ikkinchi Ali botni ishga tushirmaydi
+        instance.release()
+
     def test_render_connection_and_outward_permissions(self):
         from ali import connections, permissions
         self.assertIn('render', connections.PROVIDERS)

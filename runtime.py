@@ -53,6 +53,10 @@ async def json_object(request: Request) -> dict:
 # --- Ilova ---
 @asynccontextmanager
 async def lifespan(_app):
+    from ali import instance
+    if not instance.acquire():  # ikkinchi nusxa botni "o'g'irlab", tugmalar yo'qolardi - hech narsa boshlamay chiqamiz
+        print(f"  {config.assistant_name} allaqachon ishlayapti (data/ali.lock) - ikkinchi nusxa ishga tushmaydi.")
+        raise RuntimeError("Ali allaqachon ishlayapti")
     hub.loop = asyncio.get_running_loop()
     scheduler.start(hub.notify)
     autopilot.start(brain)
@@ -80,6 +84,7 @@ async def lifespan(_app):
         if bot:
             await bot.stop()
         hub.loop = None
+        instance.release()
 
 
 app = FastAPI(title="Ali", lifespan=lifespan)
@@ -630,6 +635,10 @@ def lan_ip() -> str:
 
 
 if __name__ == "__main__":
+    with socket.socket() as probe:  # port band - boshqa Ali ishlayapti: yarim ishlaydigan nusxa qoldirmaymiz
+        if probe.connect_ex(("127.0.0.1", config.port)) == 0:
+            print(f"  Port {config.port} band - {config.assistant_name} allaqachon ishlayapti: http://localhost:{config.port}")
+            raise SystemExit(0)
     print(f"\n  {config.assistant_name} serveri ishga tushdi")
     print(f"  Kompyuter:   http://localhost:{config.port}")
     print(f"  Wi-Fi:       http://{lan_ip()}:{config.port}   (mikrofon faqat HTTPS da ishlaydi -> tunnel.bat)")
