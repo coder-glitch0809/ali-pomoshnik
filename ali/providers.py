@@ -200,13 +200,58 @@ def can_generate_image() -> bool:
     return bool(config.gemini_api_key)
 
 
-def generate_image(prompt: str) -> bytes:
+def generate_image(prompt: str, model: str = "") -> bytes:
     """Matn bo'yicha rasm (PNG bayt) - Gemini orqali."""
     if not config.gemini_api_key:
         raise RuntimeError("Rasm uchun GEMINI_API_KEY kerak")
-    response = _gemini_client().models.generate_content(model=config.gemini_image_model, contents=prompt[:4000])
+    response = _gemini_client().models.generate_content(model=model or config.gemini_image_model, contents=prompt[:4000])
     for candidate in response.candidates or []:
         for part in candidate.content.parts or []:
             if getattr(part, "inline_data", None) and part.inline_data.data:
                 return part.inline_data.data
     raise RuntimeError("Gemini rasm qaytarmadi")
+
+
+def _openai_image(prompt: str, quality: str) -> bytes:
+    import base64
+    import httpx
+
+    r = httpx.post("https://api.openai.com/v1/images/generations", timeout=300,
+                   headers={"Authorization": f"Bearer {config.openai_api_key}"},
+                   json={"model": config.openai_image_model, "prompt": prompt[:4000], "size": "1024x1024",
+                         "n": 1, "quality": quality})
+    if r.status_code != 200:
+        raise RuntimeError(f"HTTP {r.status_code}")
+    item = r.json()["data"][0]
+    return base64.b64decode(item["b64_json"]) if item.get("b64_json") else httpx.get(item["url"], timeout=120).content
+
+
+def image_sources(quality: str = "") -> list[tuple[str, object]]:
+    """Rasm manbalari tartibi: pro - avval eng kuchli modellar, standard - avval tez modellar.
+    Claude rasm chizmaydi - u faqat mavzuga mos tavsif (prompt) yozadi."""
+    pro = (quality or config.image_quality) != "standard"
+    gpt_pro, gpt_std, gem_pro, gem_std = [], [], [], []
+    if config.openai_api_key:
+        gpt_pro = [(f"ChatGPT pro ({config.openai_image_model}, high)", lambda p: _openai_image(p, "high"))]
+        gpt_std = [(f"ChatGPT ({config.openai_image_model}, medium)", lambda p: _openai_image(p, "medium"))]
+    if config.gemini_api_key:
+        if config.gemini_image_pro_model:
+            gem_pro = [(f"Gemini pro ({config.gemini_image_pro_model})",
+                        lambda p: generate_image(p, config.gemini_image_pro_model))]
+        gem_std = [(f"Gemini ({config.gemini_image_model})", lambda p: generate_image(p, config.gemini_image_model))]
+    return gpt_pro + gem_pro + gem_std + gpt_std if pro else gem_std + gpt_std + gem_pro + gpt_pro
+
+
+def generate_image_best(prompt: str, quality: str = "") -> tuple[bytes, str]:
+    """Ulangan eng yaxshi model bilan rasm: biri ishlamasa (limit, pro ruxsati yo'q) keyingisiga o'tadi."""
+    sources = image_sources(quality)
+    if not sources:
+        raise RuntimeError("Rasm uchun OPENAI_API_KEY yoki GEMINI_API_KEY kerak")
+    errors = []
+    for name, fn in sources:
+        try:
+            return fn(prompt), name
+        except Exception as e:
+            log.warning("Rasm (%s) ishlamadi: %s", name, e)
+            errors.append(f"{name}: {e}")
+    raise RuntimeError("Rasm yaratilmadi - " + "; ".join(errors))
