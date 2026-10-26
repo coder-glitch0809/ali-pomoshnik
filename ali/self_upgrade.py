@@ -156,6 +156,8 @@ def restart_later(delay: float = 3.0) -> None:
     """Yangi kod bilan Ali'ni qayta ishga tushiradi (shu buyruq bilan yangi jarayon, eskisi yopiladi)."""
     def go():
         time.sleep(delay)
+        if os.getenv("ALI_SUPERVISED"):  # scripts/autostart.cmd o'zi qayta ishga tushiradi
+            os._exit(75)
         # yangi jarayon port bo'shashini kutib turadi, keyin shu buyruq bilan ishga tushadi
         subprocess.Popen([sys.executable, "-c", "import subprocess,sys,time;time.sleep(4);subprocess.Popen(sys.argv[1:])",
                           sys.executable, *sys.argv], cwd=os.getcwd(),
