@@ -996,6 +996,16 @@ class RuntimeTests(unittest.TestCase):
             self.assertIn("web_search", [t["name"] for t in call.call_args.kwargs["tools"]])
         self.assertEqual(call.call_count, 2)  # boshqa model (Gemini) chaqirilmaydi
 
+    def test_self_upgrade_request_detection(self):
+        from ali import self_upgrade
+        self.assertTrue(self_upgrade.is_request("O'zingni kuchaytir: ob-havoga 3 kunlik prognoz qo'sh"))
+        self.assertTrue(self_upgrade.is_request("ozingni takomillashtir, eslatmalarga ovoz qo'sh"))
+        self.assertTrue(self_upgrade.is_request("/kuchaytir yangi buyruq"))
+        self.assertFalse(self_upgrade.is_request("signalni kuchaytir"))
+        self.assertEqual(self_upgrade.extract_task("/kuchaytir yangi buyruq qo'sh"), "yangi buyruq qo'sh")
+        with self.assertRaises(RuntimeError):
+            self_upgrade.apply("yoqid")
+
 
 if __name__ == "__main__":
     unittest.main()

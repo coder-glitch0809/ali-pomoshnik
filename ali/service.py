@@ -417,6 +417,11 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                     recalled = f"⚠️ Jadvalni rasmdan o'qib bo'lmadi: {e}. Hozirgi jadval:\n\n{schedule.week_text()}"
             elif owner and not images and (kind := schedule.is_query(text)):
                 recalled = schedule.answer(kind)
+            # O'zini kuchaytirish tasdiq tugmalari bilan Telegram'da ishlaydi
+            from . import self_upgrade
+            if not recalled and owner and source != "telegram" and self_upgrade.is_request(text):
+                recalled = ("👨‍💻 O'zimni kuchaytirishni Telegram'da bajaraman (u yerda tasdiq tugmasi bor):\n"
+                            f"/kuchaytir {self_upgrade.extract_task(text)[:300]}")
             # Instagram audit: "instagramimni tahlil qil" - postlarni ko'rib, aniq tavsiyalar
             from . import instagram_audit
             if not recalled and owner and not images and instagram_audit.is_query(text) and "reja" not in text.lower():

@@ -49,6 +49,7 @@ COMMANDS = [
     ("jadval", "Dars jadvalim"),
     ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
     ("instagram", "Instagram profil audit: nimani to'g'rilash kerak"),
+    ("kuchaytir", "Ali o'zini kuchaytirsin: /kuchaytir yangi imkoniyat"),
     ("kontent_reja", "Instagram tahlili va kontent reja: /kontent_reja [kunlar]"),
     ("kontent", "Bugungi kontent (hook, ssenariy, caption)"),
     ("tayyor", "Kontent bajarildi: /tayyor RAQAM"),
@@ -155,12 +156,14 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("dars", self.cmd_lesson))
         a.add_handler(CommandHandler("kontent_reja", self.cmd_content_plan))
         a.add_handler(CommandHandler("instagram", self.cmd_instagram))
+        a.add_handler(CommandHandler("kuchaytir", self.cmd_upgrade))
         a.add_handler(CommandHandler("kontent", self.cmd_content_today))
         a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
         a.add_handler(CommandHandler("kanallar_organ", self.cmd_learn_all))
         a.add_handler(CallbackQueryHandler(self.on_ai_button, pattern=r"^ai:"))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
+        a.add_handler(CallbackQueryHandler(self.on_upgrade_button, pattern=r"^up:"))
         a.add_handler(CallbackQueryHandler(self.public_button, pattern=r"^(pub:|own:)"))
         a.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
         a.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
@@ -415,6 +418,10 @@ class TelegramBot(PublicTelegram, Listener):
                 self.learn_bg(update, " ".join(text.split()[:8]), text, "Telegram (uzatilgan xabar)")
             if await self.channel_in_text(update, text):  # «X kanalini o'rgan» - kanal o'qiladi
                 return
+            from . import self_upgrade
+            if self_upgrade.is_request(text):  # «o'zingni kuchaytir: ...» - Dasturchi o'z kodini yaxshilaydi
+                await self.start_upgrade(update, text)
+                return
             text = await self.read_links(update, text)
             await self.process(update, ctx, text)
         else:
@@ -458,6 +465,66 @@ class TelegramBot(PublicTelegram, Listener):
         await msg.edit_text(text[:4000])
         for i in range(4000, len(text), 4000):
             await update.message.reply_text(text[i:i + 4000])
+
+    # ---------- o'zini kuchaytirish (Dasturchi + Claude Code, egasining tasdig'i bilan) ----------
+    async def cmd_upgrade(self, update: Update, ctx):
+        """/kuchaytir TALAB - Ali o'z kodiga yangi imkoniyat qo'shadi (alohida nusxada, testlar, tasdiq)."""
+        if not await self._guard(update):
+            return
+        if update.effective_user.id != self.owner_id:
+            await update.message.reply_text("O'zini kuchaytirishni faqat egasi buyura oladi.")
+            return
+        await self.start_upgrade(update, " ".join(ctx.args))
+
+    async def start_upgrade(self, update: Update, text: str) -> None:
+        from . import self_upgrade
+        task = self_upgrade.extract_task(text)
+        if len(task) < 10:
+            await update.message.reply_text("Nimani qo'shay? Masalan:\n/kuchaytir /ob_havo buyrug'iga 3 kunlik prognoz qo'sh")
+            return
+        msg = await update.message.reply_text("👨‍💻 Dasturchi ishga tushdi. Ishlab turgan Ali'ga tegmayman - alohida nusxada "
+                                              "yozaman, testlayman va tasdig'ingizni so'rayman.")
+        loop = asyncio.get_running_loop()
+
+        def progress(note: str) -> None:
+            asyncio.run_coroutine_threadsafe(msg.edit_text(note), loop)
+
+        try:
+            res = await asyncio.to_thread(self_upgrade.run, task, progress)
+        except Exception as e:
+            await update.message.reply_text(f"⚠️ Kuchaytirish bajarilmadi: {str(e)[:600]}")
+            return
+        if not res["ok"]:
+            await update.message.reply_text(f"❌ Testlar o'tmadi - o'zgarish bekor qilindi, Ali avvalgidek ishlayapti.\n"
+                                            f"🧪 {res['tests']}\n\n{res['report'][-1500:]}")
+            return
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Qo'llash", callback_data=f"up:{res['id']}:1"),
+                                          InlineKeyboardButton("❌ Bekor qilish", callback_data=f"up:{res['id']}:0")]])
+        text = (f"✅ Tayyor, testlar o'tdi ({res['tests']}).\n\n{res['report'][-2200:]}\n\n📁 O'zgargan fayllar:\n"
+                f"{res['diff'][-1200:]}\n\nQo'llasam - GitHub'ga push qilaman va qayta ishga tushaman.")
+        await update.message.reply_text(text[-4000:], reply_markup=keyboard)
+
+    async def on_upgrade_button(self, update: Update, ctx):
+        from . import self_upgrade
+        query = update.callback_query
+        if query.from_user.id != self.owner_id:
+            await query.answer("Ruxsat yo'q")
+            return
+        _, uid, ok = query.data.split(":")
+        await query.answer()
+        if ok != "1":
+            await asyncio.to_thread(self_upgrade.discard, uid)
+            await query.edit_message_reply_markup(None)
+            await query.message.reply_text("❌ Bekor qilindi. Ali o'zgarmadi.")
+            return
+        try:
+            pushed = await asyncio.to_thread(self_upgrade.apply, uid)
+        except Exception as e:
+            await query.message.reply_text(f"⚠️ Qo'llab bo'lmadi: {str(e)[:500]}")
+            return
+        await query.edit_message_reply_markup(None)
+        await query.message.reply_text(f"🚀 Qo'llandi ({pushed}). 5 soniyada yangi kod bilan qayta ishga tushaman…")
+        self_upgrade.restart_later(5)
 
     async def cmd_content_plan(self, update: Update, ctx):
         """/kontent_reja [kunlar] - Instagram statistikasini tahlil qilib, 3 yo'nalish uchun kontent reja tuzadi."""
