@@ -1,6 +1,6 @@
 """Kontent reja: Instagram statistikasi tahlili -> har bir yo'nalish uchun alohida reja -> kunlik eslatmalar.
 
-Yo'nalishlar: targetolog (shaxsiy brend) va tashqi reklama agentligi (o'qituvchilik kontent rejaga kirmaydi).
+Yo'nalishlar: asosiy - targetolog (shaxsiy brend) va tashqi reklama agentligi; o'qituvchilik - faqat 10 kunda bir marta.
 data/content_plan.json:
   {"created": "...", "analysis": "...", "items": [{"id", "date", "time", "brand", "platform", "format", "topic",
    "hook", "script", "caption", "hashtags", "done"}]}
@@ -23,11 +23,14 @@ EARLIEST = "13:00"      # Instagram ishi har kuni shu vaqtdan keyin (darslar tug
 BRANDS = {
     "target": "🎯 Targetolog (shaxsiy brend: xizmatlar, keyslar, natijalar, foydali maslahatlar)",
     "agentlik": "🏢 Tashqi reklama agentligi (hajmli harflar, bannerlar, vizitkalar, lightbox: ishlar, jarayon, mijozlar)",
+    "ustoz": "💻 Informatika o'qituvchisi (KAMDAN-KAM: faqat 10 kunda 1 marta)",
 }
+MAIN_BRANDS = ("target", "agentlik")   # asosiy yo'nalishlar
+TEACHER_EVERY = 10                      # o'qituvchilik kontenti - 10 kunda bir marta (oyiga ~3 ta)
 QUERY_WORDS = ("kontent reja", "kontent plan", "контент план", "контент режа", "content plan")
 TODAY_WORDS = ("bugungi kontent", "бугунги контент", "bugun nima joylay", "bugun qanday kontent")
 
-PLAN_TASK = """Sen tajribali SMM strateg va Kontent-meykersan. Kontent reja faqat shu 2 ta yo'nalish uchun (boshqa mavzu - masalan o'qituvchilik - qo'shilmaydi), har biriga ALOHIDA e'tibor kerak:
+PLAN_TASK = """Sen tajribali SMM strateg va Kontent-meykersan. Kontent reja asosan 2 ta yo'nalish uchun (target va agentlik), har biriga ALOHIDA e'tibor kerak. O'qituvchilik (ustoz) - faqat {teacher_rule}:
 {brands}
 
 Instagram statistikasi (bo'lsa - shunga tayan, eng yaxshi ishlagan format, mavzu va vaqtni aniqlab ishlat):
@@ -39,7 +42,7 @@ Egang haqida faktlar:
 Band vaqtlari (dars jadvali - bu vaqtlarga kontent qo'yma, suratga olish ham bo'lmaydi):
 {busy}
 
-VAZIFA: {start} dan boshlab {days} kunlik kontent reja tuz. Har kuni 1-3 ta kontent, ikkala yo'nalish muvozanatli
+VAZIFA: {start} dan boshlab {days} kunlik kontent reja tuz. Har kuni 1-3 ta kontent, target va agentlik muvozanatli
 (haftasiga har biriga kamida 3 ta). Formatlar: Reels, karusel, post, stories.
 VAQT QOIDASI (qat'iy): egam har kuni darsda - Instagram uchun BARCHA ish (suratga olish, montaj, joylash) faqat
 har kuni {earliest} dan KEYIN. Joylash vaqti {earliest} dan keyin, auditoriya faol vaqtida (statistikaga qarab;
@@ -51,7 +54,7 @@ Har kontent uchun aniq, tayyor ishlatiladigan narsa yoz: hook (birinchi 3 soniya
 caption va 5-10 hashtag.
 FAQAT JSON qaytar:
 {{"analysis": "statistika tahlili va strategiya (5-10 gap)",
-  "items": [{{"date": "YYYY-MM-DD", "time": "HH:MM", "brand": "target|agentlik", "platform": "Instagram",
+  "items": [{{"date": "YYYY-MM-DD", "time": "HH:MM", "brand": "target|agentlik|ustoz", "platform": "Instagram",
              "format": "Reels|Karusel|Post|Stories", "topic": "...", "hook": "...", "script": "...",
              "caption": "...", "hashtags": "#... #..."}}]}}"""
 
@@ -65,6 +68,61 @@ def load() -> dict:
 
 def _save(data: dict) -> None:
     PATH.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+TEACHER_HISTORY = config.data_dir / "content_teacher.json"
+
+
+def _last_teacher(before: date | None = None) -> date | None:
+    """Oxirgi (o'tib ketgan) o'qituvchilik kontenti sanasi - eski rejalar tarixidan."""
+    before = before or date.today()
+    try:
+        days = [date.fromisoformat(d) for d in json.loads(TEACHER_HISTORY.read_text(encoding="utf-8"))]
+    except (OSError, ValueError):
+        days = []
+    days += [date.fromisoformat(i["date"]) for i in load().get("items", []) if i.get("brand") == "ustoz"]
+    past = [d for d in days if d < before]
+    return max(past) if past else None
+
+
+def _remember_teacher_history() -> None:
+    """Reja almashtirilishidan oldin o'tgan o'qituvchilik kunlari tarixga yoziladi."""
+    try:
+        hist = set(json.loads(TEACHER_HISTORY.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        hist = set()
+    hist |= {i["date"] for i in load().get("items", []) if i.get("brand") == "ustoz" and i["date"] < date.today().isoformat()}
+    TEACHER_HISTORY.write_text(json.dumps(sorted(hist)[-50:]), encoding="utf-8")
+
+
+def _teacher_rule(start: date, days: int) -> str:
+    dates = teacher_dates(start, days)
+    return (f"shu kunlarda bittadan: {', '.join(dates)} (boshqa kunlarda o'qituvchilik kontenti YO'Q)" if dates
+            else "bu reja davrida o'qituvchilik kontenti qo'yilmaydi")
+
+
+def teacher_dates(start: date, days: int) -> list[str]:
+    """Shu reja davrida o'qituvchilik kontenti qo'yiladigan kunlar (10 kunda bir)."""
+    last = _last_teacher(start)
+    first = start if last is None else max(start, last + timedelta(days=TEACHER_EVERY))
+    out, d = [], first
+    while d < start + timedelta(days=days):
+        out.append(d.isoformat())
+        d += timedelta(days=TEACHER_EVERY)
+    return out
+
+
+def _limit_teacher(items: list[dict], start: date) -> list[dict]:
+    """Kodda ham qat'iy: o'qituvchilik kontenti 10 kundan tez-tez bo'lmaydi; ortiqchasi olib tashlanadi."""
+    last, keep = _last_teacher(start), []
+    for it in sorted(items, key=lambda x: (x["date"], x["time"])):
+        if it["brand"] == "ustoz":
+            d = date.fromisoformat(it["date"])
+            if last is not None and (d - last).days < TEACHER_EVERY:
+                continue
+            last = d
+        keep.append(it)
+    return keep
 
 
 def _analytics() -> str:
@@ -116,7 +174,8 @@ def generate(days: int = 14) -> dict:
     kontent = brain.agents.get("kontent")
     prompt = ((kontent.prompt + "\n\n") if kontent else "") + PLAN_TASK.format(
         brands="\n".join(f"- {k}: {v}" for k, v in BRANDS.items()), analytics=_analytics(), facts=_facts_text(),
-        busy=_busy(), start=start.isoformat(), days=days, earliest=EARLIEST)
+        busy=_busy(), start=start.isoformat(), days=days, earliest=EARLIEST,
+        teacher_rule=_teacher_rule(start, days))
     prompt += knowledge_block("Instagram kontent reja Reels hook targetolog reklama agentligi o'qituvchi", "kontent")
     ready = local_ai.connected() if local_ai.access() is True else []
     data = _ask_json(prompt, ready, 900)  # batafsil ssenariylar uzun - 15 daqiqagacha
@@ -134,10 +193,12 @@ def generate(days: int = 14) -> dict:
                                                                   "script", "caption", "hashtags")}, "done": False})
     if not items:
         raise RuntimeError("Reja tuzilmadi - AI javob bermadi yoki noto'g'ri format qaytardi")
+    items = _limit_teacher(items, start)
     items.sort(key=lambda x: (x["date"], x["time"]))
     for n, it in enumerate(items, 1):
         it["id"] = n
     plan = {"created": time.strftime("%Y-%m-%d %H:%M"), "analysis": str(data.get("analysis", "")).strip(), "items": items}
+    _remember_teacher_history()
     _save(plan)
     memory.add_knowledge(f"[kontent] Kontent reja {start.isoformat()} ({days} kun)",
                          plan["analysis"] + "\n\n" + "\n".join(f"- {i['date']} {i['time']} [{i['brand']}] {i['format']}: {i['topic']}"
