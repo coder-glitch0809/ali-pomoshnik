@@ -59,6 +59,7 @@ def catalog(telegram_live=False):
             from . import local_ai
             if local_ai.app_state().get(key,{}).get('connected'):
                 status,configured='Ulangan (ilova orqali) · Ruxsatlar → Ilovalar',True
+        if key=='render' and configured:status='Ulangan · xizmatlar, deploylar, loglar (deploy - tasdiq bilan)'
         if key=='bedrock' and config.bedrock_api_key:status=f'Ulangan · {config.bedrock_model or "model avtomatik"} ({config.bedrock_region})'
         if key=='tg_account':
             from . import tg_account
