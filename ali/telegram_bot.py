@@ -48,6 +48,7 @@ COMMANDS = [
     ("bugun", "Yozishmalardan bugungi rejalar va eslatmalar"),
     ("jadval", "Dars jadvalim"),
     ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
+    ("instagram", "Instagram profil audit: nimani to'g'rilash kerak"),
     ("kontent_reja", "Instagram tahlili va kontent reja: /kontent_reja [kunlar]"),
     ("kontent", "Bugungi kontent (hook, ssenariy, caption)"),
     ("tayyor", "Kontent bajarildi: /tayyor RAQAM"),
@@ -153,6 +154,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("jadval", self.cmd_schedule))
         a.add_handler(CommandHandler("dars", self.cmd_lesson))
         a.add_handler(CommandHandler("kontent_reja", self.cmd_content_plan))
+        a.add_handler(CommandHandler("instagram", self.cmd_instagram))
         a.add_handler(CommandHandler("kontent", self.cmd_content_today))
         a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
         a.add_handler(CommandHandler("kanallar_organ", self.cmd_learn_all))
@@ -441,6 +443,21 @@ class TelegramBot(PublicTelegram, Listener):
             await update.message.reply_text("Kanal nomini yozing: /kanal Kanal nomi")
             return
         self.learn_channel_bg(update, name)
+
+    async def cmd_instagram(self, update: Update, ctx):
+        """/instagram - profil audit: postlarni ko'rib, aniq tavsiyalar (bir necha daqiqa)."""
+        from . import instagram_audit
+        if not await self._guard(update):
+            return
+        msg = await update.message.reply_text("🔍 Instagram profilingizni tahlil qilyapman: postlar, muqovalar, chastota (2-5 daqiqa)…")
+        try:
+            text = instagram_audit.report(await asyncio.to_thread(instagram_audit.audit))
+        except Exception as e:
+            await msg.edit_text(f"⚠️ Tahlil bajarilmadi: {str(e)[:400]}")
+            return
+        await msg.edit_text(text[:4000])
+        for i in range(4000, len(text), 4000):
+            await update.message.reply_text(text[i:i + 4000])
 
     async def cmd_content_plan(self, update: Update, ctx):
         """/kontent_reja [kunlar] - Instagram statistikasini tahlil qilib, 3 yo'nalish uchun kontent reja tuzadi."""

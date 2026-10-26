@@ -283,6 +283,11 @@ def start(notify) -> None:
                     notify(msg)
             except Exception:
                 log.exception("Kontent eslatmasi xatosi")
+            try:  # Instagram kuzatuvi: kunlik holat va haftalik audit
+                from . import instagram_audit
+                instagram_audit.tick(notify)
+            except Exception:
+                log.exception("Instagram kuzatuvi xatosi")
             if time.time() - checked > 6 * 3600:  # Instagram tokeni muddati tugab qolmasin
                 checked = time.time()
                 try:

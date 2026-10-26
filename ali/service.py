@@ -417,6 +417,13 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                     recalled = f"⚠️ Jadvalni rasmdan o'qib bo'lmadi: {e}. Hozirgi jadval:\n\n{schedule.week_text()}"
             elif owner and not images and (kind := schedule.is_query(text)):
                 recalled = schedule.answer(kind)
+            # Instagram audit: "instagramimni tahlil qil" - postlarni ko'rib, aniq tavsiyalar
+            from . import instagram_audit
+            if not recalled and owner and not images and instagram_audit.is_query(text) and "reja" not in text.lower():
+                try:
+                    recalled = instagram_audit.report(await asyncio.to_thread(instagram_audit.audit))
+                except Exception as e:
+                    recalled = f"⚠️ Instagram tahlili bajarilmadi: {e}"
             # Kontent reja: "kontent reja tuz" - statistika tahlili va yangi reja; "bugungi kontent" - bugungi vazifalar
             from . import content_plan
             if not recalled and owner and not images and (ckind := content_plan.is_query(text)):

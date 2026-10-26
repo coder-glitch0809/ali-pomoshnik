@@ -169,9 +169,10 @@ def list_tools(key: str) -> list[dict]:
             return tools
 
 
-def call_tool(key: str, name: str, arguments: dict) -> str:
+def call_tool(key: str, name: str, arguments: dict, limit: int | None = 20000) -> str:
+    """limit - AI'ga beriladigan javob uchun; ichki (JSON) ishlov uchun None - kesilmaydi."""
     _ensure(key)
     res = _rpc(key, "tools/call", {"name": name, "arguments": arguments or {}})
     parts = [c.get("text", "") if c.get("type") == "text" else f"[{c.get('type')}]" for c in res.get("content", [])]
     out = "\n".join(p for p in parts if p) or json.dumps(res.get("structuredContent", {}), ensure_ascii=False)
-    return ("XATO: " if res.get("isError") else "") + out[:20000]
+    return ("XATO: " if res.get("isError") else "") + (out[:limit] if limit else out)
