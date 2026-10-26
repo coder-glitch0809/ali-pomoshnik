@@ -20,6 +20,9 @@ TRADING_SHORT={'btc','eth'}  # faqat alohida so'z bo'lsa ("method", "ethics" ema
 REGIONS={'Toshkent':(41.31,69.28),'Andijon':(40.78,72.34),'Buxoro':(39.77,64.42),'Farg‘ona':(40.39,71.79),'Jizzax':(40.12,67.84),'Xorazm':(41.55,60.63),'Navoiy':(40.1,65.37),'Namangan':(41.0,71.67),'Qashqadaryo':(38.86,65.79),'Samarqand':(39.65,66.96),'Sirdaryo':(40.49,68.78),'Surxondaryo':(37.23,67.28),'Toshkent viloyati':(41.0,69.0),'Qoraqalpog‘iston':(42.46,59.61)}
 
 
+
+ADULT=re.compile(r'18\s*\+|\b(?:porn|порн|sex|секс|эрот|erot|xxx|nsfw|интим|intim|hentai|хентай)',re.I)
+
 class PublicTelegram:
     def init_public(self):
         self.public=PublicStore();self.public_busy=set();self.guest_slots=asyncio.Semaphore(3);self.public_task=None
@@ -78,7 +81,11 @@ class PublicTelegram:
 
     async def send_request(self,update,kind,text):
         uid=update.effective_user.id
+        if kind=='agent' and ADULT.search(text):  # ochiq bot: yoshi noma'lum foydalanuvchilar uchun 18+ agent yaratilmaydi
+            await update.effective_message.reply_text('🙅 18+ mavzudagi agentlar yaratilmaydi. Boshqa soha uchun agent so‘rashingiz mumkin. /start — bosh menyu.')
+            return
         rid,fresh=self.public.request(uid,kind,text)
+        if not fresh:text=(self.public.get_request(rid) or {}).get('text',text)  # tasdiqlansa aynan navbatdagi so'rov bajariladi
         if self.owner_id:  # takroriy so'rovda ham karta qayta keladi - faqat /sorovlar ichida qolib ketmasin
             buttons=InlineKeyboardMarkup([[InlineKeyboardButton('✅ Tasdiqlash',callback_data=f'own:{rid}:yes'),InlineKeyboardButton('❌ Rad etish',callback_data=f'own:{rid}:no')]])
             labels={'content':'Kontent: 24 soat ruxsat','pro_week':'⭐ Pro 40 000 so‘m / 7 kun: TO‘LOVNI TEKSHIRING','pro_month':'⭐ Pro 100 000 so‘m / 30 kun: TO‘LOVNI TEKSHIRING','image':'Rasm buyurtmasi (qo‘lda bajarish)','trading_week':'40 000 so‘m / 7 kun: TO‘LOVNI TEKSHIRING','trading_month':'100 000 so‘m / 30 kun: TO‘LOVNI TEKSHIRING','agent':'Yangi agent kerak'}

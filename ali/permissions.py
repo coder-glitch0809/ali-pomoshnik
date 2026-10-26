@@ -55,7 +55,8 @@ def save(rules, registry):
 # Tayyor rejimlar. "computer": kompyuterdagi ishlar so'ramasdan; tashqariga chiqadiganlar (joylash, xabar, push,
 # redeploy) tasdiq bilan, o'chirish taqiqlangan. "safe": barcha xavfli amallar tasdiq bilan.
 OUTWARD = {'instagram_publish', 'instagram_reply_comment', 'instagram_hide_comment', 'instagram_delete_comment',
-           'instagram_send_message', 'github_create_issue', 'github_push_file', 'vercel_redeploy'}
+           'instagram_send_message', 'github_create_issue', 'github_push_file', 'vercel_redeploy',
+           'render_deploy', 'render_power', 'chatplace_action'}
 NEVER = {'delete_agent'}
 
 

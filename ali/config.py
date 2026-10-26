@@ -126,6 +126,7 @@ class Config:
     github_token: str = field(default_factory=lambda: _env("GITHUB_TOKEN"))
     vercel_token: str = field(default_factory=lambda: _env("VERCEL_TOKEN"))
     vercel_team_id: str = field(default_factory=lambda: _env("VERCEL_TEAM_ID"))
+    render_api_key: str = field(default_factory=lambda: _env("RENDER_API_KEY"))
     projects_dirs: list[Path] = field(default_factory=lambda: [
         Path(p.strip()) for p in (_env("PROJECTS_DIRS") or str(ROOT.parent)).split(";") if p.strip()
     ])

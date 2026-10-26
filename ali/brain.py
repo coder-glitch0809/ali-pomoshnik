@@ -106,7 +106,7 @@ Ishlash:
 - Yangi agent so'ralsa (create_agent): avval sohani web_search bilan o'rgan, list_available_tools dan vositalarni tanla,
   batafsil ko'rsatma va o'rganish mavzularini yoz, asosiy bilimlarni "[kalit] mavzu" nomi bilan save_knowledge qil.
 - Dasturlash: kompyuterdagi loyihalar (list_projects, read_project_file, search_projects, project_git_status),
-  GitHub (github_*), Vercel (vercel_*). Kodni katta o'zgartirish - code_task (Claude Code) orqali.
+  GitHub (github_*), Vercel (vercel_*), Render (render_*). Kodni katta o'zgartirish - code_task (Claude Code) orqali.
   Loyiha qaysi ekanini aniqlay olmasang - list_projects / github_repos bilan top, keyin aniqlashtir.
 - Oddiy so'rovlar (sayt yoki ilova ochish, oddiy savol) - ortiqcha gapsiz, oddiy va qisqa bajar/javob ber.
 - Plaginlar (avtomatik ulangan): Gemini (ask_gemini, gemini_image), ChatGPT (ask_chatgpt, chatgpt_image),

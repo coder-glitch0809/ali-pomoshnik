@@ -233,6 +233,23 @@ class RuntimeTests(unittest.TestCase):
         asyncio.run(bot.public_button(update,None))
         self.assertEqual(bot.public.get(105)['grants'],{})
 
+    def test_adult_agent_request_is_refused_and_repeat_keeps_queued_text(self):
+        from types import SimpleNamespace
+        bot=TelegramBot();bot.owner_id=None
+        message=SimpleNamespace(reply_text=AsyncMock())
+        update=SimpleNamespace(effective_user=SimpleNamespace(id=108,first_name='G'),effective_message=message)
+        asyncio.run(bot.send_request(update,'agent','18+агент керак'))
+        self.assertIn('18+', message.reply_text.call_args.args[0])
+        self.assertEqual([r for r in bot.public.pending() if r['uid']==108 and r['kind']=='agent'],[])
+        rid,_=bot.public.request(108,'agent','reklama video agenti')
+        asyncio.run(bot.send_request(update,'agent','boshqa matn'))
+        self.assertEqual(bot.public.get_request(rid)['text'],'reklama video agenti')
+
+    def test_render_connection_and_outward_permissions(self):
+        from ali import connections, permissions
+        self.assertIn('render', connections.PROVIDERS)
+        self.assertTrue({'render_deploy','render_power','chatplace_action'} <= permissions.OUTWARD)
+
     def test_public_quota_and_history_are_separate(self):
         from ali.telegram_store import PublicStore
         store=PublicStore()

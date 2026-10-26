@@ -18,6 +18,8 @@ PROVIDERS = {
         steps=['GitHub hisobingizga kiring va Ali uchun fine-grained token yarating.', 'Faqat kerakli repozitoriylarni tanlang. O‘qish uchun Contents: Read-only; tahrirlash kerak bo‘lsa Read and write ruxsatini bering.', 'Tokenni nusxalab pastga kiriting. Ali ulanishni tekshirib saqlaydi.'], field='github_token', env='GITHUB_TOKEN'),
     'vercel': dict(name='Vercel', url='https://vercel.com/account/settings/tokens', link='Vercel orqali davom etish',
         steps=['Vercel hisobingizga o‘zingiz ishlatadigan usul bilan kiring.', 'Ali uchun token yarating, kerakli jamoa va amal qilish muddatini tanlang.', 'Tokenni pastga kiriting va tekshirib saqlang.'], field='vercel_token', env='VERCEL_TOKEN'),
+    'render': dict(name='Render', url='https://dashboard.render.com/u/settings#api-keys', link='Render API kalitlari',
+        steps=['Render hisobingizga kiring → Account Settings → API Keys.', '“Create API Key” bosing, nom bering (masalan: Ali) va kalitni nusxalang (rnd_… bilan boshlanadi).', 'Kalitni pastga kiriting. Ali xizmatlar holati, deploylar va loglarni erkin ko‘radi; qayta deploy va to‘xtatish faqat sizning tasdig‘ingiz bilan.'], field='render_api_key', env='RENDER_API_KEY'),
     'voice': dict(name='Ovoz', url='https://elevenlabs.io/app/settings/api-keys', link='ElevenLabs sozlamalari',
         steps=['Standart Edge ovozi alohida hisob talab qilmaydi.', 'Shaxsiy ovoz uchun ElevenLabs hisobiga kiring.', 'Serverda ELEVENLABS_API_KEY va ELEVENLABS_VOICE_ID ni sozlang.']),
     'google': dict(name='Google', url='https://console.cloud.google.com/auth/overview', link='Google orqali sozlash',
@@ -99,7 +101,7 @@ async def connect(key, token):
         url='https://generativelanguage.googleapis.com/v1beta/models'
         headers={'x-goog-api-key':token}
     else:
-        url={'github':'https://api.github.com/user','vercel':'https://api.vercel.com/v2/user','chatgpt':'https://api.openai.com/v1/models'}[key]
+        url={'github':'https://api.github.com/user','vercel':'https://api.vercel.com/v2/user','render':'https://api.render.com/v1/users','chatgpt':'https://api.openai.com/v1/models'}[key]
         headers={'Authorization':f'Bearer {token}'}
     try:
         async with httpx.AsyncClient(timeout=15,follow_redirects=False) as client:
