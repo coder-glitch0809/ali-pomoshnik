@@ -1,6 +1,6 @@
 """Kontent reja: Instagram statistikasi tahlili -> har bir yo'nalish uchun alohida reja -> kunlik eslatmalar.
 
-Yo'nalishlar (egasining 3 ta faoliyati): targetolog (shaxsiy brend), informatika o'qituvchisi, tashqi reklama agentligi.
+Yo'nalishlar: targetolog (shaxsiy brend) va tashqi reklama agentligi (o'qituvchilik kontent rejaga kirmaydi).
 data/content_plan.json:
   {"created": "...", "analysis": "...", "items": [{"id", "date", "time", "brand", "platform", "format", "topic",
    "hook", "script", "caption", "hashtags", "done"}]}
@@ -22,13 +22,12 @@ MORNING = "13:00"       # kunlik kontent ro'yxati - darslardan keyin
 EARLIEST = "13:00"      # Instagram ishi har kuni shu vaqtdan keyin (darslar tugagach)
 BRANDS = {
     "target": "🎯 Targetolog (shaxsiy brend: xizmatlar, keyslar, natijalar, foydali maslahatlar)",
-    "ustoz": "💻 Informatika o'qituvchisi (o'quvchilar, ota-onalar va o'qituvchilar uchun foydali kontent)",
     "agentlik": "🏢 Tashqi reklama agentligi (hajmli harflar, bannerlar, vizitkalar, lightbox: ishlar, jarayon, mijozlar)",
 }
 QUERY_WORDS = ("kontent reja", "kontent plan", "контент план", "контент режа", "content plan")
 TODAY_WORDS = ("bugungi kontent", "бугунги контент", "bugun nima joylay", "bugun qanday kontent")
 
-PLAN_TASK = """Sen tajribali SMM strateg va Kontent-meykersan. Egang 3 ta yo'nalishda ishlaydi va har biriga ALOHIDA e'tibor kerak:
+PLAN_TASK = """Sen tajribali SMM strateg va Kontent-meykersan. Kontent reja faqat shu 2 ta yo'nalish uchun (boshqa mavzu - masalan o'qituvchilik - qo'shilmaydi), har biriga ALOHIDA e'tibor kerak:
 {brands}
 
 Instagram statistikasi (bo'lsa - shunga tayan, eng yaxshi ishlagan format, mavzu va vaqtni aniqlab ishlat):
@@ -40,7 +39,7 @@ Egang haqida faktlar:
 Band vaqtlari (dars jadvali - bu vaqtlarga kontent qo'yma, suratga olish ham bo'lmaydi):
 {busy}
 
-VAZIFA: {start} dan boshlab {days} kunlik kontent reja tuz. Har kuni 1-3 ta kontent, uchala yo'nalish muvozanatli
+VAZIFA: {start} dan boshlab {days} kunlik kontent reja tuz. Har kuni 1-3 ta kontent, ikkala yo'nalish muvozanatli
 (haftasiga har biriga kamida 3 ta). Formatlar: Reels, karusel, post, stories.
 VAQT QOIDASI (qat'iy): egam har kuni darsda - Instagram uchun BARCHA ish (suratga olish, montaj, joylash) faqat
 har kuni {earliest} dan KEYIN. Joylash vaqti {earliest} dan keyin, auditoriya faol vaqtida (statistikaga qarab;
@@ -52,7 +51,7 @@ Har kontent uchun aniq, tayyor ishlatiladigan narsa yoz: hook (birinchi 3 soniya
 caption va 5-10 hashtag.
 FAQAT JSON qaytar:
 {{"analysis": "statistika tahlili va strategiya (5-10 gap)",
-  "items": [{{"date": "YYYY-MM-DD", "time": "HH:MM", "brand": "target|ustoz|agentlik", "platform": "Instagram",
+  "items": [{{"date": "YYYY-MM-DD", "time": "HH:MM", "brand": "target|agentlik", "platform": "Instagram",
              "format": "Reels|Karusel|Post|Stories", "topic": "...", "hook": "...", "script": "...",
              "caption": "...", "hashtags": "#... #..."}}]}}"""
 
