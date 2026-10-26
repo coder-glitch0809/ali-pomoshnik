@@ -417,6 +417,18 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                     recalled = f"⚠️ Jadvalni rasmdan o'qib bo'lmadi: {e}. Hozirgi jadval:\n\n{schedule.week_text()}"
             elif owner and not images and (kind := schedule.is_query(text)):
                 recalled = schedule.answer(kind)
+            # Kontent reja: "kontent reja tuz" - statistika tahlili va yangi reja; "bugungi kontent" - bugungi vazifalar
+            from . import content_plan
+            if not recalled and owner and not images and (ckind := content_plan.is_query(text)):
+                if ckind == "make":
+                    try:
+                        plan = await asyncio.to_thread(content_plan.generate, 14)
+                        await asyncio.to_thread(content_plan.excel, plan)
+                        recalled = content_plan.plan_summary()[:3800]
+                    except (RuntimeError, ValueError) as e:
+                        recalled = f"⚠️ Kontent reja tuzilmadi: {e}"
+                else:
+                    recalled = content_plan.today_text() if ckind == "today" else content_plan.plan_summary()[:3800]
             # Pro ilovalar (egasining Claude/ChatGPT obunasi): to'g'ridan-to'g'ri tanlangan, asosiy qilingan yoki
             # Ali API'siz rejimda ishlayotgan bo'lsa - birinchi navbatda shular javob beradi
             ready = local_ai.connected() if owner and local_ai.access() is True else []

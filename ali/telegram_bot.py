@@ -48,6 +48,9 @@ COMMANDS = [
     ("bugun", "Yozishmalardan bugungi rejalar va eslatmalar"),
     ("jadval", "Dars jadvalim"),
     ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
+    ("kontent_reja", "Instagram tahlili va kontent reja: /kontent_reja [kunlar]"),
+    ("kontent", "Bugungi kontent (hook, ssenariy, caption)"),
+    ("tayyor", "Kontent bajarildi: /tayyor RAQAM"),
     ("menu", "Xizmatlarni tanlash"),
     ("ob_havo", "Hudud va kundalik ob-havo"),
     ("sorovlar", "Administrator: kelgan so‘rovlar"),
@@ -149,6 +152,9 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("bugun", self.cmd_today))
         a.add_handler(CommandHandler("jadval", self.cmd_schedule))
         a.add_handler(CommandHandler("dars", self.cmd_lesson))
+        a.add_handler(CommandHandler("kontent_reja", self.cmd_content_plan))
+        a.add_handler(CommandHandler("kontent", self.cmd_content_today))
+        a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
         a.add_handler(CommandHandler("kanallar_organ", self.cmd_learn_all))
         a.add_handler(CallbackQueryHandler(self.on_ai_button, pattern=r"^ai:"))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
@@ -435,6 +441,43 @@ class TelegramBot(PublicTelegram, Listener):
             await update.message.reply_text("Kanal nomini yozing: /kanal Kanal nomi")
             return
         self.learn_channel_bg(update, name)
+
+    async def cmd_content_plan(self, update: Update, ctx):
+        """/kontent_reja [kunlar] - Instagram statistikasini tahlil qilib, 3 yo'nalish uchun kontent reja tuzadi."""
+        from . import content_plan
+        if not await self._guard(update):
+            return
+        days = int(ctx.args[0]) if ctx.args and ctx.args[0].isdigit() else 14
+        msg = await update.message.reply_text(f"📊 Statistikani tahlil qilib, {days} kunlik kontent reja tuzyapman (1-3 daqiqa)…")
+        try:
+            plan = await asyncio.to_thread(content_plan.generate, days)
+            await asyncio.to_thread(content_plan.excel, plan)
+        except Exception as e:
+            await msg.edit_text(f"⚠️ Reja tuzilmadi: {str(e)[:400]}")
+            return
+        text = content_plan.plan_summary()
+        await msg.edit_text(text[:4000])
+        from . import outbox
+        for f in outbox.since(max(0, outbox.mark() - 1)):
+            with open(f, "rb") as fh:
+                await update.message.reply_document(fh, filename=f.name, caption="🗓 Kontent reja (Excel)")
+
+    async def cmd_content_today(self, update: Update, ctx):
+        from . import content_plan
+        if not await self._guard(update):
+            return
+        text = content_plan.today_text()
+        for i in range(0, len(text), 3900):
+            await update.message.reply_text(text[i:i + 3900])
+
+    async def cmd_content_done(self, update: Update, ctx):
+        from . import content_plan
+        if not await self._guard(update):
+            return
+        if not ctx.args or not ctx.args[0].isdigit():
+            await update.message.reply_text("Raqamini yozing: /tayyor 3")
+            return
+        await update.message.reply_text(content_plan.mark_done(int(ctx.args[0])))
 
     async def cmd_schedule(self, update: Update, ctx):
         """/jadval - haftalik dars jadvali (bugun va ertangi kun bilan)."""

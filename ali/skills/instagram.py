@@ -72,6 +72,38 @@ def discover(token: str) -> dict[str, str]:
             for p in pages if p.get("instagram_business_account")}
 
 
+TOKEN_STATE = config.data_dir / "ig_token.json"
+
+
+def refresh_if_needed(days: int = 7) -> str:
+    """Instagram Login tokeni (60 kunlik) har `days` kunda yangilanadi - muddati tugab qolmasin.
+    Facebook Login tokenini app secret'siz uzaytirib bo'lmaydi - bunday holatda egasi yangisini kiritadi."""
+    import json as _json
+    import os
+
+    if not config.ig_access_token or not is_ig_login():
+        return "skip"
+    try:
+        last = _json.loads(TOKEN_STATE.read_text(encoding="utf-8")).get("refreshed", 0)
+    except (OSError, ValueError):
+        last = 0
+    if time.time() - last < days * 86400:
+        return "fresh"
+    r = httpx.get("https://graph.instagram.com/refresh_access_token",
+                  params={"grant_type": "ig_refresh_token", "access_token": config.ig_access_token}, timeout=30)
+    data = _check(r)
+    token = data.get("access_token")
+    if token:
+        from dotenv import set_key
+        from ..config import STATE_ROOT
+        set_key(str(STATE_ROOT / ".env"), "IG_ACCESS_TOKEN", token)
+        config.ig_access_token = token
+        os.environ["IG_ACCESS_TOKEN"] = token
+        TOKEN_STATE.write_text(_json.dumps({"refreshed": time.time(), "expires_in": data.get("expires_in")}), encoding="utf-8")
+        return "refreshed"
+    return "no-token"
+
+
 def _account_id(account: str) -> str:
     if not config.ig_accounts:
         raise RuntimeError("Instagram akkaunt topilmadi - Ruxsatlar bo'limida Instagram'ni qayta ulang")

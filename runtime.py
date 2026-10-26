@@ -61,6 +61,8 @@ async def lifespan(_app):
     obsidian.start()  # xotira Obsidian omborida (Ali papkasi), o'rnatilgan bo'lsa
     from ali import schedule
     schedule.start(hub.notify)  # dars jadvali: kun rejasi va darsdan oldin ogohlantirish
+    from ali import content_plan
+    content_plan.start(hub.notify)  # kontent reja: kunlik va belgilangan soatda eslatma
     bot = None
     if config.telegram_token:
         from ali.telegram_bot import TelegramBot
