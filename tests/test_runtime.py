@@ -245,6 +245,32 @@ class RuntimeTests(unittest.TestCase):
         asyncio.run(bot.send_request(update,'agent','boshqa matn'))
         self.assertEqual(bot.public.get_request(rid)['text'],'reklama video agenti')
 
+    def test_self_upgrade_copy_gets_no_secrets_and_cyrillic_is_understood(self):
+        from ali import self_upgrade
+        with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "1:x", "GITHUB_TOKEN": "g", "PATH": os.environ.get("PATH", "")}):
+            env = self_upgrade._safe_env(Path(state.name))
+        self.assertNotIn("TELEGRAM_BOT_TOKEN", env)
+        self.assertNotIn("GITHUB_TOKEN", env)
+        self.assertIn("ALI_STATE_DIR", env)
+        self.assertTrue(self_upgrade.is_request("али ози кучайтир: расм яратсин"))
+        self.assertTrue(self_upgrade.is_request("Ali kuchaytir, yangi buyruq qo'sh"))
+        from ali.service import brain
+        self.assertIn("ali_kuchaytirish", brain.registry)
+
+    def test_old_upgrade_button_still_applies(self):
+        from types import SimpleNamespace
+        from telegram.error import BadRequest
+        bot = TelegramBot(); bot.owner_id = 7
+        msg = SimpleNamespace(reply_text=AsyncMock())
+        query = SimpleNamespace(from_user=SimpleNamespace(id=7), data="up:abc:1", message=msg,
+                                answer=AsyncMock(side_effect=BadRequest("Query is too old")),
+                                edit_message_reply_markup=AsyncMock(side_effect=BadRequest("old")))
+        with patch("ali.self_upgrade.apply", return_value="push qilindi") as apply, \
+                patch("ali.self_upgrade.restart_later") as restart:
+            asyncio.run(bot.on_upgrade_button(SimpleNamespace(callback_query=query), None))
+        apply.assert_called_once_with("abc")
+        restart.assert_called_once()
+
     def test_second_instance_cannot_take_lock(self):
         import subprocess, sys
         from ali import instance

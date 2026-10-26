@@ -113,22 +113,22 @@ class PublicTelegram:
 
     async def public_button(self,update,ctx):
         q=update.callback_query
-        if not self.is_private(update):await q.answer();return
+        if not self.is_private(update):await self.safe_answer(q);return
         if q.data.startswith('own:'):
-            if q.from_user.id!=self.owner_id:await q.answer('Ruxsat yo‘q');return
+            if q.from_user.id!=self.owner_id:await self.safe_answer(q, 'Ruxsat yo‘q');return
             _,rid,choice=q.data.split(':')
             if choice=='build':
                 row=self.public.get_request(int(rid))
-                if not row or row['kind']!='agent' or row['status']!='approved':await q.answer('Avval ko‘rib chiqilgan');return
-                await q.answer('Agent yaratilmoqda');await q.edit_message_reply_markup(reply_markup=None)
+                if not row or row['kind']!='agent' or row['status']!='approved':await self.safe_answer(q, 'Avval ko‘rib chiqilgan');return
+                await self.safe_answer(q, 'Agent yaratilmoqda');await self.drop_buttons(q)
                 task=asyncio.create_task(self.build_requested_agent(row))
                 self.public_tasks=getattr(self,'public_tasks',set());self.public_tasks.add(task)
                 task.add_done_callback(self.public_tasks.discard)
                 return
             row=self.public.resolve(int(rid),choice=='yes')
-            await q.answer('Qaror saqlandi' if row else 'Avval ko‘rib chiqilgan')
+            await self.safe_answer(q, 'Qaror saqlandi' if row else 'Avval ko‘rib chiqilgan')
             if row:
-                await q.edit_message_reply_markup(reply_markup=None)
+                await self.drop_buttons(q)
                 if choice!='yes':text='So‘rovingiz administrator tomonidan rad etildi.'
                 elif row['kind']=='agent':
                     text='Agent so‘rovingiz tasdiqlandi. Ali hozir agentni yaratmoqda - tayyor bo‘lganda xabar beramiz.'
@@ -141,7 +141,7 @@ class PublicTelegram:
                 try:await ctx.bot.send_message(row['uid'],text)
                 except TelegramError:pass
             return
-        await q.answer()
+        await self.safe_answer(q)
         data=self.public.get(q.from_user.id)
         if q.data.startswith('pub:pro:'):
             plan=q.data.rsplit(':',1)[1]

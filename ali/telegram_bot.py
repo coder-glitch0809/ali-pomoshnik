@@ -129,6 +129,9 @@ class TelegramBot(PublicTelegram, Listener):
         self.public.set_meta('bot_setup',saved)
 
     async def start(self) -> None:
+        from . import instance
+        if not instance.acquire(instance.bot_lock(config.telegram_token)):  # bitta token - bitta so'rovchi (Conflict yo'q)
+            raise RuntimeError("bu bot shu kompyuterdagi boshqa Ali nusxasida ishlayapti")
         self.app = Application.builder().token(config.telegram_token).concurrent_updates(8).build()
         a = self.app
         a.add_handler(CommandHandler("start", self.cmd_start))
@@ -199,6 +202,8 @@ class TelegramBot(PublicTelegram, Listener):
             except asyncio.CancelledError: pass
         if self in hub.listeners:
             hub.listeners.remove(self)
+        from . import instance
+        instance.release(instance.bot_lock(config.telegram_token))
         if self.app:
             await self.app.updater.stop()
             await self.app.stop()
@@ -342,12 +347,12 @@ class TelegramBot(PublicTelegram, Listener):
     async def on_ai_button(self, update: Update, ctx):
         query = update.callback_query
         if query.from_user.id not in self.users:
-            await query.answer("Ruxsat yo'q")
+            await self.safe_answer(query, "Ruxsat yo'q")
             return
         key = query.data.split(":", 1)[1]
         key = key if key in self.AI_CHOICES else ""
         self.pref(query.message.chat.id)["ai"] = key or None
-        await query.answer(self.AI_CHOICES[key])
+        await self.safe_answer(query, self.AI_CHOICES[key])
         try:
             await query.edit_message_text(f"Endi javob beradi: {self.AI_CHOICES[key]}")
         except BadRequest:
@@ -356,9 +361,9 @@ class TelegramBot(PublicTelegram, Listener):
     async def on_agent_button(self, update: Update, ctx):
         query = update.callback_query
         if query.from_user.id not in self.users:
-            await query.answer("Ruxsat yo'q")
+            await self.safe_answer(query, "Ruxsat yo'q")
             return
-        await query.answer("Agentlarni Ali boshqaradi")
+        await self.safe_answer(query, "Agentlarni Ali boshqaradi")
         await query.edit_message_text("Topshiriqni Aliga yozing.")
 
     async def cmd_status(self, update: Update, ctx):
@@ -489,8 +494,10 @@ class TelegramBot(PublicTelegram, Listener):
         if len(task) < 10:
             await update.message.reply_text("Nimani qo'shay? Masalan:\n/kuchaytir /ob_havo buyrug'iga 3 kunlik prognoz qo'sh")
             return
-        msg = await update.message.reply_text("👨‍💻 Dasturchi ishga tushdi. Ishlab turgan Ali'ga tegmayman - alohida nusxada "
-                                              "yozaman, testlayman va tasdig'ingizni so'rayman.")
+        auto = self_upgrade.auto_apply()
+        msg = await update.message.reply_text(
+            "👨‍💻 Dasturchi agent ishga tushdi. Ishlab turgan Ali'ga tegmayman - alohida nusxada yozaman va testlayman. "
+            + ("Testlar o'tsa - o'zim qo'llayman va GitHub'ga push qilaman." if auto else "Keyin tasdig'ingizni so'rayman."))
         loop = asyncio.get_running_loop()
 
         def progress(note: str) -> None:
@@ -505,31 +512,57 @@ class TelegramBot(PublicTelegram, Listener):
             await update.message.reply_text(f"❌ Testlar o'tmadi - o'zgarish bekor qilindi, Ali avvalgidek ishlayapti.\n"
                                             f"🧪 {res['tests']}\n\n{res['report'][-1500:]}")
             return
+        if auto:  # Ruxsatlar -> ali_kuchaytirish = auto: so'ramasdan qo'llaydi va push qiladi
+            try:
+                pushed = await asyncio.to_thread(self_upgrade.apply, res["id"])
+            except Exception as e:
+                await update.message.reply_text(f"⚠️ Testlar o'tdi, lekin qo'llab bo'lmadi: {str(e)[:500]}")
+                return
+            text = (f"🚀 Dasturchi agent Ali'ni kuchaytirdi va qo'lladi ({pushed}). Testlar: {res['tests']}.\n\n"
+                    f"{res['report'][-2200:]}\n\n📁 O'zgargan fayllar:\n{res['diff'][-1000:]}\n\n5 soniyada qayta ishga tushaman…")
+            await update.message.reply_text(text[-4000:])
+            self_upgrade.restart_later(5)
+            return
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Qo'llash", callback_data=f"up:{res['id']}:1"),
                                           InlineKeyboardButton("❌ Bekor qilish", callback_data=f"up:{res['id']}:0")]])
         text = (f"✅ Tayyor, testlar o'tdi ({res['tests']}).\n\n{res['report'][-2200:]}\n\n📁 O'zgargan fayllar:\n"
                 f"{res['diff'][-1200:]}\n\nQo'llasam - GitHub'ga push qilaman va qayta ishga tushaman.")
         await update.message.reply_text(text[-4000:], reply_markup=keyboard)
 
+    @staticmethod
+    async def safe_answer(query, text: str | None = None, **kw) -> None:
+        """Tugma javobi: Telegram eski so'rovga javob bermaydi (BadRequest) - bu asosiy ishni to'xtatmasligi kerak."""
+        try:
+            await query.answer(text, **kw)
+        except TelegramError:
+            pass
+
+    @staticmethod
+    async def drop_buttons(query) -> None:
+        try:
+            await query.edit_message_reply_markup(None)
+        except TelegramError:
+            pass
+
     async def on_upgrade_button(self, update: Update, ctx):
         from . import self_upgrade
         query = update.callback_query
         if query.from_user.id != self.owner_id:
-            await query.answer("Ruxsat yo'q")
+            await self.safe_answer(query, "Ruxsat yo'q")
             return
         _, uid, ok = query.data.split(":")
-        await query.answer()
+        await self.safe_answer(query)  # eski tugma (15+ daqiqa) bo'lsa ham ish davom etadi
+        await self.drop_buttons(query)
         if ok != "1":
             await asyncio.to_thread(self_upgrade.discard, uid)
-            await query.edit_message_reply_markup(None)
             await query.message.reply_text("❌ Bekor qilindi. Ali o'zgarmadi.")
             return
+        await query.message.reply_text("⏳ Qo'llayapman: main'ga qo'shib, GitHub'ga push qilyapman…")
         try:
             pushed = await asyncio.to_thread(self_upgrade.apply, uid)
         except Exception as e:
             await query.message.reply_text(f"⚠️ Qo'llab bo'lmadi: {str(e)[:500]}")
             return
-        await query.edit_message_reply_markup(None)
         await query.message.reply_text(f"🚀 Qo'llandi ({pushed}). 5 soniyada yangi kod bilan qayta ishga tushaman…")
         self_upgrade.restart_later(5)
 
@@ -583,15 +616,15 @@ class TelegramBot(PublicTelegram, Listener):
         from . import remote_pc
         query = update.callback_query
         if query.from_user.id != self.owner_id:
-            await query.answer("Ruxsat yo'q")
+            await self.safe_answer(query, "Ruxsat yo'q")
             return
         chat = query.message.chat_id
         parts = query.data.split(":", 2)
         action, arg = parts[1], (parts[2] if len(parts) > 2 else "")
         if action == "x":
             remote_pc.stop(chat)
-            await query.answer("Boshqaruv tugadi")
-            await query.edit_message_reply_markup(None)
+            await self.safe_answer(query, "Boshqaruv tugadi")
+            await self.drop_buttons(query)
             return
         s = remote_pc.session(chat)
         try:
@@ -613,9 +646,9 @@ class TelegramBot(PublicTelegram, Listener):
                 result = "Yangilandi"
             photo = await asyncio.to_thread(remote_pc.capture, s)
         except Exception as e:
-            await query.answer(f"⚠️ {str(e)[:180]}", show_alert=True)
+            await self.safe_answer(query, f"⚠️ {str(e)[:180]}", show_alert=True)
             return
-        await query.answer(result[:180])
+        await self.safe_answer(query, result[:180])
         try:
             await query.edit_message_media(InputMediaPhoto(photo, caption=remote_pc.caption(s)),
                                            reply_markup=self.pc_keyboard(s))
@@ -959,11 +992,11 @@ class TelegramBot(PublicTelegram, Listener):
     async def on_button(self, update: Update, ctx):
         query = update.callback_query
         if query.from_user.id not in self.users:
-            await query.answer("Ruxsat yo'q")
+            await self.safe_answer(query, "Ruxsat yo'q")
             return
         _, cid, ok = query.data.split(":")
         hub.resolve_confirm(cid, ok == "1")
-        await query.answer("Ruxsat berildi" if ok == "1" else "Rad etildi")
+        await self.safe_answer(query, "Ruxsat berildi" if ok == "1" else "Rad etildi")
 
     def _run(self, coro) -> None:
         if hub.loop and not hub.loop.is_closed():
