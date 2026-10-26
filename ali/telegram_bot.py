@@ -13,7 +13,7 @@ import logging
 import re
 import time
 
-from telegram import BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo, MenuButtonCommands, MenuButtonWebApp
+from telegram import BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update, WebAppInfo, MenuButtonCommands, MenuButtonWebApp
 from telegram.constants import ChatAction, ParseMode
 from telegram.error import BadRequest, TelegramError, RetryAfter
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
@@ -50,6 +50,7 @@ COMMANDS = [
     ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
     ("instagram", "Instagram profil audit: nimani to'g'rilash kerak"),
     ("kuchaytir", "Ali o'zini kuchaytirsin: /kuchaytir yangi imkoniyat"),
+    ("kompyuter", "Kompyuterni telefondan boshqarish (ekran + bosish)"),
     ("kontent_reja", "Instagram tahlili va kontent reja: /kontent_reja [kunlar]"),
     ("kontent", "Bugungi kontent (hook, ssenariy, caption)"),
     ("tayyor", "Kontent bajarildi: /tayyor RAQAM"),
@@ -157,6 +158,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("kontent_reja", self.cmd_content_plan))
         a.add_handler(CommandHandler("instagram", self.cmd_instagram))
         a.add_handler(CommandHandler("kuchaytir", self.cmd_upgrade))
+        a.add_handler(CommandHandler("kompyuter", self.cmd_pc))
         a.add_handler(CommandHandler("kontent", self.cmd_content_today))
         a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
         a.add_handler(CommandHandler("kanallar_organ", self.cmd_learn_all))
@@ -164,6 +166,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
         a.add_handler(CallbackQueryHandler(self.on_upgrade_button, pattern=r"^up:"))
+        a.add_handler(CallbackQueryHandler(self.on_pc_button, pattern=r"^pc:"))
         a.add_handler(CallbackQueryHandler(self.public_button, pattern=r"^(pub:|own:)"))
         a.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
         a.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
@@ -413,6 +416,10 @@ class TelegramBot(PublicTelegram, Listener):
         if await self.menu_text(update,ctx,update.message.text):return
         if update.effective_user.id==self.owner_id:
             text = update.message.text
+            from . import remote_pc
+            if update.effective_chat.id in remote_pc.sessions:  # /kompyuter rejimi: matn kompyuterga boradi
+                await self.pc_text(update, text)
+                return
             # Uzatilgan (forward) xabar - o'rganiladigan material; havolalar - sahifasi o'qiladi va o'rganiladi
             if getattr(update.message, "forward_origin", None):
                 self.learn_bg(update, " ".join(text.split()[:8]), text, "Telegram (uzatilgan xabar)")
@@ -525,6 +532,95 @@ class TelegramBot(PublicTelegram, Listener):
         await query.edit_message_reply_markup(None)
         await query.message.reply_text(f"🚀 Qo'llandi ({pushed}). 5 soniyada yangi kod bilan qayta ishga tushaman…")
         self_upgrade.restart_later(5)
+
+    # ---------- kompyuterni telefondan boshqarish (/kompyuter) ----------
+    def pc_keyboard(self, s):
+        from . import remote_pc as rp
+        b = InlineKeyboardButton
+        on = lambda flag: " ✅" if flag else ""
+        rows = [[b(f"{rp.LETTERS[c]}{r + 1}", callback_data=f"pc:c:{c}{r}") for c in range(rp.COLS)]
+                for r in range(rp.ROWS)]
+        rows += [
+            [b("🔄", callback_data="pc:r"), b("🔍" + on(s.zoom), callback_data="pc:z"),
+             b("🖥 To'liq", callback_data="pc:f"), b("⬆️", callback_data="pc:s:5"), b("⬇️", callback_data="pc:s:-5")],
+            [b(k, callback_data=f"pc:k:{v}") for k, v in
+             [("Enter", "enter"), ("Esc", "esc"), ("Tab", "tab"), ("⌫", "backspace"), ("Win", "win")]],
+            [b(k, callback_data=f"pc:k:{v}") for k, v in
+             [("Alt+Tab", "alt+tab"), ("Ctrl+C", "ctrl+c"), ("Ctrl+V", "ctrl+v"), ("Ctrl+Z", "ctrl+z")]],
+            [b("🖱 O'ng" + on(s.button == "right"), callback_data="pc:b"), b("2x" + on(s.double), callback_data="pc:d"),
+             b("❌ Chiqish", callback_data="pc:x")],
+        ]
+        return InlineKeyboardMarkup(rows)
+
+    async def cmd_pc(self, update: Update, ctx):
+        """/kompyuter - ekran rasmi katakchali to'r bilan keladi; tugmalar orqali bosish, yozish, aylantirish."""
+        from . import remote_pc
+        if not await self._guard(update) or update.effective_user.id != self.owner_id:
+            return
+        s = remote_pc.session(update.effective_chat.id)
+        s.region, s.zoom = None, False
+        try:
+            photo = await asyncio.to_thread(remote_pc.capture, s)
+        except Exception as e:
+            remote_pc.stop(update.effective_chat.id)
+            await update.message.reply_text(f"⚠️ Ekranni olib bo'lmadi: {str(e)[:300]}")
+            return
+        await update.message.reply_photo(photo, caption=remote_pc.caption(s), reply_markup=self.pc_keyboard(s))
+
+    async def pc_text(self, update: Update, text: str):
+        from . import remote_pc
+        s = remote_pc.session(update.effective_chat.id)
+        try:
+            result = await asyncio.to_thread(remote_pc.handle_text, s, text)
+            photo = await asyncio.to_thread(remote_pc.capture, s)
+        except Exception as e:
+            await update.message.reply_text(f"⚠️ {str(e)[:300]}")
+            return
+        await update.message.reply_photo(photo, caption=f"{result}\n{remote_pc.caption(s)}",
+                                         reply_markup=self.pc_keyboard(s))
+
+    async def on_pc_button(self, update: Update, ctx):
+        from . import remote_pc
+        query = update.callback_query
+        if query.from_user.id != self.owner_id:
+            await query.answer("Ruxsat yo'q")
+            return
+        chat = query.message.chat_id
+        parts = query.data.split(":", 2)
+        action, arg = parts[1], (parts[2] if len(parts) > 2 else "")
+        if action == "x":
+            remote_pc.stop(chat)
+            await query.answer("Boshqaruv tugadi")
+            await query.edit_message_reply_markup(None)
+            return
+        s = remote_pc.session(chat)
+        try:
+            if action == "c":
+                result = await asyncio.to_thread(remote_pc.click_cell, s, int(arg[0]), int(arg[1]))
+            elif action == "s":
+                result = await asyncio.to_thread(remote_pc.scroll, int(arg))
+            elif action == "k":
+                result = await asyncio.to_thread(remote_pc.keys, arg)
+            elif action == "z":
+                s.zoom, result = not s.zoom, "Kattalashtirish: katakni tanlang"
+            elif action == "f":
+                s.region, s.zoom, result = None, False, "To'liq ekran"
+            elif action == "b":
+                s.button, result = ("left" if s.button == "right" else "right"), "Tugma almashtirildi"
+            elif action == "d":
+                s.double, result = not s.double, "Ikki marta bosish"
+            else:
+                result = "Yangilandi"
+            photo = await asyncio.to_thread(remote_pc.capture, s)
+        except Exception as e:
+            await query.answer(f"⚠️ {str(e)[:180]}", show_alert=True)
+            return
+        await query.answer(result[:180])
+        try:
+            await query.edit_message_media(InputMediaPhoto(photo, caption=remote_pc.caption(s)),
+                                           reply_markup=self.pc_keyboard(s))
+        except BadRequest:
+            await query.message.reply_photo(photo, caption=remote_pc.caption(s), reply_markup=self.pc_keyboard(s))
 
     async def cmd_content_plan(self, update: Update, ctx):
         """/kontent_reja [kunlar] - Instagram statistikasini tahlil qilib, 3 yo'nalish uchun kontent reja tuzadi."""
