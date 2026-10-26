@@ -32,6 +32,8 @@ PROVIDERS = {
         steps=['AWS Console’da Amazon Bedrock → API keys bo‘limini oching va “Generate long-term API key” bilan kalit yarating.', 'Bedrock → Model access bo‘limida Anthropic Claude modellariga ruxsat yoqilganini tekshiring.', 'Kalitni pastga kiriting. Mintaqa us-east-1 emas bo‘lsa, oldiga yozing: “eu-central-1 ABSK…”. Ali modelni o‘zi topadi va tekshiradi.', 'Bedrock pullik (AWS hisobingizdan). Ali uni Pro ilovalardan keyin, bepul Gemini’dan oldin ishlatadi.'], field='bedrock_api_key', env='BEDROCK_API_KEY'),
     'tg_account': dict(name='Telegram akkaunt (kanallar)', url='https://my.telegram.org/apps', link='my.telegram.org → API development tools',
         steps=['my.telegram.org saytiga telefon raqamingiz bilan kiring → “API development tools” → ilova yarating (nomi: Ali).', 'Chiqqan api_id (raqam) va api_hash ni pastga bo‘sh joy bilan kiriting: “12345678 abcdef0123…”.', 'Kompyuterda oyna ochiladi: telefon raqamingiz, Telegram yuborgan kod va (bo‘lsa) 2 bosqichli parolni O‘ZINGIZ kiritasiz.', 'Ali faqat O‘QIYDI: kanal va guruhlardagi post va fayllardan o‘rganadi, hech narsa yubormaydi.'], field='tg_api_hash', env='TG_API_HASH'),
+    'chatplace': dict(name='ChatPlace (Instagram/Telegram avtomatlashtirish)', url='https://chatplace.io', link='ChatPlace sayti', action='/api/mcp/chatplace/start', action_label='ChatPlace’ga kirish va ruxsat berish',
+        steps=['Pastdagi tugmani bosing - ChatPlace sahifasi ochiladi, akkauntingizga kiring.', 'Ali so‘ragan ruxsatlarni tasdiqlang (avtomatlashtirish, chatlar, tarqatmalar, izohlar, AI agent).', '“Ali’ga ulandi” chiqqach, bu oynani yoping. Ali ma’lumotni erkin o‘qiydi, o‘zgartirishlarni (xabar, tarqatma, avtojavob) faqat sizning tasdig‘ingiz bilan qiladi.']),
     'gemini': dict(name='Gemini plagini', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
         steps=['Google hisobingiz bilan AI Studio’ga kiring.', '“Create API key” tugmasi bilan kalit yarating.', 'Kalitni pastga kiriting - plagin avtomatik ishga tushadi.'], field='gemini_api_key', env='GEMINI_API_KEY'),
     'chatgpt': dict(name='ChatGPT plagini', url='https://platform.openai.com/api-keys', link='OpenAI’da kalit olish', plugin='chatgpt',
@@ -60,6 +62,10 @@ def catalog(telegram_live=False):
             from . import tg_account
             status='Ulangan (faqat o‘qish)' if tg_account.configured() else ('Kalit bor · kirish kerak (qayta “Sozlash”)' if tg_account.credentials() else 'Sozlanmagan')
             configured=tg_account.configured()
+        if key=='chatplace':
+            from . import mcp_client
+            configured=mcp_client.connected('chatplace')
+            status='Ulangan (MCP)' if configured else 'Sozlanmagan'
         if key=='firebase':
             from . import cloud
             configured=cloud.configured()
@@ -70,7 +76,7 @@ def catalog(telegram_live=False):
             plug=plugins.PLUGINS.get(p['plugin'])
             status=plug.status if plug else 'Plagin o‘chirilgan (PLUGINS_DISABLED)'
             configured=bool(plug and plug.ready)
-        result.append(dict(id=key,name=p['name'],status=status,url=p['url'],link=p['link'],steps=p['steps'],can_save='field' in p or p.get('json',False),json=p.get('json',False),configured=configured))
+        result.append(dict(id=key,name=p['name'],status=status,url=p['url'],link=p['link'],steps=p['steps'],action=p.get('action',''),action_label=p.get('action_label',''),can_save='field' in p or p.get('json',False),json=p.get('json',False),configured=configured))
     return result
 
 async def connect(key, token):

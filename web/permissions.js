@@ -15,6 +15,7 @@
     const link=node('a',c.link+' ↗','connection-link');link.href=c.url;link.target='_blank';link.rel='noopener noreferrer';
     const status=node('p',undefined,'connection-feedback');status.setAttribute('role','status');
     form.append(heading,close,list,link);
+    if(c.action){const go=node('a',c.action_label||'Kirish','connection-save');go.href=c.action;go.target='_blank';go.rel='noopener';go.style.display='inline-block';go.style.marginLeft='10px';form.append(go);}  // OAuth: Ali orqali kirish
     if(c.can_save){
       form.append(node('p','Rasmiy sahifada tokenni oling, so‘ng shu oynaga qayting. Parolingizni bu yerga kiritmang.'));
       // Firebase kabi JSON kalit - ko'p qatorli maydon; qolganlari - token

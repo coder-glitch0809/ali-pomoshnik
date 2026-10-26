@@ -6,6 +6,7 @@
     Telegram:     .env da TELEGRAM_BOT_TOKEN bo'lsa, bot avtomatik ishga tushadi
 """
 import asyncio
+import html
 import logging
 import socket
 import time
@@ -13,7 +14,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from ali import agents, auth, autopilot, plugins, providers, scheduler, tts
@@ -285,6 +286,36 @@ async def local_access_save(request: Request):
     from ali import local_ai
     local_ai.set_access(body["allowed"])
     return local_ai.summary()
+
+
+@app.get("/api/mcp/{key}/start")
+async def mcp_start(key: str, request: Request):
+    """Tashqi MCP (ChatPlace) - brauzerda kirish sahifasiga yo'naltiradi (OAuth)."""
+    if not is_authed(request.cookies):
+        return RedirectResponse("/login")
+    from ali import mcp_client
+    if key not in mcp_client.SERVERS:
+        return JSONResponse({"error": "Noma'lum xizmat"}, status_code=404)
+    redirect = str(request.base_url).rstrip("/") + f"/api/mcp/{key}/callback"
+    try:
+        url = await asyncio.to_thread(mcp_client.start_auth, key, redirect)
+    except Exception as e:
+        return HTMLResponse(f"<h3>Ulanib bo'lmadi: {html.escape(str(e))[:300]}</h3>", status_code=502)
+    return RedirectResponse(url)
+
+
+@app.get("/api/mcp/{key}/callback")
+async def mcp_callback(key: str, request: Request, code: str = "", state: str = "", error: str = ""):
+    from ali import mcp_client
+    if error or not code:
+        return HTMLResponse(f"<h3>Ruxsat berilmadi: {html.escape(error or 'kod yo‘q')}</h3>", status_code=400)
+    try:
+        name = await asyncio.to_thread(mcp_client.finish_auth, state, code)
+        tools = await asyncio.to_thread(mcp_client.list_tools, key)
+    except Exception as e:
+        return HTMLResponse(f"<h3>Ulanib bo'lmadi: {html.escape(str(e))[:300]}</h3>", status_code=400)
+    return HTMLResponse(f"<meta charset='utf-8'><body style='font-family:sans-serif;padding:40px'><h2>✅ {name} Ali'ga ulandi</h2>"
+                        f"<p>{len(tools)} ta vosita mavjud. Bu oynani yopishingiz mumkin.</p></body>")
 
 
 @app.get("/api/dashboard")

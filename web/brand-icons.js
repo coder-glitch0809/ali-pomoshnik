@@ -19,6 +19,7 @@
     coreldraw: svg('<circle cx="16" cy="16" r="7" fill="none" stroke="#fff" stroke-width="2.4"/><path d="M16 9a7 7 0 0 1 0 14" fill="#5fbf3c"/>', '#2b8a3e'),
     firebase: svg('<path d="M10 23l2.4-15.3c.1-.4.6-.5.8-.1L15.8 13z" fill="#ffc400"/><path d="M10 23l6.6-12.1c.2-.4.7-.4.9 0L22 23z" fill="#ff9100"/><path d="M10 23l9.8-12c.3-.3.8-.2.9.2L23 23l-6.2 3.4c-.5.3-1.1.3-1.6 0z" fill="#dd2c00"/>', '#1e2430'),
     bedrock: svg('<path d="M16 7l7.5 4.3v8.6L16 24.2l-7.5-4.3v-8.6z" fill="none" stroke="#ff9900" stroke-width="2" stroke-linejoin="round"/><path d="M16 15.6l7.5-4.3M16 15.6v8.6M16 15.6l-7.5-4.3" stroke="#ff9900" stroke-width="1.6"/>', '#232f3e'),
+    chatplace: svg('<path d="M9 10h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4 3v-3H9a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="12.5" cy="15.5" r="1.2" fill="#fff"/><circle cx="16" cy="15.5" r="1.2" fill="#fff"/><circle cx="19.5" cy="15.5" r="1.2" fill="#fff"/>', '#6c3cff'),
     memory: svg('<path d="M12 9a3 3 0 0 0-3 3 3 3 0 0 0-1 5.5A3 3 0 0 0 12 22a2.5 2.5 0 0 0 4 1V10a2.5 2.5 0 0 0-4-1zm8 0a3 3 0 0 1 3 3 3 3 0 0 1 1 5.5A3 3 0 0 1 20 22a2.5 2.5 0 0 1-4 1" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/>', '#e8590c'),
     coach: svg('<text x="16" y="21.5" text-anchor="middle" font-size="15">🧑‍🏫</text>', '#3b2f6b'),
   };
