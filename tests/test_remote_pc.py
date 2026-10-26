@@ -29,7 +29,8 @@ class RemotePcTests(unittest.TestCase):
                 patch.object(remote_pc, "type_text", return_value="t") as typed:
             remote_pc.handle_text(s, "a1")
             remote_pc.handle_text(s, "+ctrl+s")
-            remote_pc.handle_text(s, "Salom dunyo")
+            remote_pc.handle_text(s, "Salom dunyo")  # oddiy matn kompyuterga yozilmaydi
+            remote_pc.handle_text(s, "yoz: Salom dunyo")
         click.assert_called_once_with(s, 0, 0)
         keys.assert_called_once_with("ctrl+s")
         typed.assert_called_once_with("Salom dunyo")

@@ -257,6 +257,32 @@ class RuntimeTests(unittest.TestCase):
         from ali.service import brain
         self.assertIn("ali_kuchaytirish", brain.registry)
 
+    def test_pc_mode_only_takes_pc_commands_and_new_chat_closes_it(self):
+        import time as _t
+        from types import SimpleNamespace
+        from ali import remote_pc
+        self.assertTrue(remote_pc.is_command("B3"))
+        self.assertTrue(remote_pc.is_command("+ctrl+s"))
+        self.assertTrue(remote_pc.is_command("yoz: salom"))
+        self.assertFalse(remote_pc.is_command("rasm yaratib ber, mavzu: reklama"))
+        remote_pc.session(55).used = _t.time() - remote_pc.IDLE - 1
+        self.assertFalse(remote_pc.active(55))  # 10 daqiqadan keyin o'zi yopiladi
+        bot = TelegramBot(); bot.owner_id = 7
+        self.assertTrue(bot.NEW_CHAT.match("yangi suhbat"))
+        self.assertTrue(bot.NEW_CHAT.match("Янги мавзу: расм"))
+        remote_pc.session(56)
+        msg = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(effective_chat=SimpleNamespace(id=56, type='private'), effective_user=SimpleNamespace(id=7),
+                                 message=msg, effective_message=msg)
+        bot.users = {7}
+        asyncio.run(bot.cmd_new(update, None))
+        self.assertNotIn(56, remote_pc.sessions)
+        self.assertIn("Yangi suhbat", msg.reply_text.call_args.args[0])
+
+    def test_polling_requests_button_updates(self):
+        import inspect
+        self.assertIn("allowed_updates=Update.ALL_TYPES", inspect.getsource(TelegramBot.start))
+
     def test_old_upgrade_button_still_applies(self):
         from types import SimpleNamespace
         from telegram.error import BadRequest

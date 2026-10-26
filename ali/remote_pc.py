@@ -23,13 +23,32 @@ class Session:
     button: str = "left"
     double: bool = False
     zoom: bool = False  # True bo'lsa keyingi katak bosilganda kattalashtiriladi
+    used: float = 0.0  # oxirgi ishlatilgan vaqt
 
 
 sessions: dict[int, Session] = {}
+IDLE = 10 * 60  # 10 daqiqa ishlatilmasa - rejim o'zi yopiladi
+_TYPE = re.compile(r"^\s*(yoz|ёз|йоз|type)\s*:\s*(.+)$", re.I | re.S)
 
 
 def session(chat_id: int) -> Session:
-    return sessions.setdefault(chat_id, Session())
+    s = sessions.setdefault(chat_id, Session())
+    s.used = time.time()
+    return s
+
+
+def active(chat_id: int) -> bool:
+    s = sessions.get(chat_id)
+    if s and time.time() - s.used > IDLE:
+        stop(chat_id)
+        return False
+    return s is not None
+
+
+def is_command(text: str) -> bool:
+    """Kompyuterga tegishli xabarmi: katak (B3), tugmalar (+ctrl+s) yoki "yoz: matn". Qolgani - oddiy suhbat."""
+    t = (text or "").strip()
+    return bool(parse_cell(t) or (t.startswith("+") and len(t) > 1 and len(t) < 40) or _TYPE.match(t))
 
 
 def stop(chat_id: int) -> None:
@@ -114,7 +133,7 @@ def caption(s: Session) -> str:
         f"🖱 {'O`ng' if s.button == 'right' else 'Chap'} tugma{' x2' if s.double else ''}")
     where = "kattalashtirilgan joy" if s.region else "to'liq ekran"
     return (f"💻 Kompyuter ({where}) | {mode}\n"
-            "Katakni bosing yoki yozing (B3). Matn - faol oynaga yoziladi, +ctrl+s - tugmalar.")
+            "Katakni bosing yoki yozing (B3). Yozish: «yoz: matn», tugmalar: +ctrl+s. Boshqa xabarlar - oddiy suhbat.")
 
 
 def click_cell(s: Session, col: int, row: int) -> str:
@@ -161,4 +180,7 @@ def handle_text(s: Session, text: str) -> str:
         return click_cell(s, *cell)
     if text.startswith("+") and len(text) > 1:
         return keys(text[1:])
-    return type_text(text)
+    m = _TYPE.match(text)
+    if not m:
+        return "Kompyuter buyrug'i emas"
+    return type_text(m.group(2))

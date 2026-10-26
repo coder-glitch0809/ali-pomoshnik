@@ -50,6 +50,7 @@ COMMANDS = [
     ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
     ("instagram", "Instagram profil audit: nimani to'g'rilash kerak"),
     ("kuchaytir", "Ali o'zini kuchaytirsin: /kuchaytir yangi imkoniyat"),
+    ("tugma_test", "Tugmalar ishlayotganini tekshirish"),
     ("kompyuter", "Kompyuterni telefondan boshqarish (ekran + bosish)"),
     ("kontent_reja", "Instagram tahlili va kontent reja: /kontent_reja [kunlar]"),
     ("kontent", "Bugungi kontent (hook, ssenariy, caption)"),
@@ -134,6 +135,7 @@ class TelegramBot(PublicTelegram, Listener):
             raise RuntimeError("bu bot shu kompyuterdagi boshqa Ali nusxasida ishlayapti")
         self.app = Application.builder().token(config.telegram_token).concurrent_updates(8).build()
         a = self.app
+        a.add_error_handler(self.on_error)
         a.add_handler(CommandHandler("start", self.cmd_start))
         a.add_handler(CommandHandler("menu", self.cmd_start))
         a.add_handler(CommandHandler("stop", self.public_stop))
@@ -161,6 +163,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("kontent_reja", self.cmd_content_plan))
         a.add_handler(CommandHandler("instagram", self.cmd_instagram))
         a.add_handler(CommandHandler("kuchaytir", self.cmd_upgrade))
+        a.add_handler(CommandHandler("tugma_test", self.cmd_button_test))
         a.add_handler(CommandHandler("kompyuter", self.cmd_pc))
         a.add_handler(CommandHandler("kontent", self.cmd_content_today))
         a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
@@ -169,6 +172,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
         a.add_handler(CallbackQueryHandler(self.on_upgrade_button, pattern=r"^up:"))
+        a.add_handler(CallbackQueryHandler(self.on_button_test, pattern=r"^tst:"))
         a.add_handler(CallbackQueryHandler(self.on_pc_button, pattern=r"^pc:"))
         a.add_handler(CallbackQueryHandler(self.public_button, pattern=r"^(pub:|own:)"))
         a.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
@@ -188,7 +192,9 @@ class TelegramBot(PublicTelegram, Listener):
         for uid in self.users:
             await self.configure_bot('set_chat_menu_button',chat_id=uid, menu_button=self.owner_menu())
         await a.start()
-        await a.updater.start_polling(drop_pending_updates=False)
+        # allowed_updates aniq beriladi: Telegram oxirgi sozlamani eslab qoladi - boshqa dastur tugmalarni (callback_query)
+        # o'chirib qo'ygan bo'lsa ham, Ali'ga barcha turdagi yangilanishlar keladi
+        await a.updater.start_polling(drop_pending_updates=False, allowed_updates=Update.ALL_TYPES)
         hub.listeners.append(self)
         self.public_task=asyncio.create_task(self.public_loop())
         me = await a.bot.get_me()
@@ -304,18 +310,46 @@ class TelegramBot(PublicTelegram, Listener):
         self._save_users()
         await update.effective_chat.send_message("Kirish tasdiqlandi. Salom, Abbos! /start")
 
+    async def cmd_button_test(self, update: Update, ctx):
+        """/tugma_test - tugmalar Ali'ga yetib kelayotganini tekshirish."""
+        if not await self._guard(update):
+            return
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(f"{n}-tugma", callback_data=f"tst:{n}") for n in (1, 2, 3)]])
+        await update.message.reply_text("🧪 Tugmalar sinovi: istalganini bosing - xabar «✅ ishladi» ga o'zgaradi.",
+                                        reply_markup=keyboard)
+
+    async def on_button_test(self, update: Update, ctx):
+        query = update.callback_query
+        n = query.data.split(":", 1)[1]
+        await self.safe_answer(query, f"✅ {n}-tugma ishladi")
+        try:
+            await query.edit_message_text(f"✅ {n}-tugma ishladi ({time.strftime('%H:%M:%S')}). Tugmalar Ali'ga yetib kelyapti.",
+                                          reply_markup=query.message.reply_markup)
+        except TelegramError:
+            pass
+
+    async def on_error(self, update, ctx) -> None:
+        """Ishlovchidagi har qanday xato logga yoziladi (avval jim yo'qolardi)."""
+        log.error("Telegram ishlovchisida xato (%s): %s", type(update).__name__, ctx.error, exc_info=ctx.error)
+
+    NEW_CHAT = re.compile(r"^\s*(yangi|янги|boshqa|бошқа|бошка)\s+(suhbat|сухбат|суҳбат|mavzu|мавзу)", re.I)
+
     async def cmd_new(self, update: Update, ctx):
         if self.is_private(update) and update.effective_user.id != self.owner_id:
             await self.clear_public(update,ctx)
             return
         if not await self._guard(update):
             return
-        if brain.lock.locked():
-            await update.message.reply_text("Vazifa tugagach yangi suhbat boshlang.")
-            return
-        brain.new_session()
+        from . import remote_pc
+        remote_pc.stop(update.effective_chat.id)  # kompyuter rejimi ham yopiladi
+        if brain.lock.locked():  # joriy vazifa tugashi bilan o'zi yangi suhbat boshlaydi
+            await update.message.reply_text("⏳ Joriy vazifa tugashi bilan yangi suhbat boshlanadi.")
+            async with brain.lock:
+                brain.new_session()
+        else:
+            brain.new_session()
         hub.broadcast({"type": "session_reset"})
-        await update.message.reply_text("Yangi suhbat boshlandi.")
+        await update.message.reply_text("🧹 Yangi suhbat boshlandi. Avvalgi mavzu davom ettirilmaydi.")
 
     async def toggle(self, update: Update, key: str, label: str):
         if not await self._guard(update):
@@ -422,7 +456,11 @@ class TelegramBot(PublicTelegram, Listener):
         if update.effective_user.id==self.owner_id:
             text = update.message.text
             from . import remote_pc
-            if update.effective_chat.id in remote_pc.sessions:  # /kompyuter rejimi: matn kompyuterga boradi
+            if self.NEW_CHAT.match(text):  # «yangi suhbat» / «yangi mavzu» - /new bilan bir xil
+                await self.cmd_new(update, ctx)
+                return
+            # /kompyuter rejimi: faqat katak (B3), +tugmalar va «yoz: matn» kompyuterga boradi, qolgani - oddiy suhbat
+            if remote_pc.active(update.effective_chat.id) and remote_pc.is_command(text):
                 await self.pc_text(update, text)
                 return
             # Uzatilgan (forward) xabar - o'rganiladigan material; havolalar - sahifasi o'qiladi va o'rganiladi
