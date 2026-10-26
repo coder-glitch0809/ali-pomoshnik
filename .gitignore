@@ -12,3 +12,8 @@ build/
 dist/
 xotira/
 node_modules/
+
+# lokal fayllar - repoga kirmaydi
+agents/18-agent.md
+package.json
+package-lock.json
