@@ -46,6 +46,10 @@ class Config:
     # Gemini: faqat ovozni matnga aylantirish va rasm (Claude qila olmaydigan ishlar)
     gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY"))
     gemini_image_model: str = field(default_factory=lambda: _env("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"))
+    # Pro rasm modeli (Nano Banana Pro) - bo'lsa avval shu ishlatiladi, bo'lmasa standart model
+    gemini_image_pro_model: str = field(default_factory=lambda: _env("GEMINI_IMAGE_PRO_MODEL", "gemini-3-pro-image-preview"))
+    # Rasm sifati: pro (avval eng kuchli model) | standard (avval tez/arzon model)
+    image_quality: str = field(default_factory=lambda: _env("IMAGE_QUALITY", "pro").lower())
     gemini_fast_model: str = field(default_factory=lambda: _env("GEMINI_FAST_MODEL", "gemini-flash-latest"))
     # Bepul suhbat uchun Gemini modeli (bepul API limiti bor)
     gemini_chat_model: str = field(default_factory=lambda: _env("GEMINI_CHAT_MODEL", "gemini-flash-latest"))
@@ -92,6 +96,8 @@ class Config:
     public_url: str = field(default_factory=lambda: (_env("PUBLIC_URL") or _env("RENDER_EXTERNAL_URL")).rstrip("/"))
     telegram_name: str = field(default_factory=lambda: _env("TELEGRAM_BOT_NAME", "Ali Pomoshnik"))
     telegram_owner_id: int = field(default_factory=lambda: int(_env("TELEGRAM_OWNER_ID", "0") or 0))
+    # Rasmli post joylanadigan kanal (@username yoki -100... ID); bot kanalda administrator bo'lishi kerak
+    telegram_channel: str = field(default_factory=lambda: _env("TELEGRAM_CHANNEL"))
     telegram_payment_text: str = field(default_factory=lambda: _env("TELEGRAM_PAYMENT_TEXT", "Obuna narxi va to‘lov ma’lumoti hali e’lon qilinmagan. So‘rovni administratorga yuboring."))
     telegram_allowed: set[int] = field(default_factory=lambda: {
         int(x) for x in _env("TELEGRAM_ALLOWED_USERS").replace(" ", "").split(",") if x.isdigit()
