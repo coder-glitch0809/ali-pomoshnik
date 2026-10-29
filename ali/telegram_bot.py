@@ -1050,6 +1050,8 @@ class TelegramBot(PublicTelegram, Listener):
             InlineKeyboardButton("❌ Rad etish", callback_data=f"cf:{cid}:0"),
         ]])
 
+        label = TOOL_LABELS.get(name, name)
+
         async def send():
             sent = []
             for uid in self.users:
@@ -1059,8 +1061,35 @@ class TelegramBot(PublicTelegram, Listener):
                 except Exception:
                     log.exception("Tasdiq yuborilmadi: %s", uid)
             self.confirm_msgs[cid] = sent
+            await self.voice_ask(label, sent)
+            # Javob bo'lmasa - 3 va 8 daqiqadan keyin qayta eslatadi (tugmali xabarga javob tarzida)
+            for wait in (180, 300):
+                await asyncio.sleep(wait)
+                if cid not in self.confirm_msgs:
+                    return
+                for chat_id, msg_id in sent:
+                    try:
+                        await self.app.bot.send_message(chat_id, f"⏰ Ali hali javobingizni kutyapti: {label}. "
+                                                                 "Yuqoridagi «✅ Ruxsat» yoki «❌ Rad etish» ni bosing.",
+                                                        reply_to_message_id=msg_id)
+                    except TelegramError:
+                        pass
 
         self._run(send())
+
+    async def voice_ask(self, label: str, sent: list) -> None:
+        """Ali Pomoshnik ovozi bilan vaziyatni tushuntiradi (Telegram botlari qo'ng'iroq qila olmaydi - ovozli xabar)."""
+        try:
+            audio = await tts.synthesize(f"{config.user_name}, {config.assistant_name} ruxsat so'rayapti. {label}. "
+                                         "Ruxsat bersangiz, xabardagi yashil tugmani bosing. Rad etsangiz - qizil tugmani.")
+        except Exception:
+            log.exception("Ovozli ruxsat so'rovi tayyorlanmadi")
+            return
+        for chat_id, msg_id in sent:
+            try:
+                await self.app.bot.send_voice(chat_id, voice=audio, reply_to_message_id=msg_id)
+            except TelegramError:
+                log.exception("Ovozli ruxsat so'rovi yuborilmadi")
 
     def on_confirm_closed(self, cid: str) -> None:
         async def close():

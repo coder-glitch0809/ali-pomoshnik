@@ -133,6 +133,43 @@ async def miniapp_page():
     return FileResponse(WEB/'miniapp.html',headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
 
 
+# --- Jonli masofaviy boshqaruv (telefondan): faqat Telegram orqali tasdiqlangan ega yoki shu kompyuterning o'zi ---
+def remote_allowed(request: Request) -> bool:
+    token = request.cookies.get(COOKIE, "")
+    return auth.check_token(token) and (token.startswith("tg.") or is_local(request))
+
+
+@app.get('/remote')
+async def remote_page():
+    return FileResponse(WEB / 'remote.html', headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
+
+
+@app.get('/api/remote/frame')
+async def remote_frame(request: Request, w: int = 1280, q: int = 60):
+    if not remote_allowed(request):
+        return JSONResponse({'error': 'Faqat Telegram orqali (egasi) kiriladi'}, status_code=403)
+    from ali import remote_pc
+    try:
+        data = await asyncio.to_thread(remote_pc.frame, w, q)
+    except Exception as e:
+        return JSONResponse({'error': f'Ekran olinmadi: {e}'}, status_code=500)
+    return Response(data, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
+@app.post('/api/remote/input')
+async def remote_input(request: Request):
+    if not remote_allowed(request):
+        return JSONResponse({'error': 'Faqat Telegram orqali (egasi) kiriladi'}, status_code=403)
+    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+        return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
+    from ali import remote_pc
+    body = await json_object(request)
+    try:
+        return {'ok': True, 'result': await asyncio.to_thread(remote_pc.act, body)}
+    except Exception as e:
+        return JSONResponse({'ok': False, 'error': str(e)[:300]}, status_code=400)
+
+
 @app.post('/api/telegram/login')
 async def telegram_login(request: Request):
     if request.headers.get('origin') and request.headers['origin'].rstrip('/')!=str(request.base_url).rstrip('/'):

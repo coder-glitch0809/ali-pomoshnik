@@ -347,6 +347,32 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(tried, [providers.GEMINI_FALLBACKS[0]])  # ishlagan o'rinbosar birinchi sinaladi
         providers._gemini_good.clear()
 
+    def test_permission_request_sends_voice(self):
+        from types import SimpleNamespace
+        bot = TelegramBot()
+        bot.app = SimpleNamespace(bot=SimpleNamespace(send_voice=AsyncMock()))
+        with patch("ali.tts.synthesize", AsyncMock(return_value=b"ogg")) as synth:
+            asyncio.run(bot.voice_ask("Instagram'ga joylash", [(7, 11)]))
+        self.assertIn("ruxsat so'rayapti", synth.call_args.args[0])
+        bot.app.bot.send_voice.assert_awaited_once_with(7, voice=b"ogg", reply_to_message_id=11)
+
+    def test_remote_control_only_for_telegram_owner(self):
+        from fastapi.testclient import TestClient
+        import runtime
+        client = TestClient(runtime.app)
+        self.assertEqual(client.get("/api/remote/frame").status_code, 403)
+        self.assertEqual(client.post("/api/remote/input", json={"type": "click"}).status_code, 403)
+        client.cookies.set(runtime.COOKIE, runtime.auth.TOKEN)  # parol bilan kirish - masofaviy boshqaruvga yetmaydi
+        with patch.object(runtime, "is_local", return_value=False):
+            self.assertEqual(client.get("/api/remote/frame").status_code, 403)
+        client.cookies.set(runtime.COOKIE, runtime.auth.telegram_session())
+        with patch("ali.remote_pc.frame", return_value=b"jpg"):
+            r = client.get("/api/remote/frame")
+        self.assertEqual((r.status_code, r.content), (200, b"jpg"))
+        with patch("ali.remote_pc.act", return_value="bosildi") as act:
+            self.assertTrue(client.post("/api/remote/input", json={"type": "click", "x": 0.5, "y": 0.5}).json()["ok"])
+        act.assert_called_once()
+
     def test_polling_requests_button_updates(self):
         import inspect
         self.assertIn("allowed_updates=Update.ALL_TYPES", inspect.getsource(TelegramBot.start))

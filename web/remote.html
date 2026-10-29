@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Kompyuter — jonli</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{--bg:#090e1d;--panel:#121a30;--line:#24304f;--text:#e8eefb;--muted:#93a2c0;--accent:#5b8cff;--danger:#ff5b6b;--ok:#3ccf8e}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  body{display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  header b{flex:1;font-size:15px}
+  #dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+  #dot.live{background:var(--ok)}
+  #fps{color:var(--muted);font-size:12px;min-width:52px;text-align:right}
+  #view{flex:1;overflow:auto;position:relative;background:#000;touch-action:pan-x pan-y}
+  #screen{display:block;width:100%;height:auto;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  #msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--muted)}
+  .bar{display:flex;gap:6px;padding:6px 8px;overflow-x:auto;border-top:1px solid var(--line);background:var(--panel)}
+  button{flex:0 0 auto;border:1px solid var(--line);background:#1a2440;color:var(--text);border-radius:10px;padding:9px 11px;font:inherit;min-width:44px}
+  button.on{background:var(--accent);border-color:var(--accent)}
+  button:active{transform:scale(.96)}
+  .type{display:flex;gap:6px;padding:6px 8px 10px;background:var(--panel)}
+  .type input{flex:1;min-width:0;border:1px solid var(--line);background:#0d1426;color:var(--text);border-radius:10px;padding:10px;font:inherit}
+  #toast{position:fixed;left:50%;bottom:120px;transform:translateX(-50%);background:#000c;padding:6px 12px;border-radius:12px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header><span id="dot"></span><b>💻 Kompyuter — jonli</b><span id="fps">…</span></header>
+<div id="view"><img id="screen" alt="Kompyuter ekrani"><div id="msg">Ulanmoqda…</div></div>
+<div class="bar">
+  <button id="mode" title="Bosish rejimi">👆 Bosish</button>
+  <button data-zoom>🔍 1x</button>
+  <button data-scroll="5">⬆️</button><button data-scroll="-5">⬇️</button>
+  <button data-key="enter">Enter</button><button data-key="esc">Esc</button><button data-key="backspace">⌫</button>
+  <button data-key="tab">Tab</button><button data-key="win">Win</button><button data-key="alt+tab">Alt+Tab</button>
+  <button data-key="ctrl+c">Ctrl+C</button><button data-key="ctrl+v">Ctrl+V</button><button data-key="ctrl+z">Ctrl+Z</button>
+  <button id="quality">HD</button>
+</div>
+<form class="type" id="typeForm"><input id="text" placeholder="Kompyuterga yozish…" autocomplete="off"><button>Yuborish</button></form>
+<div id="toast"></div>
+<script>
+(() => {
+  'use strict';
+  const img = document.getElementById('screen'), msg = document.getElementById('msg'), dot = document.getElementById('dot');
+  const fpsEl = document.getElementById('fps'), toast = document.getElementById('toast'), view = document.getElementById('view');
+  const MODES = [['click', '👆 Bosish'], ['right', '🖱 O‘ng'], ['double', '✌️ 2x'], ['drag', '✋ Sudrash']];
+  let mode = 0, zoom = 1, hd = false, running = true, frames = 0, lastUrl = null, busy = false;
+
+  const say = (t) => { toast.textContent = t; toast.classList.add('show'); clearTimeout(say.t); say.t = setTimeout(() => toast.classList.remove('show'), 1200); };
+
+  async function login() {
+    const tg = window.Telegram && Telegram.WebApp;
+    if (!tg || !tg.initData) return false;
+    try { tg.ready(); tg.expand(); } catch {}
+    const r = await fetch('/api/telegram/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ init_data: tg.initData }) });
+    return r.ok;
+  }
+
+  async function loop() {
+    let triedLogin = false;
+    while (running) {
+      const t0 = performance.now();
+      try {
+        const r = await fetch(`/api/remote/frame?w=${hd ? 1600 : 1100}&q=${hd ? 70 : 50}&t=${Date.now()}`, { cache: 'no-store' });
+        if (r.status === 403) {
+          if (!triedLogin) { triedLogin = true; if (await login()) continue; }
+          msg.textContent = 'Kirish faqat Telegram’dagi Ali bot orqali: /kompyuter → «📺 Jonli boshqarish».';
+          dot.classList.remove('live'); await new Promise(s => setTimeout(s, 4000)); continue;
+        }
+        if (!r.ok) throw new Error(r.status);
+        const url = URL.createObjectURL(await r.blob());
+        img.src = url; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = url;
+        msg.style.display = 'none'; dot.classList.add('live'); frames++;
+      } catch {
+        dot.classList.remove('live'); msg.style.display = 'flex'; msg.textContent = 'Ulanish uzildi, qayta urinmoqda…';
+        await new Promise(s => setTimeout(s, 1500));
+      }
+      const spent = performance.now() - t0;
+      if (spent < 150) await new Promise(s => setTimeout(s, 150 - spent));
+    }
+  }
+  setInterval(() => { fpsEl.textContent = frames + ' kadr/s'; frames = 0; }, 1000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) running = false; else if (!running) { running = true; loop(); } });
+
+  async function send(action) {
+    try {
+      const r = await fetch('/api/remote/input', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) say('⚠️ ' + (d.error || r.status));
+    } catch { say('⚠️ Yuborilmadi'); }
+  }
+  const rel = (e) => { const b = img.getBoundingClientRect(); return { x: (e.clientX - b.left) / b.width, y: (e.clientY - b.top) / b.height }; };
+
+  // Bosish: qisqa tegish - tanlangan rejim; uzoq bosib turish (0.6 s) - o'ng tugma. Sudrash rejimida - barmoq bilan sudraladi.
+  let down = null, hold = null, lastMove = 0;
+  img.addEventListener('contextmenu', e => e.preventDefault());
+  img.addEventListener('pointerdown', e => {
+    const p = rel(e); down = { ...p, sx: e.clientX, sy: e.clientY, moved: false };
+    if (MODES[mode][0] === 'drag') { e.preventDefault(); img.setPointerCapture(e.pointerId); send({ type: 'down', ...p }); return; }
+    hold = setTimeout(() => { if (down && !down.moved) { send({ type: 'click', button: 'right', ...p }); say('🖱 O‘ng tugma'); down = null; } }, 600);
+  });
+  img.addEventListener('pointermove', e => {
+    if (!down) return;
+    if (Math.hypot(e.clientX - down.sx, e.clientY - down.sy) > 10) down.moved = true;
+    if (MODES[mode][0] === 'drag' && performance.now() - lastMove > 60) { lastMove = performance.now(); send({ type: 'move', ...rel(e) }); }
+  });
+  img.addEventListener('pointerup', e => {
+    clearTimeout(hold);
+    if (!down) return;
+    const kind = MODES[mode][0], p = rel(e);
+    if (kind === 'drag') send({ type: 'up', ...p });
+    else if (!down.moved) {
+      send({ type: 'click', ...p, button: kind === 'right' ? 'right' : 'left', double: kind === 'double' });
+      say(kind === 'double' ? '✌️ Ikki marta' : kind === 'right' ? '🖱 O‘ng' : '👆 Bosildi');
+    }
+    down = null;
+  });
+  img.addEventListener('pointercancel', () => { clearTimeout(hold); down = null; });
+
+  document.getElementById('mode').onclick = (e) => { mode = (mode + 1) % MODES.length; e.target.textContent = MODES[mode][1]; e.target.classList.toggle('on', mode !== 0); view.style.touchAction = MODES[mode][0] === 'drag' ? 'none' : 'pan-x pan-y'; };
+  document.querySelector('[data-zoom]').onclick = (e) => { zoom = zoom >= 3 ? 1 : zoom + 1; img.style.width = (zoom * 100) + '%'; e.target.textContent = `🔍 ${zoom}x`; };
+  document.getElementById('quality').onclick = (e) => { hd = !hd; e.target.classList.toggle('on', hd); say(hd ? 'Yuqori sifat' : 'Tez rejim'); };
+  document.querySelectorAll('[data-scroll]').forEach(b => b.onclick = () => send({ type: 'scroll', dy: +b.dataset.scroll }));
+  document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => { send({ type: 'key', keys: b.dataset.key }); say(b.textContent); });
+  document.getElementById('typeForm').onsubmit = (e) => { e.preventDefault(); const t = document.getElementById('text'); if (t.value) { send({ type: 'type', text: t.value }); say('⌨️ Yozildi'); t.value = ''; } };
+
+  loop();
+})();
+</script>
+</body>
+</html>
