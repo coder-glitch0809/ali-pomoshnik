@@ -68,6 +68,8 @@ async def lifespan(_app):
     schedule.start(hub.notify)  # dars jadvali: kun rejasi va darsdan oldin ogohlantirish
     from ali import content_plan
     content_plan.start(hub.notify)  # kontent reja: kunlik va belgilangan soatda eslatma
+    from ali import tunnel
+    tunnel.start()  # telefondan istalgan joydan kirish (Cloudflare tunnel) - manzil Telegram tugmasiga yoziladi
     bot = None
     if config.telegram_token:
         from ali.telegram_bot import TelegramBot

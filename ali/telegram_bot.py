@@ -196,6 +196,10 @@ class TelegramBot(PublicTelegram, Listener):
         # o'chirib qo'ygan bo'lsa ham, Ali'ga barcha turdagi yangilanishlar keladi
         await a.updater.start_polling(drop_pending_updates=False, allowed_updates=Update.ALL_TYPES)
         hub.listeners.append(self)
+        from . import tunnel
+        tunnel.on_url(lambda url: self._run(self.refresh_menus()))  # tunnel manzili o'zgarsa - "Ali panel" yangilanadi
+        if config.public_url.startswith("https://"):
+            await self.refresh_menus()
         self.public_task=asyncio.create_task(self.public_loop())
         me = await a.bot.get_me()
         log.info("Telegram bot ishga tushdi: @%s", me.username)
@@ -243,6 +247,11 @@ class TelegramBot(PublicTelegram, Listener):
         return self.prefs.setdefault(chat_id, {"deep": False, "super": True, "voice": True, "agent": None, "ai": None})
 
     # ---------- buyruqlar ----------
+    async def refresh_menus(self) -> None:
+        for uid in self.users:
+            await self.configure_bot('set_chat_menu_button', chat_id=uid, menu_button=self.owner_menu())
+        log.info("Ali panel tugmasi yangilandi: %s", config.public_url or "(manzil yo'q)")
+
     def owner_menu(self):
         if config.public_url.startswith('https://'):
             return MenuButtonWebApp(text='Ali panel',web_app=WebAppInfo(url=config.public_url+'/miniapp'))
@@ -628,6 +637,11 @@ class TelegramBot(PublicTelegram, Listener):
         from . import remote_pc
         if not await self._guard(update) or update.effective_user.id != self.owner_id:
             return
+        if config.public_url.startswith("https://"):  # jonli ekran (translyatsiya) - Mini App ichida
+            await update.message.reply_text(
+                "📺 Jonli boshqarish: ekran uzluksiz ko'rinadi, barmoq bilan bosasiz, sudraysiz va yozasiz.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(
+                    "📺 Jonli boshqarish", web_app=WebAppInfo(url=config.public_url + "/remote"))]]))
         s = remote_pc.session(update.effective_chat.id)
         s.region, s.zoom = None, False
         try:

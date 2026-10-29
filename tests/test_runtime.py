@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, patch
 state = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / "data", ignore_cleanup_errors=True)
 os.environ.update(ALI_STATE_DIR=state.name, ANTHROPIC_API_KEY="", TELEGRAM_BOT_TOKEN="",
                   ACCESS_PASSWORD="test-password", AUTO_LEARN="false", WATCH_PROJECTS="false",
-                  PLUGINS_OPEN_APPS="false", CHAT_PROVIDER="claude", GEMINI_API_KEY="", OPENAI_API_KEY="")
+                  PLUGINS_OPEN_APPS="false", CHAT_PROVIDER="claude", GEMINI_API_KEY="", OPENAI_API_KEY="",
+                  TUNNEL="off")
 
 from fastapi.testclient import TestClient
 from ali import agents, auth
