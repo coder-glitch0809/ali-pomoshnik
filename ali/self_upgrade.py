@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import uuid
+from pathlib import Path
 
 from .config import ROOT, config
 
@@ -105,6 +106,35 @@ def _dasturchi(task: str) -> str:
         return ""
 
 
+def _coders() -> list[tuple[str, str]]:
+    """Kod yozadigan ilovalar navbati: Claude Code, keyin Codex (ChatGPT) - limiti tugaganlari o'tkaziladi."""
+    from . import local_ai
+    found = [("claude", local_ai._claude_exe()), ("codex", local_ai.app_exe("codex"))]
+    return [(k, exe) for k, exe in found if exe and not local_ai.paused_until(k)]
+
+
+def _code(key: str, exe: str, prompt: str, path: Path) -> tuple[bool, str]:
+    """Bitta ilova bilan kod yozish. (muvaffaqiyatli, hisobot). Limit tugasa - Ali uni eslab qoladi."""
+    from . import local_ai
+    if key == "claude":
+        cmd = [exe, "-p", "--output-format", "text", "--permission-mode", "acceptEdits", "--allowedTools", "Read", "Edit",
+               "Write", "Glob", "Grep", "Bash(python *)", "Bash(git diff*)", "Bash(git status*)"]
+    else:  # Codex: faqat shu nusxa papkasiga yozadi (workspace-write sandbox)
+        cmd = [exe, "exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "-C", str(path), "-"]
+    try:
+        r = subprocess.run(cmd, input=prompt, cwd=path, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=TIMEOUT_MIN * 60, env=_safe_env(path), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired:
+        return False, f"{TIMEOUT_MIN} daqiqada tugatolmadi"
+    except OSError as e:
+        return False, f"ishga tushmadi: {e}"
+    out = (r.stdout or "").strip()
+    raw = (r.stderr or "") + out
+    if r.returncode != 0 and local_ai._LIMIT_RE.search(raw):
+        local_ai._mark_limit(key, raw)
+    return r.returncode == 0, (out or r.stderr or "").strip()[-2500:]
+
+
 def auto_apply() -> bool:
     """Ruxsatlar -> ali_kuchaytirish = "auto" bo'lsa testlar o'tgach o'zi qo'llaydi va GitHub'ga push qiladi."""
     from . import permissions
@@ -127,27 +157,27 @@ def run(task: str, progress) -> dict:
     uid, ok = None, False
     job = monitor.start_job("dasturchi", f"Ali'ni kuchaytirish: {task[:200]}", "self_upgrade")
     try:
-        exe = local_ai._claude_exe()
-        if until := local_ai.paused_until("claude"):
-            raise RuntimeError("Claude obuna limiti tugagan - "
-                               f"{time.strftime('%d.%m %H:%M', time.localtime(until))} da tiklanadi, keyin qayta yozing")
-        if not exe:
-            raise RuntimeError("Claude Code topilmadi (VS Code kengaytmasi yoki npm i -g @anthropic-ai/claude-code)")
+        coders = _coders()
+        if not coders:
+            raise RuntimeError("Kod yozadigan ilova yo'q: Claude Code ham, Codex (ChatGPT) ham topilmadi yoki ikkalasining "
+                               "limiti tugagan - Ruxsatlar -> Ilovalar")
         uid = uuid.uuid4().hex[:8]
         branch, path = f"ali-upgrade/{uid}", WORK / uid
         WORK.mkdir(parents=True, exist_ok=True)
         _git("worktree", "add", "-b", branch, str(path), "HEAD")
         (path / "data").mkdir(exist_ok=True)  # data/ gitignore'da - testlar uchun bo'sh papka
-        progress(f"👨‍💻 Dasturchi agent alohida nusxada kod yozyapti ({branch}) - {TIMEOUT_MIN} daqiqagacha…")
-        r = subprocess.run([exe, "-p", "--output-format", "text", "--permission-mode", "acceptEdits",
-                            "--allowedTools", "Read", "Edit", "Write", "Glob", "Grep", "Bash(python *)", "Bash(git diff*)",
-                            "Bash(git status*)"],
-                           input=TASK.format(agent=_dasturchi(task), task=task), cwd=path, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=TIMEOUT_MIN * 60, env=_safe_env(path),
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        report = (r.stdout or r.stderr).strip()[-2500:]
-        if r.returncode != 0:
-            raise RuntimeError(f"Claude Code vazifani bajarmadi: {report[-400:]}")
+        prompt, report, failures = TASK.format(agent=_dasturchi(task), task=task), "", []
+        for key, exe in coders:  # Claude Code -> Codex: biri ishlamasa yoki limiti tugasa - keyingisi boshidan
+            progress(f"👨‍💻 Dasturchi agent {local_ai.NAMES[key]} bilan alohida nusxada kod yozyapti ({branch}) - "
+                     f"{TIMEOUT_MIN} daqiqagacha…")
+            done, report = _code(key, exe, prompt, path)
+            if done and _git("status", "--porcelain", cwd=path):
+                break
+            failures.append(f"{local_ai.NAMES[key]}: {report[-300:] if not done else 'hech narsa o‘zgartirmadi'}")
+            _git("reset", "-q", "--hard", cwd=path)
+            _git("clean", "-qfd", "-e", "data/", cwd=path)
+        else:
+            raise RuntimeError("Dasturchi vazifani bajara olmadi:\n" + "\n".join(failures))
         _git("add", "-A", cwd=path)
         if not _git("diff", "--cached", "--stat", cwd=path):
             raise RuntimeError("Hech qanday o'zgarish qilinmadi")
@@ -155,8 +185,8 @@ def run(task: str, progress) -> dict:
         passed, tests = _tests(path)
         if not passed:
             return {"id": uid, "ok": False, "report": report, "tests": tests, "diff": ""}
-        _git("commit", "-q", "-m", f"Ali o'zini kuchaytirdi: {task[:70]}\n\n{report[:1500]}\n\n"
-             "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>", cwd=path)
+        _git("commit", "-q", "-m", f"Ali o'zini kuchaytirdi ({local_ai.NAMES[key]}): {task[:70]}\n\n{report[:1500]}"
+             + ("\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" if key == "claude" else ""), cwd=path)
         diff = _git("show", "--stat", "--format=", "HEAD", cwd=path)
         state = _state()
         state[uid] = {"task": task, "branch": branch, "at": time.time(), "report": report[:2500]}

@@ -12,6 +12,23 @@ STATE_ROOT = Path(os.getenv("ALI_STATE_DIR", str(ROOT)))
 load_dotenv(STATE_ROOT / ".env")
 
 
+def _tool_dirs() -> None:
+    """Ali kompyuter yoqilganda (avtoyuklash) ishga tushsa, PATH'da Git/npm bo'lmasligi mumkin - o'zi qo'shadi.
+    Aks holda git (o'zini kuchaytirish, loyihalar) va npm orqali o'rnatilgan Codex "fayl topilmadi" xatosini beradi."""
+    path = os.environ.get("PATH", "")
+    have = {p.rstrip("\\/").lower() for p in path.split(os.pathsep) if p}
+    extra = [Path(os.environ.get(v, "")) / sub for v, sub in (
+        ("ProgramFiles", "Git/cmd"), ("ProgramW6432", "Git/cmd"), ("LOCALAPPDATA", "Programs/Git/cmd"),
+        ("APPDATA", "npm"), ("ProgramFiles", "nodejs"), ("ProgramFiles(x86)", "cloudflared")) if os.environ.get(v)]
+    add = [str(p) for p in extra if p.is_dir() and str(p).rstrip("\\/").lower() not in have]
+    if add:
+        os.environ["PATH"] = os.pathsep.join([path, *dict.fromkeys(add)])
+
+
+if os.name == "nt":
+    _tool_dirs()
+
+
 def _env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 

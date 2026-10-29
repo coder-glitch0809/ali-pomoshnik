@@ -348,6 +348,27 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(tried, [providers.GEMINI_FALLBACKS[0]])  # ishlagan o'rinbosar birinchi sinaladi
         providers._gemini_good.clear()
 
+    def test_self_upgrade_falls_back_to_codex(self):
+        from ali import self_upgrade
+        calls = []
+        def code(key, exe, prompt, path):
+            calls.append(key)
+            if key == "claude":
+                return False, "You've hit your weekly limit"
+            (path / "ali" / "codex_test_note.py").write_text("X = 1\n", encoding="utf-8")
+            return True, "Codex qo'shdi"
+        with patch.object(self_upgrade, "_coders", return_value=[("claude", "c"), ("codex", "x")]), \
+                patch.object(self_upgrade, "_code", side_effect=code), \
+                patch.object(self_upgrade, "_tests", return_value=(True, "1 ta test; hammasi o'tdi")), \
+                patch.object(self_upgrade, "_dasturchi", return_value=""):
+            res = self_upgrade.run("sinov uchun kichik o'zgarish", lambda note: None)
+        try:
+            self.assertEqual(calls, ["claude", "codex"])
+            self.assertTrue(res["ok"])
+            self.assertIn("codex_test_note.py", res["diff"])
+        finally:
+            self_upgrade.discard(res["id"])
+
     def test_permission_request_sends_voice(self):
         from types import SimpleNamespace
         bot = TelegramBot()
