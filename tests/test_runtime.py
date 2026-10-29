@@ -312,6 +312,20 @@ class RuntimeTests(unittest.TestCase):
         with patch("httpx.post", return_value=bad), self.assertRaises(RuntimeError) as err:
             omniroute.chat("salom")
         self.assertIn("kalit kerak", str(err.exception))
+        # auto ishlamasa - boshqa provayderga o'tadi, buzuq provayderning qolgan modellari o'tkaziladi
+        omniroute._good.clear(); omniroute._bad.clear()
+        fail = MagicMock(status_code=502, json=lambda: {"error": {"message": "x"}}, text="")
+        ok = MagicMock(status_code=200, json=lambda: {"choices": [{"message": {"content": "Toshkent"}}]})
+        calls = []
+        def fake(url, **kw):
+            calls.append(kw["json"]["model"])
+            return ok if kw["json"]["model"].startswith("ddgw/") else fail
+        with patch.object(omniroute, "model_ids", return_value=["dva/a", "dva/b", "no-think/dva/c", "ddgw/m"]), \
+                patch("httpx.post", side_effect=fake):
+            self.assertEqual(omniroute.chat("poytaxt?"), "Toshkent")
+        self.assertEqual(calls, ["auto", "dva/a", "ddgw/m"])
+        self.assertEqual(omniroute._good["model"], "ddgw/m")
+        omniroute._good.clear(); omniroute._bad.clear()
 
     def test_polling_requests_button_updates(self):
         import inspect
