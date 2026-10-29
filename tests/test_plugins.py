@@ -14,7 +14,8 @@ class PluginTests(unittest.TestCase):
         skills.load_all()
 
     def test_all_plugins_load_with_tools(self):
-        self.assertEqual(set(plugins.PLUGINS), {"gemini", "chatgpt", "photoshop", "coreldraw", "autocad", "max3ds"})
+        self.assertEqual(set(plugins.PLUGINS), {"gemini", "chatgpt", "photoshop", "coreldraw", "autocad", "max3ds",
+                                                "video_studio"})
         for p in plugins.PLUGINS.values():
             self.assertTrue(p.tools, p.key)
             self.assertTrue(all(t in skills.REGISTRY for t in p.tools))

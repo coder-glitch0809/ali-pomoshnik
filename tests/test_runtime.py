@@ -387,6 +387,9 @@ class RuntimeTests(unittest.TestCase):
         client.cookies.set(runtime.COOKIE, runtime.auth.TOKEN)  # parol bilan kirish - masofaviy boshqaruvga yetmaydi
         with patch.object(runtime, "is_local", return_value=False):
             self.assertEqual(client.get("/api/remote/frame").status_code, 403)
+        owner = patch.object(config, "telegram_owner_id", 7)  # test muhitida ega ID'si yo'q
+        owner.start()
+        self.addCleanup(owner.stop)
         client.cookies.set(runtime.COOKIE, runtime.auth.telegram_session())
         with patch("ali.remote_pc.frame", return_value=b"jpg"):
             r = client.get("/api/remote/frame")
