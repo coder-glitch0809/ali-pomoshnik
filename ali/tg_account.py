@@ -32,8 +32,12 @@ def credentials() -> tuple[int, str] | None:
     return (int(api_id), api_hash) if api_id.isdigit() and api_hash else None
 
 
+_authorized: bool | None = None  # oxirgi ulanishda aniqlangan: kirish yakunlanganmi
+
+
 def configured() -> bool:
-    return credentials() is not None and Path(str(SESSION) + ".session").exists()
+    """Kalit va sessiya bor, va (tekshirilgan bo'lsa) telefon bilan kirish yakunlangan."""
+    return credentials() is not None and Path(str(SESSION) + ".session").exists() and _authorized is not False
 
 
 def _client():
@@ -49,8 +53,10 @@ def _run(coro_fn):
     async def main():
         client = _client()
         await client.connect()
+        global _authorized
         try:
-            if not await client.is_user_authorized():
+            _authorized = bool(await client.is_user_authorized())
+            if not _authorized:
                 raise RuntimeError("Telegram akkauntga kirilmagan: Ruxsatlar -> Telegram akkaunt -> Kirish")
             if (await client.get_me()).bot:
                 raise RuntimeError("Kirishda telefon raqami o'rniga BOT tokeni kiritilgan - bot kanallarni ko'ra olmaydi. "

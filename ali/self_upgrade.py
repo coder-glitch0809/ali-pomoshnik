@@ -128,6 +128,9 @@ def run(task: str, progress) -> dict:
     job = monitor.start_job("dasturchi", f"Ali'ni kuchaytirish: {task[:200]}", "self_upgrade")
     try:
         exe = local_ai._claude_exe()
+        if until := local_ai.paused_until("claude"):
+            raise RuntimeError("Claude obuna limiti tugagan - "
+                               f"{time.strftime('%d.%m %H:%M', time.localtime(until))} da tiklanadi, keyin qayta yozing")
         if not exe:
             raise RuntimeError("Claude Code topilmadi (VS Code kengaytmasi yoki npm i -g @anthropic-ai/claude-code)")
         uid = uuid.uuid4().hex[:8]

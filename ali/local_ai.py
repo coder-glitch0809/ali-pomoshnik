@@ -19,6 +19,7 @@ import time
 import hashlib
 import platform
 import getpass
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .config import config
@@ -249,7 +250,7 @@ def set_option(name: str, value) -> None:
 def connected() -> list[str]:
     """Egasi ulagan (tekshirilgan) ilovalar: asosiy (primary) birinchi."""
     state, first = app_state(), option("_primary")
-    keys = [k for k in NAMES if state.get(k, {}).get("connected") and app_exe(k)]
+    keys = [k for k in NAMES if state.get(k, {}).get("connected") and app_exe(k) and not paused_until(k)]
     return sorted(keys, key=lambda k: k != first)
 
 
@@ -333,8 +334,55 @@ def clean_env() -> dict:
     return env
 
 
+# --- obuna limiti: tugasa tiklanguncha shu ilovaga murojaat qilinmaydi (fon ishlari limitni "yeb" qo'ymasin) ---
+LIMITS = config.data_dir / "ai_limits.json"
+_LIMIT_RE = re.compile(r"hit your .{0,20}limit|usage limit|rate limit|limit reached|quota", re.I)
+_RESET_RE = re.compile(r"resets\s+(?:[A-Za-z]{3,9}\s+\d{1,2},?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", re.I)
+
+
+def _limits() -> dict:
+    try:
+        return json.loads(LIMITS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def paused_until(key: str) -> float:
+    """Limit tugagan bo'lsa - tiklanish vaqti (unix), aks holda 0."""
+    until = float(_limits().get(key, 0))
+    return until if until > time.time() else 0
+
+
+def _reset_time(text: str) -> float:
+    """"resets 4pm" -> keyingi 16:00; topilmasa - 3 soatdan keyin qayta sinab ko'riladi."""
+    m = _RESET_RE.search(text or "")
+    if not m:
+        return time.time() + 3 * 3600
+    hour, minute, ampm = int(m.group(1)), int(m.group(2) or 0), (m.group(3) or "").lower()
+    if ampm == "pm" and hour < 12:
+        hour += 12
+    if ampm == "am" and hour == 12:
+        hour = 0
+    now = datetime.now()
+    at = now.replace(hour=hour % 24, minute=minute, second=0, microsecond=0)
+    if at <= now:
+        at += timedelta(days=1)
+    return at.timestamp() + 120
+
+
+def _mark_limit(key: str, raw: str) -> float:
+    data = _limits()
+    data[key] = _reset_time(raw)
+    LIMITS.write_text(json.dumps(data), encoding="utf-8")
+    log.warning("%s obuna limiti tugadi - %s gacha murojaat qilinmaydi", NAMES[key],
+                time.strftime("%d.%m %H:%M", time.localtime(data[key])))
+    return data[key]
+
+
 def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: list[str] | None = None) -> str:
     """Bitta ilovaga so'rov (ruxsatni chaqiruvchi tekshiradi). images - rasm fayllari yo'llari. Xatoda RuntimeError."""
+    if until := paused_until(key):
+        raise RuntimeError(f"{NAMES[key]} obuna limiti tugagan - {time.strftime('%d.%m %H:%M', time.localtime(until))} da tiklanadi")
     WORKDIR.mkdir(parents=True, exist_ok=True)
     if images and key == "claude":  # Claude Code rasmni fayl sifatida o'qib ko'radi
         prompt += "\n\nBiriktirilgan rasm(lar) - Read vositasi bilan ochib, diqqat bilan ko'r:\n" + "\n".join(images)
@@ -353,8 +401,9 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
         if "IneligibleTierError" in raw:
             detail = ("Google Gemini CLI'ni shaxsiy akkauntlar uchun to'xtatgan - bu ilova endi ishlamaydi. "
                       "Gemini'dan API kaliti orqali foydalaning.")
-        elif "usage limit" in raw.lower():
-            detail = "obuna limiti tugagan, keyinroq tiklanadi"
+        elif _LIMIT_RE.search(raw):
+            until = _mark_limit(key, raw)
+            detail = f"obuna limiti tugagan - {time.strftime('%d.%m %H:%M', time.localtime(until))} da tiklanadi"
         raise RuntimeError(f"{NAMES[key]} javob bermadi (exit {proc.returncode}): {detail}")
     return answer
 
@@ -369,6 +418,8 @@ def ask(system: str, history: list[dict], text: str) -> tuple[str, str] | None:
     env = {k: v for k, v in os.environ.items()
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")}
     for key, exe in apps().items():
+        if paused_until(key):
+            continue
         try:
             proc = subprocess.run(_command(key, exe), input=prompt, cwd=WORKDIR, capture_output=True, text=True,
                                   encoding="utf-8", errors="replace", timeout=TIMEOUT, env=env,

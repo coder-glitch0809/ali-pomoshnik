@@ -279,6 +279,24 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn(56, remote_pc.sessions)
         self.assertIn("Yangi suhbat", msg.reply_text.call_args.args[0])
 
+    def test_pro_app_limit_pauses_until_reset(self):
+        import time as _t
+        from datetime import datetime
+        from ali import local_ai
+        at = datetime.fromtimestamp(local_ai._reset_time("You've hit your weekly limit · resets 4pm (Asia/Tashkent)"))
+        self.assertEqual((at.hour, at.minute), (16, 2))
+        self.assertGreater(at.timestamp(), _t.time())
+        local_ai.LIMITS.write_text('{"claude": %d}' % (_t.time() + 3600), encoding="utf-8")
+        try:
+            with patch("subprocess.run") as run:
+                with self.assertRaises(RuntimeError) as err:
+                    local_ai.ask_one("claude", "claude.exe", "salom")
+            run.assert_not_called()  # limit vaqtida ilova umuman chaqirilmaydi
+            self.assertIn("limiti", str(err.exception))
+            self.assertTrue(local_ai.paused_until("claude"))
+        finally:
+            local_ai.LIMITS.unlink(missing_ok=True)
+
     def test_polling_requests_button_updates(self):
         import inspect
         self.assertIn("allowed_updates=Update.ALL_TYPES", inspect.getsource(TelegramBot.start))
