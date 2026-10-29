@@ -62,14 +62,23 @@ async def synthesize(text: str) -> bytes:
     return await _edge_tts(text)
 
 
+FALLBACK_VOICE = "uz-UZ-SardorNeural"  # tanlangan ovoz mavjud bo'lmasa (masalan noto'g'ri nom) - o'zbekcha erkak ovozi
+
+
 async def _edge_tts(text: str) -> bytes:
     import edge_tts
 
-    audio = bytearray()
-    async for chunk in edge_tts.Communicate(text, config.tts_voice).stream():
-        if chunk["type"] == "audio":
-            audio.extend(chunk["data"])
-    return bytes(audio)
+    for voice in dict.fromkeys([config.tts_voice, FALLBACK_VOICE]):
+        audio = bytearray()
+        try:
+            async for chunk in edge_tts.Communicate(text, voice).stream():
+                if chunk["type"] == "audio":
+                    audio.extend(chunk["data"])
+        except edge_tts.exceptions.NoAudioReceived:
+            log.warning("Edge ovozi %s ishlamadi (bunday ovoz yo'q?) - %s ga o'tildi", voice, FALLBACK_VOICE)
+            continue
+        return bytes(audio)
+    raise RuntimeError("Edge ovozi javob bermadi")
 
 
 async def _eleven_tts(text: str, voice_id: str) -> bytes:

@@ -417,6 +417,14 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                     recalled = f"⚠️ Jadvalni rasmdan o'qib bo'lmadi: {e}. Hozirgi jadval:\n\n{schedule.week_text()}"
             elif owner and not images and (kind := schedule.is_query(text)):
                 recalled = schedule.answer(kind)
+            # Video montaj: "videoni reels qil / subtitr qo'sh / montaj qil" - oxirgi yuborilgan video ustida
+            from . import local_ai, montage
+            if not recalled and owner and not images and montage.is_query(text):
+                try:
+                    ready_m = local_ai.connected() if local_ai.access() is True else []
+                    recalled = await asyncio.to_thread(montage.run, text, "oxirgi", brain.registry, ready_m)
+                except Exception as e:
+                    recalled = f"⚠️ Montaj bajarilmadi: {e}"
             # O'zini kuchaytirish tasdiq tugmalari bilan Telegram'da ishlaydi
             from . import self_upgrade
             if not recalled and owner and source != "telegram" and self_upgrade.is_request(text):

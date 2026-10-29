@@ -31,6 +31,14 @@ def register(path: Path) -> None:
     _cleanup()
 
 
+def forget(path: Path) -> None:
+    """Oraliq faylni yuborilmaydigan qiladi va o'chiradi (masalan montajning oraliq bosqichlari)."""
+    with _lock:
+        if path in _created:
+            _created.remove(path)
+    path.unlink(missing_ok=True)
+
+
 def mark() -> int:
     with _lock:
         return len(_created)

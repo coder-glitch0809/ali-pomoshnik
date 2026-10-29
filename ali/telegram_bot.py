@@ -18,7 +18,7 @@ from telegram.constants import ChatAction, ParseMode
 from telegram.error import BadRequest, TelegramError, RetryAfter
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
-from . import auth, providers, tts
+from . import auth, outbox, providers, tts
 from .config import config
 from .hub import Listener, hub
 from .service import AskError, brain, run_ask
@@ -177,6 +177,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CallbackQueryHandler(self.public_button, pattern=r"^(pub:|own:)"))
         a.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
         a.add_handler(MessageHandler(filters.PHOTO, self.on_photo))
+        a.add_handler(MessageHandler(filters.VIDEO | filters.VIDEO_NOTE | filters.Document.VIDEO, self.on_video))
         a.add_handler(MessageHandler(filters.Document.ALL, self.on_document))
         a.add_handler(MessageHandler(filters.LOCATION, self.on_location))
         a.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
@@ -889,6 +890,47 @@ class TelegramBot(PublicTelegram, Listener):
             extra.append(f"[Havola mazmuni: {url}]\n{page[:8000]}" if page.strip()
                          else f"[Havola: {url} - sahifani WebFetch bilan o'zing ochib o'qi]")
         return text + ("\n\n" + "\n\n".join(extra) if extra else "")
+
+    async def on_video(self, update: Update, ctx):
+        """Video: saqlanadi va montaj qilinadi - izoh (caption) topshiriq; izohsiz - 9:16 + avtomatik subtitr."""
+        from . import ingest, local_ai, montage
+        if not await self._guard(update) or update.effective_user.id != self.owner_id:
+            return
+        m = update.message
+        media = m.video or m.video_note or m.document
+        if media.file_size and media.file_size > 20 * 1024 * 1024:
+            await m.reply_text("Video juda katta: Telegram botlar 20 MB gacha yuklab oladi. Qisqaroq yoki siqilgan "
+                               "variantini yuboring, yoki kompyuterdagi fayl yo'lini yozing.")
+            return
+        file = await media.get_file()
+        name = getattr(media, "file_name", None) or f"video_{media.file_unique_id}.mp4"
+        path = await asyncio.to_thread(ingest.save_upload, name, bytes(await file.download_as_bytearray()))
+        task = m.caption or ""
+        status = await m.reply_text("🎬 Video qabul qilindi. " + ("Topshiriq bo'yicha montaj qilyapman…" if task else
+                                    "Reels qilyapman: 9:16 + avtomatik subtitr (topshiriq bo'lsa, videoga izoh yozing)…"))
+        loop = asyncio.get_running_loop()
+
+        def progress(note: str) -> None:
+            asyncio.run_coroutine_threadsafe(status.edit_text(note), loop)
+
+        start = outbox.mark()
+        ready = local_ai.connected() if local_ai.access() is True else []
+        try:
+            report = await asyncio.to_thread(montage.run, task, str(path), brain.registry, ready, progress)
+        except Exception as e:
+            await m.reply_text(f"⚠️ Montaj bajarilmadi: {str(e)[:500]}")
+            return
+        await m.reply_text(report[:4000])
+        for f in outbox.since(start):
+            try:
+                with open(f, "rb") as fh:
+                    if f.suffix == ".mp4":
+                        await m.reply_video(fh, caption=f"🎬 {f.name}", supports_streaming=True)
+                    else:
+                        await m.reply_document(fh, filename=f.name)
+            except Exception:
+                log.exception("Montaj natijasi yuborilmadi: %s", f)
+                await m.reply_text(f"⚠️ {f.name} tayyor, lekin yuborilmadi (hajmi katta bo'lishi mumkin) - saytdan oling.")
 
     async def on_document(self, update: Update, ctx):
         """Fayl (PDF, Word, Excel, PowerPoint, matn, kod, rasm): o'qiladi, javob beriladi va bilim bo'ladi."""
