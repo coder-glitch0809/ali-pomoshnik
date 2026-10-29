@@ -327,6 +327,26 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(omniroute._good["model"], "ddgw/m")
         omniroute._good.clear(); omniroute._bad.clear()
 
+    def test_gemini_falls_back_when_model_busy(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        from ali import providers
+        providers._gemini_good.clear()
+        tried = []
+        def gen(model, contents, config=None):
+            tried.append(model)
+            if model == "busy-model":
+                raise RuntimeError("503 high demand")
+            return SimpleNamespace(text="Toshkent")
+        client = MagicMock(); client.models.generate_content.side_effect = gen
+        with patch.object(providers, "_gemini_client", return_value=client):
+            self.assertEqual(providers._gemini_generate("busy-model", "x").text, "Toshkent")
+            self.assertEqual(tried, ["busy-model", providers.GEMINI_FALLBACKS[0]])
+            tried.clear()
+            providers._gemini_generate("busy-model", "x")
+            self.assertEqual(tried, [providers.GEMINI_FALLBACKS[0]])  # ishlagan o'rinbosar birinchi sinaladi
+        providers._gemini_good.clear()
+
     def test_polling_requests_button_updates(self):
         import inspect
         self.assertIn("allowed_updates=Update.ALL_TYPES", inspect.getsource(TelegramBot.start))

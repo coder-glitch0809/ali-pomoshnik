@@ -30,7 +30,9 @@ ACCESS = config.data_dir / "local_access.json"
 WORKDIR = config.data_dir / "local_ai"
 TIMEOUT = 300
 NAMES = {"claude": "Claude", "codex": "ChatGPT", "gemini": "Gemini", "omniroute": "OmniRoute"}
-APPS = ("claude", "codex", "gemini")  # o'rnatiladigan ilovalar (OmniRoute - HTTP shlyuz, ilova emas)
+# o'rnatiladigan ilovalar. Gemini CLI yo'q: Google uni shaxsiy akkauntlar uchun to'xtatgan (IneligibleTierError) -
+# Gemini API kaliti orqali ishlaydi (Ulanishlar -> Gemini). OmniRoute - HTTP shlyuz, ilova emas.
+APPS = ("claude", "codex")
 
 
 # --- ruxsat ---
@@ -77,7 +79,7 @@ def app_exe(key: str) -> str | None:
 def apps() -> dict[str, str]:
     """Ishlatiladigan ilovalar: {kalit: bajariladigan fayl}. Egasi ulagan (tekshirilgan) ilovalar birinchi."""
     state = app_state()
-    found = {"gemini": app_exe("gemini"), "codex": app_exe("codex")}
+    found = {"codex": app_exe("codex")}
     if config.chat_provider == 'claude' or state.get("claude", {}).get("connected"):
         found['claude'] = _claude_exe()
     found = {k: v for k, v in found.items() if v and state.get(k, {}).get("connected") is not False}

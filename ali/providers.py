@@ -21,8 +21,30 @@ def _gemini_client():
         from google import genai
         from google.genai import types
         # Google javob bermasa so'rov cheksiz osilib qolmasin (millisekund)
-        _gemini = genai.Client(api_key=config.gemini_api_key, http_options=types.HttpOptions(timeout=90_000))
+        _gemini = genai.Client(api_key=config.gemini_api_key, http_options=types.HttpOptions(timeout=45_000))
     return _gemini
+
+
+# Asosiy Gemini modeli band (503), eskirgan (404), limiti tugagan (429) yoki osilib qolsa - zaxiralar sinaladi.
+GEMINI_FALLBACKS = ("gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-lite-latest")
+_gemini_good: dict[str, str] = {}  # asosiy model -> oxirgi ishlagan o'rinbosar
+
+
+def _gemini_generate(model: str, contents, config_=None):
+    """generate_content zaxira modellar bilan: ishlagan o'rinbosar eslab qolinadi (keyingi safar birinchi sinaladi)."""
+    order = list(dict.fromkeys([_gemini_good.get(model, model), model, *GEMINI_FALLBACKS]))
+    last = None
+    for m in order:
+        try:
+            response = _gemini_client().models.generate_content(model=m, contents=contents, config=config_)
+        except Exception as e:  # band / eskirgan / limit / vaqt tugadi - keyingi model
+            last = e
+            log.warning("Gemini %s ishlamadi: %s", m, str(e)[:120])
+            continue
+        if m != model:
+            _gemini_good[model] = m
+        return response
+    raise last or RuntimeError("Gemini javob bermadi")
 
 
 def _openai_client():
@@ -43,7 +65,7 @@ def ask_openai(prompt: str) -> str:
 
 
 def ask_gemini(prompt: str) -> str:
-    return _gemini_client().models.generate_content(model=config.gemini_model, contents=prompt).text or ""
+    return _gemini_generate(config.gemini_model, prompt).text or ""
 
 
 def ask_all(prompt: str) -> dict[str, str]:
@@ -168,7 +190,7 @@ def gemini_chat(system: str, history: list[dict], text: str, max_tokens: int = 1
     # Fikrlash tokenlari ham chegaraga kiradi - javob kesilmasligi uchun zaxira qo'shamiz
     cfg = types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens + 4096,
                                       response_mime_type="application/json" if json_mode else None)
-    response = _gemini_client().models.generate_content(model=model or config.gemini_chat_model, contents=contents, config=cfg)
+    response = _gemini_generate(model or config.gemini_chat_model, contents, cfg)
     return (response.text or "").strip()
 
 
@@ -186,9 +208,9 @@ def transcribe(audio: bytes, filename: str = "audio.webm") -> str:
     from google.genai import types
 
     mime = MIME.get(filename.rsplit(".", 1)[-1].lower(), "audio/ogg")
-    response = _gemini_client().models.generate_content(
-        model=config.gemini_fast_model,
-        contents=[
+    response = _gemini_generate(
+        config.gemini_fast_model,
+        [
             types.Part.from_bytes(data=audio, mime_type=mime),
             "Bu audioni so'zma-so'z matnga yoz (asosan o'zbek tilida). Faqat matnni qaytar, boshqa hech narsa yozma.",
         ],
