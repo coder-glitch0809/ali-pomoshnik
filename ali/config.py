@@ -133,6 +133,10 @@ class Config:
     vercel_token: str = field(default_factory=lambda: _env("VERCEL_TOKEN"))
     vercel_team_id: str = field(default_factory=lambda: _env("VERCEL_TEAM_ID"))
     render_api_key: str = field(default_factory=lambda: _env("RENDER_API_KEY"))
+    # OmniRoute - kompyuterdagi AI shlyuz (Pro ilovalardan keyin zaxira); bo'sh URL - o'chirilgan
+    omniroute_url: str = field(default_factory=lambda: _env("OMNIROUTE_URL", "http://127.0.0.1:20128/v1"))
+    omniroute_api_key: str = field(default_factory=lambda: _env("OMNIROUTE_API_KEY"))
+    omniroute_model: str = field(default_factory=lambda: _env("OMNIROUTE_MODEL", "auto"))
     projects_dirs: list[Path] = field(default_factory=lambda: [
         Path(p.strip()) for p in (_env("PROJECTS_DIRS") or str(ROOT.parent)).split(";") if p.strip()
     ])

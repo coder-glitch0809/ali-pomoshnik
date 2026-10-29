@@ -29,7 +29,8 @@ log = logging.getLogger("ali.local_ai")
 ACCESS = config.data_dir / "local_access.json"
 WORKDIR = config.data_dir / "local_ai"
 TIMEOUT = 300
-NAMES = {"claude": "Claude", "codex": "ChatGPT", "gemini": "Gemini"}
+NAMES = {"claude": "Claude", "codex": "ChatGPT", "gemini": "Gemini", "omniroute": "OmniRoute"}
+APPS = ("claude", "codex", "gemini")  # o'rnatiladigan ilovalar (OmniRoute - HTTP shlyuz, ilova emas)
 
 
 # --- ruxsat ---
@@ -89,7 +90,7 @@ def summary() -> dict:
             "programs": programs(), "services": services(), "apps": [
         {"key": k, "name": NAMES[k], "ready": k in found, "installed": bool(app_exe(k)),
          "connected": state.get(k, {}).get("connected"), "at": state.get(k, {}).get("at", ""),
-         "error": state.get(k, {}).get("error", "")} for k in NAMES]}
+         "error": state.get(k, {}).get("error", "")} for k in APPS]}
 
 
 # --- boshqa dasturlar (kalit kerak emas - kompyuterda topiladi) ---
@@ -250,7 +251,10 @@ def set_option(name: str, value) -> None:
 def connected() -> list[str]:
     """Egasi ulagan (tekshirilgan) ilovalar: asosiy (primary) birinchi."""
     state, first = app_state(), option("_primary")
-    keys = [k for k in NAMES if state.get(k, {}).get("connected") and app_exe(k) and not paused_until(k)]
+    keys = [k for k in APPS if state.get(k, {}).get("connected") and app_exe(k) and not paused_until(k)]
+    from . import omniroute
+    if omniroute.available():  # oxirgi zaxira: ko'p modelli shlyuz
+        keys.append("omniroute")
     return sorted(keys, key=lambda k: k != first)
 
 
@@ -383,6 +387,9 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
     """Bitta ilovaga so'rov (ruxsatni chaqiruvchi tekshiradi). images - rasm fayllari yo'llari. Xatoda RuntimeError."""
     if until := paused_until(key):
         raise RuntimeError(f"{NAMES[key]} obuna limiti tugagan - {time.strftime('%d.%m %H:%M', time.localtime(until))} da tiklanadi")
+    if key == "omniroute":
+        from . import omniroute
+        return omniroute.chat(prompt, timeout, images)
     WORKDIR.mkdir(parents=True, exist_ok=True)
     if images and key == "claude":  # Claude Code rasmni fayl sifatida o'qib ko'radi
         prompt += "\n\nBiriktirilgan rasm(lar) - Read vositasi bilan ochib, diqqat bilan ko'r:\n" + "\n".join(images)

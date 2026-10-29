@@ -297,6 +297,22 @@ class RuntimeTests(unittest.TestCase):
         finally:
             local_ai.LIMITS.unlink(missing_ok=True)
 
+    def test_omniroute_is_last_pro_fallback(self):
+        from unittest.mock import MagicMock
+        from ali import local_ai, omniroute
+        with patch.object(omniroute, "available", return_value=True), \
+                patch.object(local_ai, "app_state", return_value={"claude": {"connected": True}}), \
+                patch.object(local_ai, "app_exe", return_value="claude.exe"):
+            self.assertEqual(local_ai.connected(), ["claude", "omniroute"])  # oxirgi zaxira
+        reply = MagicMock(status_code=200, json=lambda: {"choices": [{"message": {"content": " 4 "}}]})
+        with patch("httpx.post", return_value=reply) as post:
+            self.assertEqual(local_ai.ask_one("omniroute", "http", "2+2?"), "4")
+        self.assertTrue(post.call_args.args[0].endswith("/chat/completions"))
+        bad = MagicMock(status_code=401, json=lambda: {"error": {"message": "Authentication required"}}, text="")
+        with patch("httpx.post", return_value=bad), self.assertRaises(RuntimeError) as err:
+            omniroute.chat("salom")
+        self.assertIn("kalit kerak", str(err.exception))
+
     def test_polling_requests_button_updates(self):
         import inspect
         self.assertIn("allowed_updates=Update.ALL_TYPES", inspect.getsource(TelegramBot.start))
