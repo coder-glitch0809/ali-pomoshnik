@@ -13,6 +13,8 @@ QUERY = re.compile(r"(telegram|телеграм|телеграмм)\S*.{0,80}(yo
 SIMPLE = re.compile(r"(?:telegram\S*|телеграм\S*)?\s*(?:da|даги|да)?\s*(.+?)(?:ga|га)\s+(?:yoz\S*|ёз\S*|xabar\S*|хабар\S*"
                     r"|yubor\S*|юбор\S*|jo['ʻ‘]?nat\S*|жўнат\S*)\s*(?:qo['ʻ‘]?y|қўй)?[\s:,-]+(.+)", re.I | re.S)
 LABEL = "telegram_send"
+SELF = {"o'zim", "o'zimga", "ozim", "ozimga", "ўзим", "ўзимга", "узимга", "me", "saqlangan", "saqlangan xabarlar",
+        "saved messages", "избранное", "o‘zim", "o‘zimga", "oʻzim", "oʻzimga"}
 
 PARSE = """Foydalanuvchi o'z Telegram akkauntidan kimgadir xabar yozishni so'ramoqda (ovozli xabardan matnga o'girilgan
 bo'lishi mumkin). Aniqla: KIMGA (ism, @username yoki telefon - so'zma-so'z, "ga" qo'shimchasisiz) va NIMA yozilsin.
@@ -52,8 +54,12 @@ def handle(text: str, ready: list[str]) -> str:
     to, message = parse(text, ready)
     if not to or not message:
         return "Kimga va nima yozishni tushunmadim. Masalan: «Telegramda Akmalga yoz: ertaga soat 10 da uchrashamiz»."
+    if to.lower().strip(" .,'ʻ‘") in SELF:  # «o'zimga yoz» - Saqlangan xabarlar
+        found = [{"id": "me", "title": "Saqlangan xabarlar (o‘zingiz)", "username": "", "exact": True, "kind": "shaxs"}]
+    else:
+        found = None
     try:
-        found = tg_account.people(to)
+        found = found or tg_account.people(to)
     except RuntimeError as e:
         return f"⚠️ {e}"
     if not found:
