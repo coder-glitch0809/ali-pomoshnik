@@ -28,6 +28,8 @@ log = logging.getLogger("ali.video_studio")
 FORMATS = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (1080, 1080)}
 PLATFORMS = ["reels", "tiktok", "shorts", "youtube", "telegram"]
 FPS = 25
+BRAND_COLORS = ("#FFFFFF", "#1F9D55", "#FFC21A")
+DEFAULT_TOPIC = "Targetologlik yoki tashqi reklama bo'yicha bitta foydali video g'oyasini o'zing tanla"
 
 
 def _ffmpeg() -> str:
@@ -63,7 +65,11 @@ _SCRIPT_SYSTEM = (
     '"image_prompt": "fon rasm tavsifi inglizcha, matnsiz, vertikal kompozitsiya", "duration": soniya}], '
     '"caption": "post matni, birinchi qator - ilmoq, oxirida CTA", "hashtags": ["#..."]}. '
     "Birinchi sahna - kuchli hook (0-3 s), o'rtada qiymat yoki hikoya, oxirgi sahna - aniq CTA. "
-    "Soxta raqam, soxta sharh va aldovchi va'da yozma."
+    "Soxta raqam, soxta sharh va aldovchi va'da yozma. "
+    "Egasi Abbos, Beshariq. Kontent yo'nalishlari: targetolog sifatida shaxsiy brend "
+    "(@m_abbosbek1) va Planet Print tashqi reklama agentligi (@planet_print_beshariq): "
+    "hajmli harflar, bannerlar, vizitkalar. Mavzuni shu yo'nalishlardan mos bittasiga bog'la; "
+    "informatika o'qituvchiligini kontentga qo'shma. CTA tanlangan yo'nalishga mos bo'lsin."
 )
 
 
@@ -80,7 +86,7 @@ def _parse_script(raw: str) -> dict:
 
 
 def _write_script(topic: str, platform: str, duration_s: int, audience: str, goal: str, language: str) -> dict:
-    prompt = (f"Mavzu: {topic}\nPlatforma: {platform}\nDavomiylik: ~{duration_s} soniya\n"
+    prompt = (f"Mavzu: {_clean(topic, 500) or DEFAULT_TOPIC}\nPlatforma: {platform}\nDavomiylik: ~{duration_s} soniya\n"
               f"Auditoriya: {audience or 'aniqlanmagan, mavzudan kelib chiq'}\nMaqsad: {goal or 'qamrov va obunachi'}\n"
               f"Til: {language} (jonli, tabiiy). Sahnalar soni: {max(3, min(8, duration_s // 5))}.")
     _, answer = providers.chat(_SCRIPT_SYSTEM, [], prompt, max_tokens=2500, json_mode=True)
@@ -273,7 +279,7 @@ def _srt(scenes: list[dict]) -> str:
         "scenes: [{title, text, narration, image_prompt, duration}] (3-8 sahna)."
     ),
     params={
-        "topic": {"type": "string", "description": "Video mavzusi (scenes berilmasa ssenariy shundan yoziladi)"},
+        "topic": {"type": "string", "description": "Video mavzusi (ixtiyoriy, berilmasa egasining yo'nalishidan tanlanadi)"},
         "scenes": {"type": "array", "items": {"type": "object"}, "description": "Tayyor sahnalar (ixtiyoriy)"},
         "format": {"type": "string", "enum": list(FORMATS), "description": "Kadr nisbati (standart 9:16)"},
         "platform": {"type": "string", "enum": PLATFORMS, "description": "Platforma (standart reels)"},
@@ -284,13 +290,13 @@ def _srt(scenes: list[dict]) -> str:
         "audience": {"type": "string", "description": "Maqsadli auditoriya"},
         "goal": {"type": "string", "description": "Maqsad: obunachi, sotuv, brend..."},
     },
-    required=["topic"],
+    required=[],
 )
-def make_content_video(topic: str, scenes: list | None = None, format: str = "9:16", platform: str = "reels",
+def make_content_video(topic: str = "", scenes: list | None = None, format: str = "9:16", platform: str = "reels",
                        duration_s: int = 30, voice: bool = True, ai_images: bool = True, colors: list | None = None,
                        audience: str = "", goal: str = "") -> str:
     import imageio_ffmpeg
-    topic = _clean(topic, 500) or "Video"
+    topic = _clean(topic, 500) or DEFAULT_TOPIC
     script = {"title": topic, "scenes": scenes or []}
     if not scenes:
         script = _write_script(topic, platform, max(10, min(int(duration_s or 30), 600)), audience, goal, "o'zbek (lotin)")
@@ -303,7 +309,7 @@ def make_content_video(topic: str, scenes: list | None = None, format: str = "9:
     if not clean:
         return "Ssenariyda sahna yo'q: scenes ga kamida bitta {title, narration} bering."
     title = _clean(script.get("title"), 80) or topic[:60]
-    cols = [_hex(c, d) for c, d in zip((colors or []) + [None] * 3, ("#0F172A", "#1D4ED8", "#F59E0B"))][:3]
+    cols = [_hex(c, d) for c, d in zip((colors or []) + [None] * 3, BRAND_COLORS)][:3]
     w, h = FORMATS.get(format, FORMATS["9:16"])
     path = outbox.new_path(title, "mp4")
     stem = path.with_suffix("")

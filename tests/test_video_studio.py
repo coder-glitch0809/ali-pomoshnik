@@ -50,13 +50,25 @@ class VideoStudioTests(unittest.TestCase):
         self.assertIn("00:00:00,000 --> 00:00:01,000\nbir", srt)
         self.assertIn("00:00:01,000 --> 00:00:02,000\nikki", srt)
 
+    def test_default_topic_matches_owner_directions(self):
+        self.assertIsNone(skills.REGISTRY["make_content_video"].validate({}))
+        with patch.object(video_studio.providers, "chat", return_value=("AI", json.dumps(SCRIPT))) as chat:
+            video_studio._write_script("", "reels", 30, "", "", "o'zbek")
+        system, _, prompt = chat.call_args.args
+        self.assertIn("targetolog", system)
+        self.assertIn("Planet Print", system)
+        self.assertIn("informatika", system)
+        self.assertIn(video_studio.DEFAULT_TOPIC, prompt)
+
     def test_make_content_video_writes_script_voice_and_files(self):
         with tempfile.TemporaryDirectory() as d, patch.object(outbox, "DIR", Path(d)), \
                 patch.dict(video_studio.FORMATS, {"9:16": (144, 256)}), \
                 patch.object(video_studio.providers, "chat", return_value=("AI", json.dumps(SCRIPT))), \
                 patch.object(video_studio.providers, "image_sources", return_value=[]), \
                 patch.object(video_studio, "_tts", return_value=_silence()):
-            result = video_studio.make_content_video("banner reklama")
+            with patch.object(video_studio, "_frame", wraps=video_studio._frame) as frame:
+                result = video_studio.make_content_video()
+            self.assertEqual(frame.call_args.args[6], list(video_studio.BRAND_COLORS))
             files = {p.suffix for p in Path(d).iterdir()}
             self.assertIn("ovozli", result)
             self.assertEqual(files, {".mp4", ".srt", ".txt"})  # vaqtinchalik ovoz fayllari o'chirilgan
