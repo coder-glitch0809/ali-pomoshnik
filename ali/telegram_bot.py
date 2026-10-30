@@ -11,6 +11,7 @@ import hashlib
 import json
 import logging
 import re
+import threading
 import time
 
 from telegram import BotCommand, BotCommandScopeChat, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update, WebAppInfo, MenuButtonCommands, MenuButtonWebApp
@@ -1035,6 +1036,14 @@ class TelegramBot(PublicTelegram, Listener):
         caption = update.message.caption or ""
         # Rasm ham o'rganiladi: Pro ilova ko'radi, mos agent bazasiga tavsif va bilim yoziladi
         path = await asyncio.to_thread(ingest.save_upload, "telegram_rasm.jpg", raw)
+        from . import studio_flow  # kreativ video brifi rasm kutyapti: izohsiz yoki «#B12» izohli rasm - brifga
+        if studio_flow.waiting() and (not caption.strip() or studio_flow.TAG.match(caption.strip())):
+            full, note = await asyncio.to_thread(studio_flow.add_image, str(path), caption)
+            if note:
+                await update.message.reply_text(note)
+            if full:
+                threading.Thread(target=studio_flow._build_and_send, args=(full["id"], hub.notify), daemon=True).start()
+            return
         self.learn_bg(update, f"Rasm {time.strftime('%Y-%m-%d %H:%M')}" + (f": {caption[:60]}" if caption else ""),
                       caption, "Telegram (rasm)", [str(path)], hint=caption)
         await self.process(update, ctx, caption, [{"media_type": "image/jpeg", "data": data}])

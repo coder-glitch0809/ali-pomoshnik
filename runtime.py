@@ -72,6 +72,8 @@ async def lifespan(_app):
     from ali import self_upgrade
     # yarim qolgan kuchaytirish - bot ulangach (30 s) egasiga aytiladi
     threading.Thread(target=lambda: (time.sleep(30), self_upgrade.interrupted(hub.notify)), daemon=True).start()
+    from ali import studio_flow
+    studio_flow.start_watch(hub.notify)  # kreativ video: @kanalga tashlangan rasmlar brifga olinadi
     from ali import tunnel
     tunnel.start()  # telefondan istalgan joydan kirish (Cloudflare tunnel) - manzil Telegram tugmasiga yoziladi
     bot = None

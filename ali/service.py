@@ -418,6 +418,20 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
             elif owner and not images and (kind := schedule.is_query(text)):
                 recalled = schedule.answer(kind)
             # Video montaj: "videoni reels qil / subtitr qo'sh / montaj qil" - oxirgi yuborilgan video ustida
+            # Kreativ video: «kreativ video / brif / virusli reels: mavzu» - brif va rasm promptlari; «#B3 video qil» - yig'ish
+            from . import studio_flow
+            build = re.search(r"#?\s*[BbВв](\d{1,4})\s+(video|видео)\s+(qil|қил|кил|yig|йиғ)", text or "")
+            if not recalled and owner and not images and build:
+                try:
+                    recalled = (await asyncio.to_thread(studio_flow.build, int(build.group(1))))["text"]
+                except Exception as e:
+                    recalled = f"⚠️ Video yig'ilmadi: {e}"
+            elif not recalled and owner and not images and studio_flow.is_query(text):
+                try:
+                    ready_s = local_ai.connected() if local_ai.access() is True else []
+                    recalled = "\n\n".join(await asyncio.to_thread(studio_flow.start, text, ready_s))
+                except Exception as e:
+                    recalled = f"⚠️ Brif tuzilmadi: {e}"
             # Video yaratish (video berilmagan): «targetolog haqida reels qilib ber» - Video montajchi noldan yasaydi
             from . import local_ai, montage
             if not recalled and owner and not images and (montage.is_creation(text) or montage.is_query(text)):

@@ -296,6 +296,8 @@ def _srt(scenes: list[dict]) -> str:
         "duration_s": {"type": "integer", "description": "Taxminiy davomiylik, soniya (standart 30)"},
         "voice": {"type": "boolean", "description": "Diktor ovozi qo'shilsinmi (standart ha)"},
         "ai_images": {"type": "boolean", "description": "Sahnalarga AI fon rasm yaratilsinmi (standart ha)"},
+        "images": {"type": "array", "items": {"type": "string"},
+                   "description": "Tayyor rasm fayllari - har sahnaga bittadan fon (egasi ChatGPT/Gemini ilovasida yaratgan)"},
         "colors": {"type": "array", "items": {"type": "string"}, "description": "[fon1, fon2, aksent] #RRGGBB"},
         "audience": {"type": "string", "description": "Maqsadli auditoriya"},
         "goal": {"type": "string", "description": "Maqsad: obunachi, sotuv, brend..."},
@@ -304,7 +306,7 @@ def _srt(scenes: list[dict]) -> str:
 )
 def make_content_video(topic: str = "", scenes: list | None = None, format: str = "9:16", platform: str = "reels",
                        duration_s: int = 30, voice: bool = True, ai_images: bool = True, colors: list | None = None,
-                       audience: str = "", goal: str = "") -> str:
+                       audience: str = "", goal: str = "", images: list | None = None) -> str:
     import imageio_ffmpeg
     topic = _clean(topic, 500) or DEFAULT_TOPIC
     script = {"title": topic, "scenes": scenes or []}
@@ -348,10 +350,17 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
         bare = re.sub("[𐀀-􏿿☀-➿️‍]", "", sc["narration"] or "").strip()
         sc["subs"] = _chunks(bare) if bare else []
 
-    # 2) AI fon rasmlari (bo'lmasa - gradient)
+    # 2) Fon rasmlari: egasi bergan tayyor rasmlar -> AI rasmlar -> gradient
     backgrounds = {}
-    if ai_images and providers.image_sources("standard"):
+    for i, img in enumerate((images or [])[:len(clean)]):
+        try:
+            backgrounds[i] = _cover(Path(img).read_bytes(), w, h)
+        except Exception as e:
+            log.warning("Rasm o'qilmadi %s: %s", img, e)
+    if ai_images and len(backgrounds) < len(clean) and providers.image_sources("standard"):
         for i, sc in enumerate(clean):
+            if i in backgrounds:
+                continue
             prompt = sc["image_prompt"] or f"{sc['title']}, {topic}"
             try:
                 data, _ = providers.generate_image_best(prompt + ", cinematic, no text, vertical social media background",

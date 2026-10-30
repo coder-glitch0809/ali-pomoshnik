@@ -160,6 +160,14 @@ def people(name: str, limit: int = 300) -> list[dict]:
     return _run(go)
 
 
+def send_file(chat, path: str, caption: str = "") -> str:
+    """Faylni (video/rasm) kanal yoki chatga joylaydi - egasi belgilagan kanal (VIDEO_CHANNEL) uchun."""
+    async def go(client):
+        await client.send_file(chat, path, caption=caption[:1024], supports_streaming=True)
+        return "joylandi"
+    return _run(go)
+
+
 def send_message(chat_id: int, text: str) -> str:
     """Xabar yuboradi (chaqiruvchi egasining tasdig'ini oldin oladi)."""
     async def go(client):
