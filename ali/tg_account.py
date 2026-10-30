@@ -347,8 +347,15 @@ if __name__ == "__main__":  # kirish oynasi: python -m ali.tg_account
                 return phone
             print("Bu telefon raqami emas (bot tokeni kiritmang). Masalan: +998901234567")
 
-    c = TelegramClient(str(SESSION), *creds)
-    c.start(phone=ask_phone)  # kod va (bo'lsa) 2 bosqichli parolni Telethon o'zi so'raydi
-    me = c.get_me()
-    c.disconnect()
-    print(f"\nTayyor: {me.first_name} (@{me.username or '-'}) bilan kirildi. Oynani yopishingiz mumkin.")
+    result = config.data_dir / "tg_login.log"  # natija (xato ham) - Ali ko'ra olishi uchun; raqam/kod yozilmaydi
+    try:
+        c = TelegramClient(str(SESSION), *creds)
+        c.start(phone=ask_phone)  # kod va (bo'lsa) 2 bosqichli parolni Telethon o'zi so'raydi
+        me = c.get_me()
+        c.disconnect()
+        result.write_text(f"{time.strftime('%F %T')} OK: {me.first_name} (@{me.username or '-'})", encoding="utf-8")
+        print(f"\nTayyor: {me.first_name} (@{me.username or '-'}) bilan kirildi. Oynani yopishingiz mumkin.")
+    except Exception as e:
+        result.write_text(f"{time.strftime('%F %T')} XATO: {type(e).__name__}: {e}", encoding="utf-8")
+        print(f"\n⚠️ Kirib bo'lmadi: {type(e).__name__}: {e}\nOynani yopib, Ali'dan qayta kirishni so'rang.")
+        raise
