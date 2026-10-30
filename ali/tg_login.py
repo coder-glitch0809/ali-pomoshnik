@@ -96,5 +96,6 @@ def _finish() -> dict:
         return me
     me = _run(go())
     tg_account._authorized = True
+    tg_account._auth_cache.update(at=time.time(), ok=True)
     _state.clear()
     return {"step": "done", "name": f"{me.first_name or ''} (@{me.username or '-'})"}

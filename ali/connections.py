@@ -28,14 +28,12 @@ PROVIDERS = {
         steps=['Google hisobingiz bilan Cloud Console’ga kiring va loyiha tanlang.', 'Google Auth Platform’da OAuth ilovasi, ruxsatlar va Web client yarating.', 'Ali’da Google OAuth callback va Gmail/Drive vositalari hali o‘rnatilmagan. Hozir hisob ulash tugallanmaydi; bu sozlash yo‘riqnomasi.']),
     'meta': dict(name='Meta Ads', url='https://developers.facebook.com/apps/', link='Meta orqali sozlash',
         steps=['Meta hisobingizga kiring va Business ilovasini tanlang.', 'Marketing API va reklama hisobiga tegishli ruxsatlarni sozlang.', 'Ali’da Meta Ads boshqaruv vositasi hali o‘rnatilmagan. Hozir bu sozlash yo‘riqnomasi.']),
-    'channels': dict(name='Telegram kanallari', url='https://telegram.org/faq_channels', link='Kanalni ulash yo‘riqnomasi',
-        steps=['Telegram’da o‘z kanalingiz sozlamalarini oching.', 'Ali botini administrator qilib qo‘shing, faqat post joylash ruxsatini bering.', 'Keyin Ali’ga yozing: “@kanal ga … mavzusida rasmli post joyla” - Ali rasm yaratadi (ChatGPT/Gemini, avval pro model) va tasdiqingizdan keyin joylaydi. Doimiy kanalni .env dagi TELEGRAM_CHANNEL ga yozish mumkin.']),
     'firebase': dict(name='Firebase (xotira nusxasi)', url='https://console.firebase.google.com/', link='Firebase Console', json=True,
         steps=['Firebase Console’da loyihangizni oching → Build → Firestore Database → yoqilganini tekshiring (yo‘q bo‘lsa “Create database”).', 'Project settings (⚙) → Service accounts → “Generate new private key” → JSON fayl yuklanadi.', 'Faylni Bloknot bilan oching, butun matnni nusxalab pastga joylang. Ali tekshiradi va har daqiqada xotirani Firebase’ga yozadi.', 'Kalit faqat shu kompyuterda (data/ papkasida) saqlanadi va GitHub’ga chiqmaydi.']),
     'bedrock': dict(name='Amazon Bedrock (Claude)', url='https://console.aws.amazon.com/bedrock/home#/api-keys', link='AWS Bedrock → API keys',
         steps=['AWS Console’da Amazon Bedrock → API keys bo‘limini oching va “Generate long-term API key” bilan kalit yarating.', 'Bedrock → Model access bo‘limida Anthropic Claude modellariga ruxsat yoqilganini tekshiring.', 'Kalitni pastga kiriting. Mintaqa us-east-1 emas bo‘lsa, oldiga yozing: “eu-central-1 ABSK…”. Ali modelni o‘zi topadi va tekshiradi.', 'Bedrock pullik (AWS hisobingizdan). Ali uni Pro ilovalardan keyin, bepul Gemini’dan oldin ishlatadi.'], field='bedrock_api_key', env='BEDROCK_API_KEY'),
-    'tg_account': dict(name='Telegram akkaunt (kanallar)', url='https://my.telegram.org/apps', link='my.telegram.org → API development tools', action='/tg-login', action_label='Telegram’ga kirish (telefon → kod → parol)',
-        steps=['my.telegram.org saytiga telefon raqamingiz bilan kiring → “API development tools” → ilova yarating (nomi: Ali).', 'Chiqqan api_id (raqam) va api_hash ni pastga bo‘sh joy bilan kiriting: “12345678 abcdef0123…”.', 'Kompyuterda oyna ochiladi: telefon raqamingiz, Telegram yuborgan kod va (bo‘lsa) 2 bosqichli parolni O‘ZINGIZ kiritasiz.', 'Ali faqat O‘QIYDI: kanal va guruhlardagi post va fayllardan o‘rganadi, hech narsa yubormaydi.'], field='tg_api_hash', env='TG_API_HASH'),
+    'tg_account': dict(name='Telegram akkaunt (to‘liq: kanallar va xabarlar)', url='https://my.telegram.org/apps', link='1) my.telegram.org → API kalitlari', action='/tg-login', action_label='2) 📱 Telefon raqam bilan kirish',
+        steps=['Bir marta: my.telegram.org ga telefon raqamingiz bilan kiring → “API development tools” → ilova yarating (nomi: Ali). Chiqqan api_id va api_hash ni pastga bo‘sh joy bilan kiriting: “12345678 abcdef0123…” (allaqachon kiritilgan bo‘lsa - shart emas).', '«📱 Telefon raqam bilan kirish» tugmasini bosing: telefon raqamingiz → Telegram yuborgan kod → (bo‘lsa) ikki bosqichli parol. Hammasini O‘ZINGIZ kiritasiz, ma’lumot faqat shu kompyuterda qoladi.', 'Ali nima qiladi: kanal va guruhlaringizni o‘qiydi, post va fayllardan o‘rganadi, suhbatlaringizdan eslatmalar tuzadi; siz aytgan odamga xabar yozadi - HAR SAFAR sizning tasdig‘ingiz bilan. Hech narsani o‘chirmaydi.'], field='tg_api_hash', env='TG_API_HASH'),
     'chatplace': dict(name='ChatPlace (Instagram/Telegram avtomatlashtirish)', url='https://chatplace.io', link='ChatPlace sayti', action='/api/mcp/chatplace/start', action_label='ChatPlace’ga kirish va ruxsat berish',
         steps=['Pastdagi tugmani bosing - ChatPlace sahifasi ochiladi, akkauntingizga kiring.', 'Ali so‘ragan ruxsatlarni tasdiqlang (avtomatlashtirish, chatlar, tarqatmalar, izohlar, AI agent).', '“Ali’ga ulandi” chiqqach, bu oynani yoping. Ali ma’lumotni erkin o‘qiydi, o‘zgartirishlarni (xabar, tarqatma, avtojavob) faqat sizning tasdig‘ingiz bilan qiladi.']),
     'gemini': dict(name='Gemini plagini', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
@@ -56,7 +54,7 @@ def catalog(telegram_live=False):
         if key=='telegram' and telegram_live:status='Ulangan'
         if key=='instagram' and config.ig_accounts:status='Ulangan: '+', '.join('@'+a for a in config.ig_accounts)
         if key=='voice':status=f'Sozlangan: {config.tts_backend}'
-        if key in {'google','meta','channels'}:status='Integratsiya hali o‘rnatilmagan'
+        if key in {'google','meta'}:status='Integratsiya hali o‘rnatilmagan'
         if key in ('github','vercel'):
             from . import local_ai
             if local_ai.app_state().get(key,{}).get('connected'):
@@ -69,8 +67,9 @@ def catalog(telegram_live=False):
         if key=='bedrock' and config.bedrock_api_key:status=f'Ulangan · {config.bedrock_model or "model avtomatik"} ({config.bedrock_region})'
         if key=='tg_account':
             from . import tg_account
-            status='Ulangan (faqat o‘qish)' if tg_account.configured() else ('Kalit bor · kirish kerak (qayta “Sozlash”)' if tg_account.credentials() else 'Sozlanmagan')
-            configured=tg_account.configured()
+            configured=tg_account.authorized()
+            status=('Ulangan · kanallar va xabarlar (yuborish - tasdiq bilan)' if configured else
+                    ('API kalit bor · telefon bilan kirish kerak: “Sozlash” → 📱' if tg_account.credentials() else 'Sozlanmagan'))
         if key=='chatplace':
             from . import mcp_client
             configured=mcp_client.connected('chatplace')

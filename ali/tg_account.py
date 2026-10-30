@@ -41,6 +41,33 @@ def configured() -> bool:
     return credentials() is not None and Path(str(SESSION) + ".session").exists() and _authorized is not False
 
 
+_auth_cache = {"at": 0.0, "ok": False}
+
+
+def authorized() -> bool:
+    """Telefon bilan kirish haqiqatan yakunlanganmi (Telegram'dan so'raladi, 5 daqiqa eslab qolinadi)."""
+    global _authorized
+    if not credentials() or not Path(str(SESSION) + ".session").exists():
+        return False
+    if time.time() - _auth_cache["at"] < 300:
+        return _auth_cache["ok"]
+
+    async def go():
+        client = _client()
+        await client.connect()
+        try:
+            return bool(await client.is_user_authorized())
+        finally:
+            await client.disconnect()
+    try:
+        ok = asyncio.run(go())
+    except Exception:  # internet yo'q va h.k. - oxirgi ma'lum holat
+        return _authorized is True
+    _authorized = ok
+    _auth_cache.update(at=time.time(), ok=ok)
+    return ok
+
+
 def _client():
     from telethon import TelegramClient
     creds = credentials()
