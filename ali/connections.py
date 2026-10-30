@@ -21,7 +21,7 @@ PROVIDERS = {
     'render': dict(name='Render', url='https://dashboard.render.com', link='Render Dashboard',
         steps=['Render Dashboard’da o‘ng yuqoridagi profil belgisini (harfli doira) bosing → “Account Settings” → “API Keys” bo‘limi.', '“Create API Key” bosing, nom bering (masalan: Ali) va kalitni nusxalang (rnd_… bilan boshlanadi).', 'Kalitni pastga kiriting. Ali xizmatlar holati, deploylar va loglarni erkin ko‘radi; qayta deploy va to‘xtatish faqat sizning tasdig‘ingiz bilan.'], field='render_api_key', env='RENDER_API_KEY'),
     'omniroute': dict(name='OmniRoute (ko‘p modelli AI shlyuz)', url='https://github.com/cheaper-inference/OmniRoute', link='OmniRoute GitHub',
-        steps=['OmniRoute kompyuterda Ali bilan birga o‘zi ishga tushadi (faqat shu kompyuterdan ochiladi): dashboard - http://localhost:20128', 'Dashboard → Providers: ishlatmoqchi bo‘lgan AI provayderlarni (bepul yoki o‘z hisobingiz) ulang - Ali ularni avtomatik ishlatadi.', 'Claude/ChatGPT javob bermasa yoki limiti tugasa - Ali OmniRoute orqali javob oladi. Server kalit talab qilsa: Dashboard → Endpoints dan kalitni nusxalab, shu yerga kiriting.'], field='omniroute_api_key', env='OMNIROUTE_API_KEY'),
+        steps=['Hozir O‘CHIRILGAN: Ali OmniRoute’siz ishlaydi, uning 46 ta yo‘riqnomasi «AI agentlar» bilimida. Yoqish uchun .env ga OMNIROUTE_URL=http://127.0.0.1:20128/v1 yozing va OmniRoute’ni o‘zingiz ishga tushiring (dashboard - http://localhost:20128).', 'Dashboard → Providers: ishlatmoqchi bo‘lgan AI provayderlarni (bepul yoki o‘z hisobingiz) ulang - Ali ularni avtomatik ishlatadi.', 'Claude/ChatGPT javob bermasa yoki limiti tugasa - Ali OmniRoute orqali javob oladi. Server kalit talab qilsa: Dashboard → Endpoints dan kalitni nusxalab, shu yerga kiriting.'], field='omniroute_api_key', env='OMNIROUTE_API_KEY'),
     'voice': dict(name='Ovoz', url='https://elevenlabs.io/app/settings/api-keys', link='ElevenLabs sozlamalari',
         steps=['Standart Edge ovozi alohida hisob talab qilmaydi.', 'Shaxsiy ovoz uchun ElevenLabs hisobiga kiring.', 'Serverda ELEVENLABS_API_KEY va ELEVENLABS_VOICE_ID ni sozlang.']),
     'google': dict(name='Google', url='https://console.cloud.google.com/auth/overview', link='Google orqali sozlash',
@@ -64,7 +64,7 @@ def catalog(telegram_live=False):
         if key=='omniroute':
             from . import omniroute
             configured=omniroute.available()
-            status=('Ishlayapti · Pro ilovalardan keyin zaxira' + (' · kalit bilan' if config.omniroute_api_key else '')) if configured else 'O‘chiq (Ali bilan birga ishga tushadi)'
+            status=('Ishlayapti · Pro ilovalardan keyin zaxira' + (' · kalit bilan' if config.omniroute_api_key else '')) if configured else ('O‘chirilgan · bilimlari Ali’da (AI agentlar)' if not config.omniroute_url else 'O‘chiq')
         if key=='render' and configured:status='Ulangan · xizmatlar, deploylar, loglar (deploy - tasdiq bilan)'
         if key=='bedrock' and config.bedrock_api_key:status=f'Ulangan · {config.bedrock_model or "model avtomatik"} ({config.bedrock_region})'
         if key=='tg_account':

@@ -674,10 +674,20 @@ def lan_ip() -> str:
 
 
 if __name__ == "__main__":
-    with socket.socket() as probe:  # port band - boshqa Ali ishlayapti: yarim ishlaydigan nusxa qoldirmaymiz
+    with socket.socket() as probe:  # port band: Ali'ning o'zi bo'lsa - jim chiqamiz; boshqa dastur bo'lsa - qayta urinamiz
         if probe.connect_ex(("127.0.0.1", config.port)) == 0:
-            print(f"  Port {config.port} band - {config.assistant_name} allaqachon ishlayapti: http://localhost:{config.port}")
-            raise SystemExit(0)
+            import httpx
+            try:
+                ours = httpx.get(f"http://127.0.0.1:{config.port}/healthz", timeout=5).json() == {"ok": True}
+            except (httpx.HTTPError, ValueError):
+                ours = False
+            if ours:
+                print(f"  Port {config.port} band - {config.assistant_name} allaqachon ishlayapti: http://localhost:{config.port}")
+                raise SystemExit(0)
+            msg = f"Port {config.port} ni boshqa dastur egallagan - {config.assistant_name} ishga tusha olmadi, qayta uriniladi"
+            print("  " + msg)
+            log.error(msg)
+            raise SystemExit(3)  # autostart.cmd 10 soniyadan keyin qayta urinadi
     print(f"\n  {config.assistant_name} serveri ishga tushdi")
     print(f"  Kompyuter:   http://localhost:{config.port}")
     print(f"  Wi-Fi:       http://{lan_ip()}:{config.port}   (mikrofon faqat HTTPS da ishlaydi -> tunnel.bat)")
