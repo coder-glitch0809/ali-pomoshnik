@@ -932,7 +932,7 @@ class TelegramBot(PublicTelegram, Listener):
         path = await asyncio.to_thread(ingest.save_upload, name, bytes(await file.download_as_bytearray()))
         task = m.caption or ""
         status = await m.reply_text("🎬 Video qabul qilindi. " + ("Topshiriq bo'yicha montaj qilyapman…" if task else
-                                    "Reels qilyapman: 9:16 + avtomatik subtitr (topshiriq bo'lsa, videoga izoh yozing)…"))
+                                    "Professional Reels qilyapman: pauzalar kesiladi, zoom, animatsiyali subtitr, ovoz va rang (topshiriq bo'lsa - videoga izoh yozing)…"))
         loop = asyncio.get_running_loop()
 
         def progress(note: str) -> None:

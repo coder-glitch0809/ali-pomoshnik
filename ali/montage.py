@@ -13,11 +13,11 @@ from . import outbox
 
 log = logging.getLogger("ali.montage")
 
-TOOLS = ("video_reels", "video_join", "video_text", "video_subtitles", "video_music", "video_voiceover", "video_speed",
+TOOLS = ("video_pro", "video_reels", "video_join", "video_text", "video_subtitles", "video_music", "video_voiceover", "video_speed",
          "video_cover")
 QUERY = re.compile(r"(video|видео|reels|рилс|ролик)\S*.{0,60}(montaj|монтаж|qirq|қирқ|kes|subtitr|субтитр|yozuv|ёзув|"
                    r"matn|матн|musiqa|мусиқа|ovoz|овоз|tezla|reels|рилс|birlashtir|бирлаштир|muqova|муқова|9:16)", re.I | re.S)
-DEFAULT = [{"tool": "video_reels", "args": {"fit": "blur"}}, {"tool": "video_subtitles", "args": {}}]
+DEFAULT = [{"tool": "video_pro", "args": {}}]  # pro: jump-cut, punch-in, animatsiyali subtitr, ovoz/rang
 
 PLAN = """Sen tajribali video montajchisan (Instagram Reels, targetolog va tashqi reklama kontenti).
 Foydalanuvchi videosi: {video}
@@ -26,6 +26,8 @@ Topshiriq: {task}
 Mavjud vositalar (har qadam OLDINGI qadam natijasi ustida ishlaydi, "path" ni yozma - Ali o'zi qo'yadi):
 {tools}
 
+Gapiruvchi yoki xom video bo'lsa - ENG AVVAL video_pro (hook va cta argumentlari bilan): u jump-cut, punch-in zoom,
+animatsiyali subtitr, ovoz va rangni o'zi qiladi; undan keyin faqat kerak bo'lsa video_speed / video_cover.
 Reels qoidalari: 9:16 (video_reels birinchi), birinchi 1-3 soniyada kuchli hook matni (video_text, top), nutq bo'lsa
 subtitr (video_subtitles), oxirida CTA matni, musiqa past. Faqat topshiriqqa kerakli qadamlarni tanla (1-6 ta).
 FAQAT JSON qaytar: {{"steps": [{{"tool": "video_reels", "args": {{...}}}}, ...], "note": "1 gapda nima qilinadi"}}"""
@@ -72,7 +74,7 @@ def plan(task: str, video: str, registry, ready: list[str]) -> tuple[list[dict],
     """AI montaj rejasi; AI bo'lmasa yoki rejani bera olmasa - standart (9:16 + subtitr)."""
     from .service import _ask_json
     if not task.strip() or not ready:
-        return DEFAULT, "Standart Reels ishlovi: 9:16 + avtomatik subtitr"
+        return DEFAULT, "Professional ishlov: jump-cut, punch-in, animatsiyali subtitr, ovoz va rang"
     try:
         data = _ask_json(PLAN.format(video=video, task=task, tools=_tools_text(registry)), ready, 300)
         steps = [s for s in data.get("steps", []) if isinstance(s, dict) and s.get("tool") in TOOLS][:6]
@@ -80,7 +82,7 @@ def plan(task: str, video: str, registry, ready: list[str]) -> tuple[list[dict],
             return steps, str(data.get("note", ""))[:300]
     except (ValueError, RuntimeError) as e:
         log.warning("Montaj rejasi olinmadi: %s", e)
-    return DEFAULT, "Standart Reels ishlovi: 9:16 + avtomatik subtitr"
+    return DEFAULT, "Professional ishlov: jump-cut, punch-in, animatsiyali subtitr, ovoz va rang"
 
 
 def run(task: str, path: str, registry, ready: list[str], progress=lambda note: None) -> str:

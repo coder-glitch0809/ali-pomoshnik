@@ -34,3 +34,4 @@ imageio-ffmpeg>=0.5
 # Telefon ilovasi: Firebase kirish tokenlarini tekshirish
 firebase-admin>=6.5
 telethon>=1.36
+faster-whisper  # video subtitr: kompyuterda nutq tanish (Gemini limiti tugasa)

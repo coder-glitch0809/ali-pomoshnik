@@ -23,21 +23,27 @@ class VideoEditTests(unittest.TestCase):
         self.assertEqual((v.info(out)["width"], v.info(out)["height"]), (1080, 1920))
         self.assertIn("Tayyor", v.video_text(str(self.src), "Hook -30% 👇", "top", 0, 1))
 
-    def test_montage_without_ai_uses_default_and_sends_only_final(self):
+    def test_montage_without_ai_uses_pro_and_sends_only_final(self):
         self.assertTrue(montage.is_query("oxirgi videoni reels qil va subtitr qo'sh"))
         self.assertFalse(montage.is_query("bugun ob-havo qanday"))
         from ali.service import brain
         start = outbox.mark()
-        with patch.object(v, "_srt", return_value="1\n00:00:00,000 --> 00:00:01,500\nSalom\n"):
+        with patch("ali.skills.video_pro._srt", return_value="1\n00:00:00,000 --> 00:00:01,500\nSalom dunyo\n"):
             report = montage.run("", str(self.src), brain.registry, [])
         made = [p for p in outbox.since(start) if p.suffix == ".mp4"]
-        self.assertIn("video_reels", str(montage.DEFAULT))
-        self.assertEqual(len(made), 1)  # oraliq 9:16 fayli o'chirildi - faqat yakuniy video
+        self.assertEqual(montage.DEFAULT[0]["tool"], "video_pro")
+        self.assertEqual(len(made), 1)
+        self.assertEqual((v.info(made[0])["width"], v.info(made[0])["height"]), (1080, 1920))
         self.assertIn("subtitr", report.lower())
 
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_pro_helpers(self):
+        from ali.skills import video_pro
+        ass = video_pro.karaoke_ass("1\n00:00:01,000 --> 00:00:03,000\nMen targetologman, reklama 👇\n")
+        self.assertIn("Dialogue: 0,0:00:01.00", ass)
+        self.assertIn("\\k", ass)                 # so'zma-so'z karaoke
+        self.assertIn("TARGETOLOGMAN,", ass)       # katta harflar, emoji yo'q
+        self.assertNotIn("👇", ass)
+        self.assertEqual(video_pro.speech_parts(self.src)[0][0], 0.0)
 
 
 class VideoCreateAndUpgradeTests(unittest.TestCase):

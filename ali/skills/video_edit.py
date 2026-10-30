@@ -6,6 +6,8 @@ avtomatik subtitr (Gemini ovozni matnga aylantiradi), musiqa, ovozli matn (TTS),
 Natija avtomatik yuboriladi (outbox).
 """
 import asyncio
+import logging
+import os
 import re
 import shutil
 import subprocess
@@ -16,6 +18,7 @@ from .. import outbox
 from ..config import config
 from . import skill
 
+log = logging.getLogger("ali.video")
 W, H, FPS = 1080, 1920, 30
 VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 FONT = "C\\:/Windows/Fonts/arialbd.ttf"  # drawtext uchun (":" qochiriladi)
@@ -188,21 +191,49 @@ def video_text(path: str = "oxirgi", text: str = "", position: str = "top", star
     return _done(out)
 
 
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")  # kompyuterda: tiny/base/small/medium (aniqlik va tezlik)
+_whisper = None
+
+
+def _whisper_srt(audio: Path) -> str:
+    """Kompyuterning o'zida (internetsiz, bepul) nutq -> SRT: faster-whisper. Gemini limiti tugasa ishlatiladi."""
+    global _whisper
+    from faster_whisper import WhisperModel
+    if _whisper is None:
+        _whisper = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
+    # audio massiv qilib beriladi (16 kHz mono) - faster-whisper'ning PyAV o'qishi kutubxona versiyasiga bog'liq bo'lmasin
+    import numpy as np
+    raw = subprocess.run([ffmpeg(), "-hide_banner", "-i", str(audio), "-f", "s16le", "-ac", "1", "-ar", "16000", "-"],
+                         capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    samples = np.frombuffer(raw, np.int16).astype(np.float32) / 32768.0
+    segments, _ = _whisper.transcribe(samples, language="uz", vad_filter=True, beam_size=5)
+    def ts(t: float) -> str:
+        ms = int(round(t * 1000))
+        return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
+    blocks = [f"{n}\n{ts(seg.start)} --> {ts(seg.end)}\n{seg.text.strip()}"
+              for n, seg in enumerate(segments, 1) if seg.text.strip()]
+    if not blocks:
+        raise RuntimeError("Subtitr yaratilmadi (videoda nutq topilmadi)")
+    return "\n\n".join(blocks)
+
+
 def _srt(video: Path, tmp: Path) -> str:
-    """Ovoz -> SRT subtitr (Gemini): vaqt belgilari bilan, qisqa qatorlar."""
-    from .. import providers
-    from google.genai import types
+    """Ovoz -> SRT subtitr: avval Gemini (aniq, o'zbekcha imlo), ishlamasa - kompyuterdagi Whisper."""
     audio = tmp / "a.mp3"
     _run(["-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", str(audio)])
-    response = providers._gemini_generate(config.gemini_fast_model, [
-        types.Part.from_bytes(data=audio.read_bytes(), mime_type="audio/mpeg"),
-        "Bu audioni SRT subtitr formatida yoz: aniq vaqt belgilari (00:00:01,200 --> 00:00:03,000), har bir blokda "
-        "ko'pi bilan 6-7 so'z, asl tilda (asosan o'zbek). Faqat SRT matnini qaytar, boshqa hech narsa yozma."])
-    text = (response.text or "").strip().strip("`")
-    text = re.sub(r"^srt\s*", "", text, flags=re.I)
-    if "-->" not in text:
-        raise RuntimeError("Subtitr yaratilmadi (videoda nutq topilmadi)")
-    return text
+    try:
+        from .. import providers
+        from google.genai import types
+        response = providers._gemini_generate(config.gemini_fast_model, [
+            types.Part.from_bytes(data=audio.read_bytes(), mime_type="audio/mpeg"),
+            "Bu audioni SRT subtitr formatida yoz: aniq vaqt belgilari (00:00:01,200 --> 00:00:03,000), har bir blokda "
+            "ko'pi bilan 6-7 so'z, asl tilda (asosan o'zbek). Faqat SRT matnini qaytar, boshqa hech narsa yozma."])
+        text = re.sub(r"^srt\s*", "", (response.text or "").strip().strip("`"), flags=re.I)
+        if "-->" in text:
+            return text
+    except Exception as e:
+        log.warning("Gemini subtitr bermadi (%s) - kompyuterdagi Whisper ishlatiladi", str(e)[:120])
+    return _whisper_srt(audio)
 
 
 @skill(
