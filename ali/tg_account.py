@@ -1,6 +1,7 @@
 """Shaxsiy Telegram akkaunt (Telethon): kanallar va guruhlarni ko'rish, ichidagi post va fayllardan o'rganish.
 
-Faqat O'QISH: Ali akkauntingizdan hech narsa yubormaydi, o'chirmaydi va kanallarga a'zo bo'lmaydi.
+O'qish - erkin. Xabar YUBORISH - faqat egasi so'raganda (ovoz yoki matn) va HAR SAFAR egasining tasdig'i bilan
+(kimga va nima yozilishi ko'rsatiladi). Ali hech narsani o'chirmaydi va kanallarga a'zo bo'lmaydi.
 Sozlash (bir marta):
   1. https://my.telegram.org -> API development tools -> api_id va api_hash oling.
   2. Ali: Ruxsatlar -> Ulanishlar -> Telegram akkaunt -> ikkalasini kiriting ("12345 abcdef...").
@@ -107,6 +108,37 @@ def find_in_text(text: str) -> dict | None:
     hits = [c for c in items if (len(c["title"]) >= 3 and c["title"].lower() in low)
             or (c["username"] and ("@" + c["username"].lower() in low or c["username"].lower() in low))]
     return max(hits, key=lambda c: len(c["title"])) if hits else None
+
+
+def people(name: str, limit: int = 300) -> list[dict]:
+    """Suhbatlar orasidan nomi/username/telefoni mos keladiganlar (shaxslar, guruhlar). Eng mosi birinchi."""
+    low = name.lower().strip().lstrip("@")
+    digits = re.sub(r"\D", "", name)
+
+    async def go(client):
+        out = []
+        async for d in client.iter_dialogs(limit=limit):
+            ent = d.entity
+            if getattr(ent, "broadcast", False):  # kanallarga yozilmaydi
+                continue
+            title = d.name or ""
+            username = (getattr(ent, "username", None) or "").lower()
+            phone = getattr(ent, "phone", None) or ""
+            exact = low in (title.lower(), username) or (len(digits) >= 7 and phone.endswith(digits[-9:]))
+            part = low and (low in title.lower() or (username and low in username))
+            if exact or part:
+                out.append({"id": d.id, "title": title, "username": username, "exact": bool(exact),
+                            "kind": "guruh" if d.is_group else "shaxs"})
+        return sorted(out, key=lambda c: (not c["exact"], len(c["title"])))
+    return _run(go)
+
+
+def send_message(chat_id: int, text: str) -> str:
+    """Xabar yuboradi (chaqiruvchi egasining tasdig'ini oldin oladi)."""
+    async def go(client):
+        await client.send_message(chat_id, text)
+        return "yuborildi"
+    return _run(go)
 
 
 def _state() -> dict:

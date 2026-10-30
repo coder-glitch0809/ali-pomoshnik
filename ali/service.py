@@ -425,6 +425,11 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                     recalled = await asyncio.to_thread(montage.run, text, "oxirgi", brain.registry, ready_m)
                 except Exception as e:
                     recalled = f"⚠️ Montaj bajarilmadi: {e}"
+            # Telegram'da kimgadir yozish (ovoz yoki matn): «Telegramda Akmalga yoz: ...» - har safar tasdiq bilan
+            from . import tg_send
+            if not recalled and owner and not images and tg_send.is_request(text):
+                ready_t = local_ai.connected() if local_ai.access() is True else []
+                recalled = await asyncio.to_thread(tg_send.handle, text, ready_t)
             # O'zini kuchaytirish tasdiq tugmalari bilan Telegram'da ishlaydi
             from . import self_upgrade
             if not recalled and owner and source != "telegram" and self_upgrade.is_request(text):

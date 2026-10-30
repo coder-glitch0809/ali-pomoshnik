@@ -31,6 +31,7 @@ LIMIT = 4000
 
 TOOL_LABELS = {
     "web_search": "🌐 Internetdan qidirish",
+    "telegram_send": "✉️ Telegram'da xabar yuborish (sizning nomingizdan)",
     "run_powershell": "💻 PowerShell", "take_screenshot": "🖥 Ekran rasmi", "get_weather": "⛅ Ob-havo",
     "get_my_location": "📍 Joylashuv", "open_application": "🚀 Ilova ochish", "open_website": "🔗 Sayt ochish",
     "instagram_analytics": "📊 Instagram analitika", "instagram_competitor": "🔍 Raqobatchi tahlili",
