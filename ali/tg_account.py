@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -42,6 +43,41 @@ def configured() -> bool:
 
 
 _auth_cache = {"at": 0.0, "ok": False}
+# Bitta doimiy ulanish: sessiya fayli (SQLite) bir vaqtda faqat bitta mijoz tomonidan ochiladi - aks holda
+# kanal kuzatuvi, avtopilot va xabar yuborish bir-birini "database is locked" bilan to'sib qo'yadi.
+_loop: asyncio.AbstractEventLoop | None = None
+_shared: dict = {}  # client, session (qaysi sessiya fayli uchun)
+_guard = threading.Lock()
+
+
+def _ensure_loop() -> asyncio.AbstractEventLoop:
+    global _loop
+    with _guard:
+        if _loop is None or _loop.is_closed():
+            _loop = asyncio.new_event_loop()
+            threading.Thread(target=_loop.run_forever, daemon=True, name="telethon").start()
+    return _loop
+
+
+async def _connected():
+    """Umumiy mijoz (kerak bo'lsa yangidan ulanadi; sessiya fayli o'zgarsa - qayta ochiladi)."""
+    client = _shared.get("client")
+    if client is not None and _shared.get("session") != str(SESSION):
+        await client.disconnect()
+        client = None
+    if client is None:
+        client = _client()
+        _shared.update(client=client, session=str(SESSION))
+    if not client.is_connected():
+        await client.connect()
+    return client
+
+
+async def reset() -> None:
+    """Kirishdan keyin (yangi sessiya) yoki xatoda - umumiy mijozni yopadi."""
+    client = _shared.pop("client", None)
+    if client is not None:
+        await client.disconnect()
 
 
 def authorized() -> bool:
@@ -53,14 +89,9 @@ def authorized() -> bool:
         return _auth_cache["ok"]
 
     async def go():
-        client = _client()
-        await client.connect()
-        try:
-            return bool(await client.is_user_authorized())
-        finally:
-            await client.disconnect()
+        return bool(await (await _connected()).is_user_authorized())
     try:
-        ok = asyncio.run(go())
+        ok = asyncio.run_coroutine_threadsafe(go(), _ensure_loop()).result(60)
     except Exception:  # internet yo'q va h.k. - oxirgi ma'lum holat
         return _authorized is True
     _authorized = ok
@@ -76,23 +107,19 @@ def _client():
     return TelegramClient(str(SESSION), *creds)
 
 
-def _run(coro_fn):
-    """Telethon so'rovini alohida oqimda o'z event loop'i bilan bajaradi."""
+def _run(coro_fn, timeout: float = 1800):
+    """Telethon so'rovi - bitta umumiy ulanishda, alohida oqimdagi event loop'da (so'rovlar navbat bilan)."""
     async def main():
-        client = _client()
-        await client.connect()
         global _authorized
-        try:
-            _authorized = bool(await client.is_user_authorized())
-            if not _authorized:
-                raise RuntimeError("Telegram akkauntga kirilmagan: Ruxsatlar -> Telegram akkaunt -> Kirish")
-            if (await client.get_me()).bot:
-                raise RuntimeError("Kirishda telefon raqami o'rniga BOT tokeni kiritilgan - bot kanallarni ko'ra olmaydi. "
-                                   "Ruxsatlar -> Telegram akkaunt -> Sozlash: qayta kiring va TELEFON RAQAMINGIZNI yozing.")
-            return await coro_fn(client)
-        finally:
-            await client.disconnect()
-    return asyncio.run(main())
+        client = await _connected()
+        _authorized = bool(await client.is_user_authorized())
+        if not _authorized:
+            raise RuntimeError("Telegram akkauntga kirilmagan: Ruxsatlar -> Telegram akkaunt -> Kirish")
+        if (await client.get_me()).bot:
+            raise RuntimeError("Kirishda telefon raqami o'rniga BOT tokeni kiritilgan - bot kanallarni ko'ra olmaydi. "
+                               "Ruxsatlar -> Telegram akkaunt -> Sozlash: qayta kiring va TELEFON RAQAMINGIZNI yozing.")
+        return await coro_fn(client)
+    return asyncio.run_coroutine_threadsafe(main(), _ensure_loop()).result(timeout)
 
 
 def open_login() -> None:
@@ -160,11 +187,19 @@ def people(name: str, limit: int = 300) -> list[dict]:
     return _run(go)
 
 
-def send_file(chat, path: str, caption: str = "") -> str:
-    """Faylni (video/rasm) kanal yoki chatga joylaydi - egasi belgilagan kanal (VIDEO_CHANNEL) uchun."""
+def send_file(chat, path: str, caption: str = "", reply_to: int | None = None) -> int:
+    """Faylni (video/rasm) kanal yoki chatga joylaydi - egasi belgilagan kanal (VIDEO_CHANNEL) uchun. Post raqami."""
     async def go(client):
-        await client.send_file(chat, path, caption=caption[:1024], supports_streaming=True)
-        return "joylandi"
+        m = await client.send_file(chat, path, caption=caption[:1024], supports_streaming=True, reply_to=reply_to)
+        return m.id
+    return _run(go)
+
+
+def send_text(chat, text: str, reply_to: int | None = None) -> int:
+    """Kanal/chatga matn (egasi belgilagan video kanal uchun - kadr promptlari). Post raqami."""
+    async def go(client):
+        m = await client.send_message(chat, text[:4000], reply_to=reply_to, link_preview=False)
+        return m.id
     return _run(go)
 
 

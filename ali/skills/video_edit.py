@@ -206,7 +206,10 @@ def _whisper_srt(audio: Path) -> str:
     raw = subprocess.run([ffmpeg(), "-hide_banner", "-i", str(audio), "-f", "s16le", "-ac", "1", "-ar", "16000", "-"],
                          capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
     samples = np.frombuffer(raw, np.int16).astype(np.float32) / 32768.0
-    segments, _ = _whisper.transcribe(samples, language="uz", vad_filter=True, beam_size=5)
+    segments, _ = _whisper.transcribe(samples, language="uz", vad_filter=True, beam_size=5,
+                                      condition_on_previous_text=False)
+    # nutq bo'lmagan joyda Whisper so'z "o'ylab topadi" - ishonchsiz qismlar tashlanadi
+    segments = [g for g in segments if g.no_speech_prob < 0.5 and g.avg_logprob > -1.0]
     def ts(t: float) -> str:
         ms = int(round(t * 1000))
         return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"

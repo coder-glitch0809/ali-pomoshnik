@@ -47,6 +47,9 @@ def start(phone: str) -> dict:
         return {"error": "Avval api_id va api_hash ni kiriting (Ruxsatlar -> Telegram akkaunt)"}
     phone = phone.strip().replace(" ", "")
 
+    # umumiy (doimiy) ulanish sessiya faylini band qilmasin - kirish vaqtida yopiladi, keyin o'zi qayta ochiladi
+    asyncio.run_coroutine_threadsafe(tg_account.reset(), tg_account._ensure_loop()).result(30)
+
     async def go():
         await _close()
         client = TelegramClient(str(tg_account.SESSION), *creds)

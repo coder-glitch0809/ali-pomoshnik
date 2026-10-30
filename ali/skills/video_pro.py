@@ -7,13 +7,11 @@
 """
 import re
 import tempfile
-import textwrap
 from pathlib import Path
 
 from . import skill
-from .video_edit import FPS, H, W, _done, _fit, _out, _run, _src, _srt, _text_file, info
+from .video_edit import FPS, H, W, _done, _fit, _out, _run, _src, _srt, info
 
-PRO_FONT = "C\\:/Windows/Fonts/ariblk.ttf"  # hook/CTA uchun qalin shrift
 ACCENT = "&H0000E5FF"  # aytilayotgan so'z rangi (ASS BGR: sariq)
 _TS = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)")
 _EMOJI = re.compile("[\U00010000-\U0010FFFF☀-➿️‍]")
@@ -60,7 +58,8 @@ def karaoke_ass(srt: str) -> str:
             "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, "
             "Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, "
             "MarginR, MarginV, Encoding\n"
-            f"Style: Sub,Arial Black,76,{ACCENT},&H00FFFFFF,&H00000000,&H78000000,-1,0,0,0,100,100,0,0,1,7,3,2,70,70,560,1\n\n"
+            f"Style: Sub,Arial Black,76,{ACCENT},&H00FFFFFF,&H00000000,&H78000000,-1,0,0,0,100,100,0,0,1,7,3,2,70,70,560,1\n"
+            "Style: Title,Arial Black,78,&H00FFFFFF,&H00FFFFFF,&H00000000,&H96000000,-1,0,0,0,100,100,0,0,3,18,0,8,90,90,240,1\n\n"
             "[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     lines = []
     for block in re.split(r"\n\s*\n", srt.strip()):
@@ -81,6 +80,49 @@ def karaoke_ass(srt: str) -> str:
             lines.append(f"Dialogue: 0,{_ass_time(t)},{_ass_time(t + dur)},Sub,,0,0,0,,{pop}{ks}")
             t += dur
     return head + "\n".join(lines) + "\n"
+
+
+def title_events(text: str, start: float, end: float, top: bool = True) -> str:
+    """Hook (tepada) yoki CTA (pastroqda): qora fonli qalin yozuv, o'rtaga tekislangan, ko'pi bilan 7 so'z, "pop"."""
+    words = _EMOJI.sub("", " ".join((text or "").split())).split()[:7]
+    if not words or end - start < 0.5:
+        return ""
+    pos = "" if top else "{\\an2\\pos(540,1450)}"
+    pop = "{\\fad(80,120)\\t(0,120,\\fscx110\\fscy110)\\t(120,240,\\fscx100\\fscy100)}"
+    return f"Dialogue: 1,{_ass_time(start)},{_ass_time(end)},Title,,0,0,0,,{pos}{pop}{' '.join(words).rstrip(' —–-,:;').upper()}\n"
+
+
+@skill(
+    description=(
+        "B-ROLL: videoga qo'shimcha kadrlar (rasmlar) qo'yadi - asl ovoz davom etadi, rasm 2.2 s silliq paydo bo'lib, "
+        "sekin kattalashadi (Ken Burns). Hook (0-2.5 s) ustiga qo'yilmaydi; rasmlar video bo'ylab teng taqsimlanadi."
+    ),
+    params={"path": {"type": "string", "description": "Video yo'li yoki 'oxirgi'"},
+            "images": {"type": "array", "items": {"type": "string"}, "description": "Rasm fayllari (1-8 ta)"}},
+    required=["images"],
+)
+def video_broll(path: str = "oxirgi", images: list | None = None) -> str:
+    src, out = _src(path), _out("broll reels")
+    imgs = [Path(x) for x in images or [] if Path(x).is_file()][:8]
+    if not imgs:
+        raise RuntimeError("B-roll uchun rasm topilmadi")
+    i = info(src)
+    span, show = max(i["duration"] - 3.5, 1.0), 2.2
+    starts = [2.5 + span * (k + 0.5) / len(imgs) - show / 2 for k in range(len(imgs))]
+    inputs, chain, last = ["-i", str(src)], [], "[0:v]"
+    for k, (img, t0) in enumerate(zip(imgs, starts), 1):
+        t0 = max(2.5, min(t0, i["duration"] - show))
+        inputs += ["-loop", "1", "-t", f"{show:.2f}", "-i", str(img)]
+        frames = round(show * FPS)
+        chain.append(f"[{k}:v]scale={W * 2}:{H * 2}:force_original_aspect_ratio=increase,crop={W * 2}:{H * 2},"
+                     f"zoompan=z='min(zoom+0.0015,1.12)':d={frames}:s={W}x{H}:fps={FPS},format=yuva420p,"
+                     f"fade=t=in:st=0:d=0.25:alpha=1,fade=t=out:st={show - 0.25:.2f}:d=0.25:alpha=1,"
+                     f"setpts=PTS-STARTPTS+{t0:.3f}/TB[b{k}]")
+        chain.append(f"{last}[b{k}]overlay=0:0:eof_action=pass[o{k}]")
+        last = f"[o{k}]"
+    _run([*inputs, "-filter_complex", ";".join(chain), "-map", last, "-map", "0:a?", "-c:v", "libx264", "-preset",
+          "medium", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", str(out)])
+    return _done(out, f"{len(imgs)} ta B-roll kadr qo'shildi.")
 
 
 @skill(
@@ -135,20 +177,20 @@ def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = 
         if cut_silence and i["duration"] - ci["duration"] > 0.3:
             notes.append(f"{i['duration'] - ci['duration']:.1f} s pauza kesildi ({len(parts)} bo'lak, punch-in zoom)")
         # 2) Animatsiyali subtitr + hook/CTA + (bo'lsa) musiqa
-        vf = []
+        vf, ass = [], karaoke_ass("")
         if subtitles and ci["audio"]:
             try:
-                (tmp_p / "s.ass").write_text(karaoke_ass(_srt(cut, tmp_p)), encoding="utf-8")
-                vf.append("subtitles=s.ass")
-                notes.append("animatsiyali subtitr")
+                ass = karaoke_ass(_srt(cut, tmp_p))
+                if "Dialogue:" in ass:
+                    notes.append("animatsiyali subtitr")
             except Exception as e:
                 notes.append(f"subtitr qo'shilmadi ({str(e)[:80]})")
-        for text, name, y, window in ((hook, "h.txt", "h*0.14", "lte(t,2.5)"),
-                                      (cta, "c.txt", "h*0.68", f"gte(t,{max(0.0, ci['duration'] - 2.5):.2f})")):
-            if text and text.strip():  # ekranga sig'sin: ~16 belgidan qatorlarga bo'linadi
-                _text_file(textwrap.fill(" ".join(text.split()), 16), tmp_p, name)
-                vf.append(f"drawtext=fontfile='{PRO_FONT}':textfile={name}:fontsize=70:fontcolor=white:expansion=none:line_spacing=10:"
-                          f"borderw=7:bordercolor=black:x=(w-text_w)/2:y={y}:enable='{window}'")
+        # Hook va CTA - o'rtaga tekislangan, satrlarni libass o'zi bo'ladi (ekrandan chiqmaydi)
+        ass += title_events(hook, 0.0, min(2.8, ci["duration"]), top=True)
+        ass += title_events(cta, max(0.0, ci["duration"] - 2.6), ci["duration"], top=False)
+        if "Dialogue:" in ass:
+            (tmp_p / "s.ass").write_text(ass, encoding="utf-8")
+            vf.append("subtitles=s.ass")
         m = Path(music) if music else None
         if m and m.is_file() and ci["audio"]:
             graph2 = (f"[0:v]{','.join(vf) or 'null'}[v];[1:a]volume=0.35[m];[0:a]asplit[a1][a2];"
