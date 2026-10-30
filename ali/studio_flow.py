@@ -1,5 +1,5 @@
 """Kreativ video oqimi (telefondan): Ali brif beradi -> egasi rasmlarni ChatGPT/Gemini ilovasida yaratadi -> botga yoki
-@testotvet123 kanaliga tashlaydi -> Ali videoni o'zi yig'adi va kanalga joylaydi.
+@planetprint_reels kanaliga tashlaydi -> Ali videoni o'zi yig'adi va kanalga joylaydi.
 
 Nega shunday: Pro obuna (ChatGPT/Gemini) faqat ilova ichida ishlaydi; ilovani dastur bilan boshqarish akkauntni xavf
 ostiga qo'yadi. Rasmni egasi yaratadi (1 bosish), qolgan hammasi - Ali: brif, promptlar, ovoz, subtitr, montaj, joylash.
@@ -20,7 +20,7 @@ from .config import config
 log = logging.getLogger("ali.studio")
 
 STATE = config.data_dir / "studio_briefs.json"
-CHANNEL = os.getenv("VIDEO_CHANNEL", "testotvet123").lstrip("@")
+CHANNEL = os.getenv("VIDEO_CHANNEL", "planetprint_reels").lstrip("@")  # «🎬 Planet Print | Reels studiya"
 QUERY = re.compile(r"(brif|бриф|kreativ|креатив|rasmli\s+video|расмли\s+видео|virus|вирус)", re.I)
 TAG = re.compile(r"#?\s*[BbВв](\d{1,4})")
 
