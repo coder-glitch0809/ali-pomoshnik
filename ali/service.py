@@ -418,13 +418,16 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
             elif owner and not images and (kind := schedule.is_query(text)):
                 recalled = schedule.answer(kind)
             # Video montaj: "videoni reels qil / subtitr qo'sh / montaj qil" - oxirgi yuborilgan video ustida
+            # Video yaratish (video berilmagan): «targetolog haqida reels qilib ber» - Video montajchi noldan yasaydi
             from . import local_ai, montage
-            if not recalled and owner and not images and montage.is_query(text):
+            if not recalled and owner and not images and (montage.is_creation(text) or montage.is_query(text)):
+                creating = montage.is_creation(text)
                 try:
                     ready_m = local_ai.connected() if local_ai.access() is True else []
-                    recalled = await asyncio.to_thread(montage.run, text, "oxirgi", brain.registry, ready_m)
+                    recalled = await asyncio.to_thread(montage.create if creating else montage.run, text,
+                                                       *(() if creating else ("oxirgi",)), brain.registry, ready_m)
                 except Exception as e:
-                    recalled = f"⚠️ Montaj bajarilmadi: {e}"
+                    recalled = f"⚠️ Video {'yaratilmadi' if creating else 'montaji bajarilmadi'}: {e}"
             # Telegram'da kimgadir yozish (ovoz yoki matn): «Telegramda Akmalga yoz: ...» - har safar tasdiq bilan
             from . import tg_send
             if not recalled and owner and not images and tg_send.is_request(text):
@@ -448,6 +451,7 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                 if ckind == "make":
                     try:
                         plan = await asyncio.to_thread(content_plan.generate, 14)
+                        await asyncio.to_thread(content_plan.word, plan)  # o'qish uchun Word + jadval Excel
                         await asyncio.to_thread(content_plan.excel, plan)
                         recalled = content_plan.plan_summary()[:3800]
                     except (RuntimeError, ValueError) as e:

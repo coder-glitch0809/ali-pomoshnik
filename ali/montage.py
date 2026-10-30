@@ -31,8 +31,31 @@ subtitr (video_subtitles), oxirida CTA matni, musiqa past. Faqat topshiriqqa ker
 FAQAT JSON qaytar: {{"steps": [{{"tool": "video_reels", "args": {{...}}}}, ...], "note": "1 gapda nima qilinadi"}}"""
 
 
+CREATE = re.compile(r"(video|видео|reels|рилс|ролик)\S*.{0,50}(yarat|яrat|ярат|qilib\s+ber|қилиб\s+бер|килиб\s+бер|"
+                    r"tayyorla|тайёрла|генерац|generatsiya|ясаб|yasab|chiqar|чиқар)|"
+                    r"(yarat|ярат|tayyorla|тайёрла|qilib\s+ber|қилиб\s+бер)\S*.{0,30}(video|видео|reels|рилс|ролик)", re.I | re.S)
+EXISTING = re.compile(r"(oxirgi|охирги|yuborgan|юборган|shu|шу)\s+(video|видео)", re.I)
+
+
 def is_query(text: str) -> bool:
-    return bool(QUERY.search(text or ""))
+    """Mavjud (yuborilgan) videoni montaj qilish so'rovi."""
+    return bool(QUERY.search(text or "")) and not is_creation(text)
+
+
+def is_creation(text: str) -> bool:
+    """Video berilmagan - noldan yaratish so'rovi («targetolog haqida reels qilib ber»)."""
+    return bool(CREATE.search(text or "")) and not EXISTING.search(text or "")
+
+
+def create(task: str, registry, ready: list[str], progress=lambda note: None) -> str:
+    """Ssenariy -> sahnalar, diktor ovozi, (bo'lsa) AI fon rasmlari, subtitr -> tayyor .mp4 (Video montajchi)."""
+    skill = registry.get("make_content_video")
+    if skill is None:
+        raise RuntimeError("Video studiya plagini o'chirilgan (make_content_video yo'q)")
+    m = re.search(r"(\d{2,3})\s*(s|soniya|сония|sek|сек)", task)
+    duration = int(m.group(1)) if m else 30
+    progress("🎞️ Video montajchi: ssenariy yozyapman, ovoz va sahnalarni tayyorlayapman (1-3 daqiqa)…")
+    return skill.func(topic=task, duration_s=min(max(duration, 10), 90))
 
 
 def _tools_text(registry) -> str:

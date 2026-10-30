@@ -334,8 +334,9 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
                     if not notes:
                         notes.append(f"ovoz qo'shilmadi ({e})")
             start += sc["duration"]
-    for sc in clean:
-        sc["subs"] = _chunks(sc["narration"]) if sc["narration"] else []
+    for sc in clean:  # emoji shriftda yo'q (bo'sh kvadrat) - subtitrdan olib tashlanadi, ovozda qoladi
+        bare = re.sub("[𐀀-􏿿☀-➿️‍]", "", sc["narration"] or "").strip()
+        sc["subs"] = _chunks(bare) if bare else []
 
     # 2) AI fon rasmlari (bo'lmasa - gradient)
     backgrounds = {}

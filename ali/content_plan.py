@@ -233,6 +233,39 @@ def excel(plan: dict | None = None) -> str:
                                         "rows": rows}])
 
 
+def word(plan: dict | None = None) -> str:
+    """Rejani o'qishga qulay Word hujjat qilib beradi: tahlil, har kun - mavzu, hook, ssenariy, caption (yuboriladi)."""
+    from .skills.documents import make_word
+    plan = plan or load()
+    sections = [{"heading": "Tahlil va strategiya", "level": 1, "paragraphs": [plan.get("analysis", "") or "-"]}]
+    by: dict[str, list] = {}
+    for i in plan.get("items", []):
+        by.setdefault(i["date"], []).append(i)
+    for day, items in by.items():
+        sections.append({"heading": day, "level": 1, "paragraphs": []})
+        for i in items:
+            sections.append({"heading": f"{i['time']} · {BRANDS.get(i['brand'], i['brand']).split(' (')[0]} · {i['format']}: "
+                                        f"{i['topic']}", "level": 2,
+                             "bullets": [f"{label}: {i[k]}" for k, label in (("hook", "Hook"), ("script", "Ssenariy"),
+                                                                             ("caption", "Caption"), ("hashtags", "Hashtaglar"))
+                                         if i.get(k)]})
+    return make_word("Kontent reja", sections, subtitle=f"Tuzilgan: {plan.get('created', '')}")
+
+
+def voice_summary(plan: dict | None = None, days: int = 3) -> str:
+    """Ovozda o'qib berish uchun qisqa xulosa: strategiya va yaqin kunlardagi vazifalar."""
+    plan = plan or load()
+    by: dict[str, list] = {}
+    for i in plan.get("items", []):
+        by.setdefault(i["date"], []).append(i)
+    parts = [f"Kontent reja tayyor: {len(plan.get('items', []))} ta kontent, {len(by)} kunga. "
+             + (plan.get("analysis", "") or "")[:600]]
+    for day, items in list(by.items())[:days]:
+        parts.append(f"{day}: " + "; ".join(f"soat {i['time']} da {i['format']} - {i['topic']}" for i in items))
+    parts.append("To'liq reja Word va Excel faylida.")
+    return " ".join(parts)
+
+
 def is_query(text: str) -> str | None:
     low = text.lower()
     if any(w in low for w in TODAY_WORDS):

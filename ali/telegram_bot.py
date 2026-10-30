@@ -717,17 +717,25 @@ class TelegramBot(PublicTelegram, Listener):
         days = int(ctx.args[0]) if ctx.args and ctx.args[0].isdigit() else 14
         msg = await update.message.reply_text(f"📊 Statistikani tahlil qilib, {days} kunlik kontent reja tuzyapman (1-3 daqiqa)…")
         try:
+            start = outbox.mark()
             plan = await asyncio.to_thread(content_plan.generate, days)
+            await asyncio.to_thread(content_plan.word, plan)
             await asyncio.to_thread(content_plan.excel, plan)
         except Exception as e:
             await msg.edit_text(f"⚠️ Reja tuzilmadi: {str(e)[:400]}")
             return
         text = content_plan.plan_summary()
         await msg.edit_text(text[:4000])
-        from . import outbox
-        for f in outbox.since(max(0, outbox.mark() - 1)):
+        for f in outbox.since(start):  # Word - o'qish uchun, Excel - jadval
             with open(f, "rb") as fh:
-                await update.message.reply_document(fh, filename=f.name, caption="🗓 Kontent reja (Excel)")
+                await update.message.reply_document(fh, filename=f.name, caption="🗓 Kontent reja (" +
+                                                    ("Word - o'qish uchun" if f.suffix == ".docx" else "Excel jadval") + ")")
+        try:  # ichida nima borligini ovozda o'qib beradi
+            audio = await tts.synthesize(content_plan.voice_summary(plan))
+            if audio:
+                await update.message.reply_voice(audio, caption="🔊 Kontent reja - qisqa xulosa")
+        except Exception:
+            log.exception("Kontent reja ovozli xulosasi yuborilmadi")
 
     async def cmd_content_today(self, update: Update, ctx):
         from . import content_plan

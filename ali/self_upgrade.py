@@ -166,6 +166,9 @@ def run(task: str, progress) -> dict:
         WORK.mkdir(parents=True, exist_ok=True)
         _git("worktree", "add", "-b", branch, str(path), "HEAD")
         (path / "data").mkdir(exist_ok=True)  # data/ gitignore'da - testlar uchun bo'sh papka
+        state = _state()
+        state[uid] = {"task": task, "branch": branch, "at": time.time(), "running": True}  # uzilsa - qayta yoqilganda topiladi
+        _save(state)
         prompt, report, failures = TASK.format(agent=_dasturchi(task), task=task), "", []
         for key, exe in coders:  # Claude Code -> Codex: biri ishlamasa yoki limiti tugasa - keyingisi boshidan
             progress(f"👨‍💻 Dasturchi agent {local_ai.NAMES[key]} bilan alohida nusxada kod yozyapti ({branch}) - "
@@ -200,6 +203,19 @@ def run(task: str, progress) -> dict:
             discard(uid)  # har qanday xatoda nusxa qolib ketmaydi
         monitor.finish(job, ok)
         _lock.release()
+
+
+def interrupted(notify=None) -> list[str]:
+    """Ali qayta ishga tushganda: yarim qolgan kuchaytirishlar (jarayon uzilgan) tozalanadi, egasiga aytiladi."""
+    lost = []
+    for uid, item in list(_state().items()):
+        if item.get("running"):
+            lost.append(item.get("task", ""))
+            discard(uid)
+    if lost and notify:
+        notify("⚠️ Ali qayta ishga tushgani sabab kuchaytirish yarim yo'lda to'xtadi (o'zgarish qo'llanmadi):\n"
+               + "\n".join(f"• {t[:200]}" for t in lost) + "\nQayta yuboring: /kuchaytir …")
+    return lost
 
 
 def discard(uid: str) -> None:

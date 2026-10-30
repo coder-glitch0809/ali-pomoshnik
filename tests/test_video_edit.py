@@ -38,3 +38,34 @@ class VideoEditTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VideoCreateAndUpgradeTests(unittest.TestCase):
+    def test_creation_vs_edit_and_create_calls_studio(self):
+        from types import SimpleNamespace
+        self.assertTrue(montage.is_creation("Targetolog haqida 20 soniyalik reels qilib ber"))
+        self.assertFalse(montage.is_creation("oxirgi videoni reels qil"))
+        self.assertTrue(montage.is_query("oxirgi videoni reels qil va subtitr qo'sh"))
+        calls = []
+        reg = {"make_content_video": SimpleNamespace(func=lambda **kw: calls.append(kw) or "✅ Video tayyor")}
+        self.assertIn("tayyor", montage.create("Tashqi reklama haqida 20 soniyalik video yarat", reg, []))
+        self.assertEqual(calls[0]["duration_s"], 20)
+
+    def test_interrupted_upgrade_is_cleaned_and_reported(self):
+        from ali import self_upgrade
+        self_upgrade._save({"x1": {"task": "video qo'sh", "running": True}, "x2": {"task": "tayyor", "branch": "b"}})
+        notes = []
+        with patch.object(self_upgrade, "_git", return_value=""):
+            lost = self_upgrade.interrupted(notes.append)
+        self.assertEqual(lost, ["video qo'sh"])
+        self.assertIn("video qo'sh", notes[0])
+        self.assertEqual(list(self_upgrade._state()), ["x2"])  # tayyor (tasdiq kutayotgan) saqlanadi
+        self_upgrade._save({})
+
+    def test_content_plan_word(self):
+        from ali import content_plan
+        plan = {"created": "2026-10-30", "analysis": "Strategiya", "items": [
+            {"id": 1, "date": "2026-10-31", "time": "13:00", "brand": "target", "format": "Reels", "topic": "CPL",
+             "hook": "Reklama pul yeyaptimi?", "script": "1) ...", "caption": "c", "hashtags": "#t"}]}
+        self.assertIn("Word tayyor", content_plan.word(plan))
+        self.assertIn("13:00", content_plan.voice_summary(plan))

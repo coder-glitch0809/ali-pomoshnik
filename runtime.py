@@ -9,6 +9,7 @@ import asyncio
 import html
 import logging
 import socket
+import threading
 import time
 from contextlib import asynccontextmanager
 
@@ -68,6 +69,9 @@ async def lifespan(_app):
     schedule.start(hub.notify)  # dars jadvali: kun rejasi va darsdan oldin ogohlantirish
     from ali import content_plan
     content_plan.start(hub.notify)  # kontent reja: kunlik va belgilangan soatda eslatma
+    from ali import self_upgrade
+    # yarim qolgan kuchaytirish - bot ulangach (30 s) egasiga aytiladi
+    threading.Thread(target=lambda: (time.sleep(30), self_upgrade.interrupted(hub.notify)), daemon=True).start()
     from ali import tunnel
     tunnel.start()  # telefondan istalgan joydan kirish (Cloudflare tunnel) - manzil Telegram tugmasiga yoziladi
     bot = None
