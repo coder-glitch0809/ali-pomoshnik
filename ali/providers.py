@@ -26,12 +26,36 @@ def _gemini_client():
 
 
 # Asosiy Gemini modeli band (503), eskirgan (404), limiti tugagan (429) yoki osilib qolsa - zaxiralar sinaladi.
-GEMINI_FALLBACKS = ("gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-lite-latest")
+GEMINI_FALLBACKS = ("gemini-3-flash-preview", "gemini-3.5-flash", "gemini-flash-lite-latest")  # tezi birinchi
 _gemini_good: dict[str, str] = {}  # asosiy model -> oxirgi ishlagan o'rinbosar
+GEMINI_GOOD_FILE = config.data_dir / "gemini_model.json"  # qayta ishga tushganda ham band model kutilmasin (6 soat)
+
+
+def _good_load() -> None:
+    import json
+    import time
+    if _gemini_good:
+        return
+    try:
+        data = json.loads(GEMINI_GOOD_FILE.read_text(encoding="utf-8"))
+        if time.time() - data.get("at", 0) < 6 * 3600:
+            _gemini_good.update(data.get("good", {}))
+    except (OSError, ValueError):
+        pass
+
+
+def _good_save() -> None:
+    import json
+    import time
+    try:
+        GEMINI_GOOD_FILE.write_text(json.dumps({"at": time.time(), "good": _gemini_good}), encoding="utf-8")
+    except OSError:
+        pass
 
 
 def _gemini_generate(model: str, contents, config_=None):
     """generate_content zaxira modellar bilan: ishlagan o'rinbosar eslab qolinadi (keyingi safar birinchi sinaladi)."""
+    _good_load()
     order = list(dict.fromkeys([_gemini_good.get(model, model), model, *GEMINI_FALLBACKS]))
     last = None
     for m in order:
@@ -41,8 +65,9 @@ def _gemini_generate(model: str, contents, config_=None):
             last = e
             log.warning("Gemini %s ishlamadi: %s", m, str(e)[:120])
             continue
-        if m != model:
+        if m != model and _gemini_good.get(model) != m:
             _gemini_good[model] = m
+            _good_save()
         return response
     raise last or RuntimeError("Gemini javob bermadi")
 
@@ -173,6 +198,25 @@ def chat(system: str, history: list[dict], text: str, max_tokens: int = 1500,
             log.warning('%s chat unavailable: %s',name,type(error).__name__)
     raise RuntimeError('AI xizmatlari hozir javob bermadi (Gemini bepul limiti tugagan bo‘lishi mumkin). '
                        'Kompyuterdagi Claude/ChatGPT ilovalari ulanganini yoki Bedrock kalitini tekshiring.')
+
+
+def gemini_ask(prompt: str, images: list[str] | None = None) -> str:
+    """Bitta so'rov (Pro ilovalar zanjiri uchun): matn + ixtiyoriy rasmlar. Band/limitli model - zaxiralarga o'tadi."""
+    if not config.gemini_api_key:
+        raise RuntimeError("GEMINI_API_KEY yo'q")
+    from pathlib import Path
+
+    from google.genai import types
+    parts = [types.Part.from_bytes(data=Path(p).read_bytes(), mime_type=MIME_IMG.get(Path(p).suffix.lower(), "image/jpeg"))
+             for p in images or [] if Path(p).is_file()]
+    response = _gemini_generate(config.gemini_chat_model, [*parts, prompt])
+    text = (response.text or "").strip()
+    if not text:
+        raise RuntimeError("Gemini bo'sh javob qaytardi")
+    return text
+
+
+MIME_IMG = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
 
 
 def gemini_chat(system: str, history: list[dict], text: str, max_tokens: int = 1500, json_mode: bool = False,

@@ -328,6 +328,17 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(omniroute._good["model"], "ddgw/m")
         omniroute._good.clear(); omniroute._bad.clear()
 
+    def test_gemini_api_joins_pro_chain_after_claude(self):
+        from ali import local_ai, omniroute
+        with patch.object(config, "gemini_api_key", "k"), patch.object(omniroute, "available", return_value=False), \
+                patch.object(local_ai, "app_state", return_value={"claude": {"connected": True}, "codex": {"connected": True}}), \
+                patch.object(local_ai, "app_exe", return_value="x.exe"), patch.object(local_ai, "paused_until", return_value=0):
+            self.assertEqual(local_ai.connected(), ["claude", "gemini", "codex"])
+        with patch("ali.providers.gemini_ask", side_effect=RuntimeError("429 RESOURCE_EXHAUSTED quota")), \
+                patch.object(local_ai, "_mark_limit") as mark, self.assertRaises(RuntimeError):
+            local_ai.ask_one("gemini", "api", "salom")
+        mark.assert_called_once()  # limit tugasa - 1 soat chetlab o'tiladi
+
     def test_gemini_falls_back_when_model_busy(self):
         from types import SimpleNamespace
         from unittest.mock import MagicMock

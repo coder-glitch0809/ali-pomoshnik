@@ -254,6 +254,8 @@ def connected() -> list[str]:
     """Egasi ulagan (tekshirilgan) ilovalar: asosiy (primary) birinchi."""
     state, first = app_state(), option("_primary")
     keys = [k for k in APPS if state.get(k, {}).get("connected") and app_exe(k) and not paused_until(k)]
+    if config.gemini_api_key and not paused_until("gemini"):  # Gemini API - tez; Claude'dan keyin, ChatGPT'dan oldin
+        keys.insert(1 if keys[:1] == ["claude"] else 0, "gemini")
     from . import omniroute
     if omniroute.available():  # oxirgi zaxira: ko'p modelli shlyuz
         keys.append("omniroute")
@@ -395,6 +397,15 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
     if key == "omniroute":
         from . import omniroute
         return omniroute.chat(prompt, timeout, images)
+    if key == "gemini":  # Gemini CLI shaxsiy akkauntlarga yopilgan - API orqali
+        from . import providers
+        try:
+            return providers.gemini_ask(prompt, images)
+        except Exception as e:
+            raw = str(e)
+            if _LIMIT_RE.search(raw) or "429" in raw or "RESOURCE_EXHAUSTED" in raw:
+                _mark_limit(key, raw, 3600)
+            raise RuntimeError(f"Gemini javob bermadi: {raw[:300]}") from None
     WORKDIR.mkdir(parents=True, exist_ok=True)
     if images and key == "claude":  # Claude Code rasmni fayl sifatida o'qib ko'radi
         prompt += "\n\nBiriktirilgan rasm(lar) - Read vositasi bilan ochib, diqqat bilan ko'r:\n" + "\n".join(images)
