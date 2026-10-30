@@ -376,9 +376,12 @@ def _reset_time(text: str) -> float:
     return at.timestamp() + 120
 
 
-def _mark_limit(key: str, raw: str) -> float:
+_AUTH_RE = re.compile(r"Failed to authenticate|OAuth session expired|not logged in|Please run /login|401 Unauthorized", re.I)
+
+
+def _mark_limit(key: str, raw: str, seconds: float | None = None) -> float:
     data = _limits()
-    data[key] = _reset_time(raw)
+    data[key] = time.time() + seconds if seconds else _reset_time(raw)
     LIMITS.write_text(json.dumps(data), encoding="utf-8")
     log.warning("%s obuna limiti tugadi - %s gacha murojaat qilinmaydi", NAMES[key],
                 time.strftime("%d.%m %H:%M", time.localtime(data[key])))
@@ -410,6 +413,10 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
         if "IneligibleTierError" in raw:
             detail = ("Google Gemini CLI'ni shaxsiy akkauntlar uchun to'xtatgan - bu ilova endi ishlamaydi. "
                       "Gemini'dan API kaliti orqali foydalaning.")
+        elif _AUTH_RE.search(raw):  # ilovaga qayta kirish kerak - 1 soat chetlab o'tiladi, boshqa ilova ishlaydi
+            _mark_limit(key, raw, 3600)
+            detail = (f"{NAMES[key]} ilovasiga qayta kirish kerak (sessiya eskirgan) - Ruxsatlar -> Ilovalar -> "
+                      f"{NAMES[key]} -> Kirish. 1 soat boshqa ilova ishlatiladi")
         elif _LIMIT_RE.search(raw):
             until = _mark_limit(key, raw)
             detail = f"obuna limiti tugagan - {time.strftime('%d.%m %H:%M', time.localtime(until))} da tiklanadi"
