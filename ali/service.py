@@ -428,6 +428,11 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                                                        *(() if creating else ("oxirgi",)), brain.registry, ready_m)
                 except Exception as e:
                     recalled = f"⚠️ Video {'yaratilmadi' if creating else 'montaji bajarilmadi'}: {e}"
+            # Ekotizim: «yangi agent kerak: ...» - Ali yangi agentni o'zi ishga oladi (kadrlar bo'limi)
+            from . import ecosystem
+            if not recalled and owner and not images and ecosystem.is_hire(text):
+                ready_e = local_ai.connected() if local_ai.access() is True else []
+                recalled = await asyncio.to_thread(ecosystem.hire, text, brain, ready_e)
             # Telegram'da kimgadir yozish (ovoz yoki matn): «Telegramda Akmalga yoz: ...» - har safar tasdiq bilan
             from . import tg_send
             if not recalled and owner and not images and tg_send.is_request(text):

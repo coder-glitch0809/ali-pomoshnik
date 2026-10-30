@@ -32,6 +32,7 @@ LIMIT = 4000
 TOOL_LABELS = {
     "web_search": "🌐 Internetdan qidirish",
     "telegram_send": "✉️ Telegram'da xabar yuborish (sizning nomingizdan)",
+    "fire_agent": "🚪 Agentni ishdan bo'shatish (3 marta past baho)",
     "run_powershell": "💻 PowerShell", "take_screenshot": "🖥 Ekran rasmi", "get_weather": "⛅ Ob-havo",
     "get_my_location": "📍 Joylashuv", "open_application": "🚀 Ilova ochish", "open_website": "🔗 Sayt ochish",
     "instagram_analytics": "📊 Instagram analitika", "instagram_competitor": "🔍 Raqobatchi tahlili",
@@ -52,6 +53,7 @@ COMMANDS = [
     ("instagram", "Instagram profil audit: nimani to'g'rilash kerak"),
     ("kuchaytir", "Ali o'zini kuchaytirsin: /kuchaytir yangi imkoniyat"),
     ("tugma_test", "Tugmalar ishlayotganini tekshirish"),
+    ("ekotizim", "Agentlar: baho, rag'bat va jazo"),
     ("kompyuter", "Kompyuterni telefondan boshqarish (ekran + bosish)"),
     ("kontent_reja", "Instagram tahlili va kontent reja: /kontent_reja [kunlar]"),
     ("kontent", "Bugungi kontent (hook, ssenariy, caption)"),
@@ -165,6 +167,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("instagram", self.cmd_instagram))
         a.add_handler(CommandHandler("kuchaytir", self.cmd_upgrade))
         a.add_handler(CommandHandler("tugma_test", self.cmd_button_test))
+        a.add_handler(CommandHandler("ekotizim", self.cmd_ecosystem))
         a.add_handler(CommandHandler("kompyuter", self.cmd_pc))
         a.add_handler(CommandHandler("kontent", self.cmd_content_today))
         a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
@@ -320,6 +323,18 @@ class TelegramBot(PublicTelegram, Listener):
         self.owner_id=update.effective_user.id
         self._save_users()
         await update.effective_chat.send_message("Kirish tasdiqlandi. Salom, Abbos! /start")
+
+    async def cmd_ecosystem(self, update: Update, ctx):
+        """/ekotizim - agentlar bahosi va ogohlantirishlari; /ekotizim baholash - hozir baholash."""
+        from . import ecosystem
+        if not await self._guard(update):
+            return
+        if ctx.args and ctx.args[0].lower().startswith("baho"):
+            text = await asyncio.to_thread(ecosystem.review, brain, None,
+                                           lambda name, args: hub.confirm(name, args, timeout=1800))
+        else:
+            text = ecosystem.report(brain)
+        await update.message.reply_text(text[:4000])
 
     async def cmd_button_test(self, update: Update, ctx):
         """/tugma_test - tugmalar Ali'ga yetib kelayotganini tekshirish."""

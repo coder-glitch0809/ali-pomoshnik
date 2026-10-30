@@ -294,6 +294,8 @@ def _tick(brain) -> None:
     state = _load()
     now = time.time()
     _telegram_tick(state, now)
+    from . import ecosystem  # kunlik baholash: rag'bat va jazo (bo'shatish - egasining tasdig'i bilan)
+    ecosystem.tick(brain, hub.notify, lambda name, args: hub.confirm(name, args, timeout=1800))
     if config.self_improve and not _improve_tick(brain, state, now):
         return
     if config.auto_learn:

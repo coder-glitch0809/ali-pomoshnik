@@ -89,6 +89,16 @@ def _write_script(topic: str, platform: str, duration_s: int, audience: str, goa
     prompt = (f"Mavzu: {_clean(topic, 500) or DEFAULT_TOPIC}\nPlatforma: {platform}\nDavomiylik: ~{duration_s} soniya\n"
               f"Auditoriya: {audience or 'aniqlanmagan, mavzudan kelib chiq'}\nMaqsad: {goal or 'qamrov va obunachi'}\n"
               f"Til: {language} (jonli, tabiiy). Sahnalar soni: {max(3, min(8, duration_s // 5))}.")
+    from .. import local_ai
+    ready = local_ai.connected() if local_ai.access() is True else []
+    for key in sorted(ready, key=lambda k: k != "codex"):  # ChatGPT ssenariyda birinchi, keyin Claude/Gemini
+        try:
+            script = _parse_script(local_ai.ask_one(key, local_ai.app_exe(key) or "api",
+                                                    f"{_SCRIPT_SYSTEM}\n\n{prompt}\n\nFAQAT JSON qaytar.", 300))
+            if script.get("scenes"):
+                return script
+        except Exception as e:
+            log.warning("%s ssenariy yozmadi: %s", key, e)
     _, answer = providers.chat(_SCRIPT_SYSTEM, [], prompt, max_tokens=2500, json_mode=True)
     return _parse_script(answer)
 
