@@ -43,5 +43,21 @@ class TgSendTests(unittest.TestCase):
         self.assertIn("bir nechta", out)
 
 
+class TgLoginTests(unittest.TestCase):
+    def test_login_api_only_for_owner(self):
+        from fastapi.testclient import TestClient
+        import runtime
+        client = TestClient(runtime.app)
+        with patch.object(runtime, "is_local", return_value=False):
+            self.assertEqual(client.post("/api/tg-login/start", json={"value": "+998901234567"}).status_code, 403)
+        self.assertEqual(client.get("/tg-login", follow_redirects=False).status_code, 307)
+
+    def test_code_before_start_is_refused(self):
+        from ali import tg_login
+        tg_login._state.clear()
+        self.assertIn("error", tg_login.code("12345"))
+        self.assertIn("error", tg_login.password("x"))
+
+
 if __name__ == "__main__":
     unittest.main()

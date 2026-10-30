@@ -172,6 +172,28 @@ async def remote_input(request: Request):
         return JSONResponse({'ok': False, 'error': str(e)[:300]}, status_code=400)
 
 
+# --- Telegram akkauntga kirish formasi (terminal o'rniga): telefon -> kod -> parol; egasining o'zi kiritadi ---
+@app.get('/tg-login')
+async def tg_login_page(request: Request):
+    if not is_authed(request.cookies):
+        return RedirectResponse('/login')
+    return FileResponse(WEB / 'tg-login.html', headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
+
+
+@app.post('/api/tg-login/{step}')
+async def tg_login_step(step: str, request: Request):
+    if not remote_allowed(request):
+        return JSONResponse({'error': 'Faqat shu kompyuterdan yoki Telegram orqali (egasi)'}, status_code=403)
+    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+        return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
+    from ali import tg_login
+    fn = {'start': tg_login.start, 'code': tg_login.code, 'password': tg_login.password}.get(step)
+    if not fn:
+        return JSONResponse({'error': 'Noma’lum qadam'}, status_code=404)
+    value = str((await json_object(request)).get('value', ''))[:200]
+    return await asyncio.to_thread(fn, value)
+
+
 @app.post('/api/telegram/login')
 async def telegram_login(request: Request):
     if request.headers.get('origin') and request.headers['origin'].rstrip('/')!=str(request.base_url).rstrip('/'):

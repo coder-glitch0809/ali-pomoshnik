@@ -34,7 +34,7 @@ PROVIDERS = {
         steps=['Firebase Console’da loyihangizni oching → Build → Firestore Database → yoqilganini tekshiring (yo‘q bo‘lsa “Create database”).', 'Project settings (⚙) → Service accounts → “Generate new private key” → JSON fayl yuklanadi.', 'Faylni Bloknot bilan oching, butun matnni nusxalab pastga joylang. Ali tekshiradi va har daqiqada xotirani Firebase’ga yozadi.', 'Kalit faqat shu kompyuterda (data/ papkasida) saqlanadi va GitHub’ga chiqmaydi.']),
     'bedrock': dict(name='Amazon Bedrock (Claude)', url='https://console.aws.amazon.com/bedrock/home#/api-keys', link='AWS Bedrock → API keys',
         steps=['AWS Console’da Amazon Bedrock → API keys bo‘limini oching va “Generate long-term API key” bilan kalit yarating.', 'Bedrock → Model access bo‘limida Anthropic Claude modellariga ruxsat yoqilganini tekshiring.', 'Kalitni pastga kiriting. Mintaqa us-east-1 emas bo‘lsa, oldiga yozing: “eu-central-1 ABSK…”. Ali modelni o‘zi topadi va tekshiradi.', 'Bedrock pullik (AWS hisobingizdan). Ali uni Pro ilovalardan keyin, bepul Gemini’dan oldin ishlatadi.'], field='bedrock_api_key', env='BEDROCK_API_KEY'),
-    'tg_account': dict(name='Telegram akkaunt (kanallar)', url='https://my.telegram.org/apps', link='my.telegram.org → API development tools',
+    'tg_account': dict(name='Telegram akkaunt (kanallar)', url='https://my.telegram.org/apps', link='my.telegram.org → API development tools', action='/tg-login', action_label='Telegram’ga kirish (telefon → kod → parol)',
         steps=['my.telegram.org saytiga telefon raqamingiz bilan kiring → “API development tools” → ilova yarating (nomi: Ali).', 'Chiqqan api_id (raqam) va api_hash ni pastga bo‘sh joy bilan kiriting: “12345678 abcdef0123…”.', 'Kompyuterda oyna ochiladi: telefon raqamingiz, Telegram yuborgan kod va (bo‘lsa) 2 bosqichli parolni O‘ZINGIZ kiritasiz.', 'Ali faqat O‘QIYDI: kanal va guruhlardagi post va fayllardan o‘rganadi, hech narsa yubormaydi.'], field='tg_api_hash', env='TG_API_HASH'),
     'chatplace': dict(name='ChatPlace (Instagram/Telegram avtomatlashtirish)', url='https://chatplace.io', link='ChatPlace sayti', action='/api/mcp/chatplace/start', action_label='ChatPlace’ga kirish va ruxsat berish',
         steps=['Pastdagi tugmani bosing - ChatPlace sahifasi ochiladi, akkauntingizga kiring.', 'Ali so‘ragan ruxsatlarni tasdiqlang (avtomatlashtirish, chatlar, tarqatmalar, izohlar, AI agent).', '“Ali’ga ulandi” chiqqach, bu oynani yoping. Ali ma’lumotni erkin o‘qiydi, o‘zgartirishlarni (xabar, tarqatma, avtojavob) faqat sizning tasdig‘ingiz bilan qiladi.']),
@@ -194,6 +194,4 @@ async def connect_tg_account(text):
         async with _lock:
             for env,value in (('TG_API_ID',parts[0]),('TG_API_HASH',parts[1])):
                 await asyncio.to_thread(set_key,str(ENV_FILE),env,value);os.environ[env]=value
-    try:await asyncio.to_thread(tg_account.open_login)
-    except RuntimeError as e:raise ValueError(str(e)) from None
-    return {'ok':True,'message':'Kompyuterda oyna ochildi: telefon raqamingiz va Telegram yuborgan kodni o‘zingiz kiriting. Kirgach, Telegram’da Ali’ga “/kanallar” deb yozing.'}
+    return {'ok':True,'message':'Saqlandi. Endi «Telegram’ga kirish» tugmasini bosing: telefon raqamingiz, Telegram yuborgan kod va (bo‘lsa) ikki bosqichli parolni o‘zingiz kiritasiz.'}
