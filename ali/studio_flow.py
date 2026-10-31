@@ -228,7 +228,14 @@ def _plan(video: Path, caption: str) -> dict:
         raw = got[1] if got else ""
         return json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
     except (ValueError, TypeError):
-        return {"hook": "", "cta": "Direktga yozing", "cut_silence": True, "missing": []}
+        from .skills.video_motion import RULE_WORDS
+        cine = bool(RULE_WORDS["cinematic"].search(caption or ""))  # AI band - topshiriq so'zlaridan
+        return {"hook": "", "cta": "" if cine else "Direktga yozing", "cut_silence": not cine, "missing": [],
+                "render": {"grade": "cinematic" if cine else "natural", "fade": cine, "progress_bar": not cine,
+                           "fps": 24 if cine or RULE_WORDS["fps24"].search(caption or "") else 30,
+                           "uhd": bool(RULE_WORDS["uhd"].search(caption or ""))},
+                "caption": "Planet Print - tashqi reklama. Direktga yozing.",
+                "hashtags": "#planetprint #tashqireklama #reklama #reels #uzbekistan", "offline": True}
 
 
 ALBUM_PLAN = """Sen professional Reels montajchisisan. Egam kanalga {n} ta klipdan iborat albom tashladi - ulardan BITTA
@@ -278,8 +285,10 @@ def _album(paths: list[str], caption: str, tmp: Path) -> tuple[str, dict]:
     except (ValueError, TypeError):
         plan = {}
     picks = [c for c in plan.get("clips", []) if isinstance(c, dict) and 1 <= int(c.get("n", 0)) <= len(paths)]
-    if not picks:  # AI bo'lmasa - hamma klip, har biridan ko'pi bilan 8 s
-        picks = [{"n": k, "start": 0, "end": min(i["duration"], 8)} for k, i in enumerate(infos, 1)]
+    if not picks:  # AI'lar band (limit) - montajchi o'z qoidalari va o'lchovlari bilan reja tuzadi
+        from .skills.video_motion import rule_plan
+        plan = rule_plan(paths, caption)
+        picks = plan["clips"]
     parts = []
     for j, c in enumerate(picks[:12]):
         src, d = paths[int(c["n"]) - 1], infos[int(c["n"]) - 1]["duration"]

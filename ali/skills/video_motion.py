@@ -89,6 +89,78 @@ def kinetic_hook(text: str, start: float, end: float, ass_time) -> str:
     return "\n".join(out) + "\n"
 
 
+# ---------------- AI'siz montaj rejasi (limitlar tugaganda): o'lchovlar + qoidalar ----------------
+def clip_profile(path: str) -> dict:
+    """Klipni o'lchaydi: har 0.5 s dagi harakat (kadrlar farqi) va yorug'lik."""
+    log = _run(["-i", str(path), "-vf", "fps=2,scale=160:-1,tblend=all_mode=difference,signalstats,"
+                "metadata=print:key=lavfi.signalstats.YAVG", "-an", "-f", "null", "-"])
+    motion = [float(x) for x in re.findall(r"lavfi\.signalstats\.YAVG=([\d.]+)", log)]
+    log2 = _run(["-i", str(path), "-vf", "fps=1,scale=160:-1,signalstats,metadata=print:key=lavfi.signalstats.YAVG",
+                 "-an", "-f", "null", "-"])
+    light = [float(x) for x in re.findall(r"lavfi\.signalstats\.YAVG=([\d.]+)", log2)]
+    i = info(Path(path))
+    return {"duration": i["duration"], "audio": i["audio"], "motion": motion or [0.0],
+            "brightness": sum(light) / len(light) if light else 0.0}
+
+
+def best_window(profile: dict, length: float) -> tuple[float, float]:
+    """Eng harakatli (qiziq) oraliq: [a, a+length]."""
+    d, m = profile["duration"], profile["motion"]
+    length = min(length, d)
+    win = max(1, int(length * 2))
+    if len(m) <= win:
+        return 0.0, length
+    sums = [sum(m[k:k + win]) for k in range(len(m) - win + 1)]
+    a = sums.index(max(sums)) / 2
+    return round(min(a, d - length), 2), round(min(a, d - length) + length, 2)
+
+
+RULE_WORDS = {
+    "cinematic": re.compile(r"cinemat|kinemato|premium|hashamat|luxury|кинемат", re.I),
+    "uhd": re.compile(r"\b4k\b|2160|3840", re.I),
+    "fps24": re.compile(r"24\s*fps|24\s*кадр", re.I),
+    "notext": re.compile(r"yozuv\S*\s+(qo'?yilmasin|yo'?q)|matnsiz|без\s+текст", re.I),
+}
+
+
+def _field(brief: str, name: str) -> str:
+    """Topshiriqdagi aniq «hook: ...» / «cta: ...» qatori."""
+    m = re.search(rf"{name}\s*[:\-]\s*([^\n]{{3,80}})", brief or "", re.I)
+    return m.group(1).strip(" «»\"'") if m else ""
+
+
+def rule_plan(paths: list[str], brief: str = "") -> dict:
+    """AI band bo'lganda albom rejasi: eng kuchli kadr boshida, kadr 2-4.5 s, harakatlilarga speed ramp,
+    o'tishlar navbat bilan; topshiriq matnidan 4K / 24 fps / kinematografik / yozuvsiz talablari olinadi."""
+    profiles = [clip_profile(p) for p in paths]
+    cinematic = bool(RULE_WORDS["cinematic"].search(brief))
+    target = 32.0 if cinematic else 26.0
+    length = max(2.0, min(4.5, target / max(len(paths), 1)))
+    score = [sum(p["motion"]) / len(p["motion"]) * 0.6 + p["brightness"] / 255 * 40 for p in profiles]
+    order = list(range(len(paths)))
+    hook = score.index(max(score))
+    order.remove(hook)
+    order = [hook] + order  # eng kuchli (yorug' + harakatli) kadr - boshida
+    med = sorted(sum(p["motion"]) / len(p["motion"]) for p in profiles)[len(profiles) // 2]
+    clips = []
+    for n in order:
+        a, b = best_window(profiles[n], length + (1.5 if not cinematic else 0))
+        busy = sum(profiles[n]["motion"]) / len(profiles[n]["motion"]) > med and b - a >= 3
+        clips.append({"n": n + 1, "start": a, "end": b, "ramp": bool(busy and not cinematic)})
+    cycle = ["fade", "smoothup", "fade"] if cinematic else ["zoomin", "slideleft", "fadewhite", "smoothup", "slideright"]
+    first = (brief.strip().splitlines() or [""])[0].strip("*# ")[:120]
+    return {"clips": clips, "transitions": [cycle[k % len(cycle)] for k in range(len(clips))],
+            "render": {"subtitles": not cinematic, "progress_bar": not cinematic, "grade": "cinematic" if cinematic else "natural",
+                       "fade": cinematic, "fps": 24 if RULE_WORDS["fps24"].search(brief) or cinematic else 30,
+                       "uhd": bool(RULE_WORDS["uhd"].search(brief))},
+            "hook": "" if cinematic or RULE_WORDS["notext"].search(brief) else _field(brief, "hook"),
+            "cta": "" if cinematic else (_field(brief, "cta") or "Direktga yozing"),
+            "caption": (first + "\n\nPlanet Print - tashqi reklama: pilon, lightbox, hajmli harflar. Direktga yozing.").strip(),
+            "hashtags": "#planetprint #tashqireklama #reklama #pilon #lightbox #reels #uzbekistan",
+            "post_time": "19:00-21:00 (kechki faol vaqt)", "trial": "ha - avval sinov Reels sifatida", "missing": [],
+            "offline": True}
+
+
 # ---------------- /organ: namuna videodan uslub o'rganish ----------------
 STYLE_TASK = """Sen tajribali Reels montaj rejissyorisan. Egam namuna sifatida video tashladi - shu montaj USLUBINI o'rgan.
 Biriktirilgan rasmlar - videodan kadrlar (boshidan oxirigacha). O'lchovlar: {metrics}

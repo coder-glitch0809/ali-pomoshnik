@@ -224,6 +224,48 @@ def knowledge_block(text: str, key: str | None) -> str:
     return ("\n\nO'RGANGAN BILIMLARING (shu savolga mos - avval shularga tayan, eskirgan bo'lsa ayt):\n" + body)
 
 
+def knowledge_answer(text: str, key: str | None, a=None, limit: int = 8) -> str:
+    """AI'larning hammasi band (limit) bo'lganda - agent o'z bilimlaridan javob beradi: savolga eng mos gaplar
+    (bilim yozuvlaridan ajratib olinadi), manbasi bilan. Hech narsa topilmasa - bo'sh."""
+    words = {w[:6] for w in re.findall(r"\w{4,}", text.lower())}
+    if not words:
+        return ""
+    rows = memory.relevant_knowledge(text, f"[{key}] ", 6) if key else []
+    rows += [r for r in memory.relevant_knowledge(text, "", 6) if r not in rows]
+    def stems(s: str) -> set[str]:
+        return {w[:6] for w in re.findall(r"\w{4,}", s.lower())}
+
+    # 1) Mavzusi savolga juda mos bilim - butun bo'lim bo'lib beriladi (tuzilgan qo'llanmalar uchun)
+    block, block_topic = "", ""
+    by_topic = sorted(rows[:8], key=lambda r: len(words & stems(r["topic"])), reverse=True)
+    if by_topic and len(words & stems(by_topic[0]["topic"])) >= 2:
+        block_topic = by_topic[0]["topic"]
+        block = by_topic[0]["content"].strip()[:1100]
+    # 2) Qolgan bilimlardan savolga mos to'liq gaplar (takrorsiz, chala bo'laklarsiz)
+    scored, seen = [], {re.sub(r"\W+", "", block.lower())[:2000]}
+    for n, r in enumerate(rows[:8]):
+        if r["topic"] == block_topic:
+            continue
+        for part in re.split(r"(?<=[.!?])\s+|\n+", r["content"]):
+            part = part.strip(" -•*#")
+            norm = re.sub(r"\W+", "", part.lower())[:60]
+            if len(part.split()) < 6 or len(part) > 400 or part.endswith(":") or norm in seen:
+                continue
+            hit = len(words & stems(part))
+            if hit:
+                seen.add(norm)
+                scored.append((hit, -n, part, r["topic"]))
+    if not block and not scored:
+        return ""
+    best = sorted(scored, reverse=True)[:limit - (3 if block else 0)]
+    topics = list(dict.fromkeys(([block_topic] if block_topic else []) + [t for *_, t in best]))[:3]
+    who = f"{a.icon} {a.name}" if a else config.assistant_name
+    body = (block + ("\n\n" if block and best else "")) + "\n".join(f"• {p}" for _, _, p, _ in best)
+    return (f"⚙️ AI xizmatlari hozir band (limit). {who} o'z bilimlaridan javob beradi:\n\n{body}"
+            + "\n\n📚 Manba: " + "; ".join(t.split("] ", 1)[-1][:60] for t in topics)
+            + "\n(AI qaytgach to'liqroq javob uchun qayta so'rang.)")
+
+
 def save_remembered(reply: str) -> str:
     """Javobdagi <<ESLA: ...>> belgilaridan faktlarni xotiraga yozadi va belgilarni olib tashlaydi."""
     for k, v in REMEMBER_RE.findall(reply):
@@ -319,6 +361,10 @@ async def team_reply(text: str, emit: Callable[[str, object], None] | None, read
         if direct:
             raise RuntimeError(f"{local_ai.NAMES.get(direct, direct)} hozir javob bermadi - ilova ulanganini va limitini "
                                "tekshiring (Ruxsatlar → Ilovalar orqali ulanish)")
+        offline = await asyncio.to_thread(knowledge_answer, text, key, a)  # limitlar tugagan - o'z bilimidan
+        if offline:
+            log.info("AI'lar band - %s o'z bilimidan javob berdi", key or "ali")
+            return offline
         raise RuntimeError("Hozir hech bir AI javob bermadi: kompyuterdagi Claude/ChatGPT ilovalari ulanganini va "
                            "Gemini/Bedrock limitini tekshiring.")
     reply = save_remembered(reply)
