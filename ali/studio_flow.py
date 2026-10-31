@@ -339,6 +339,12 @@ def auto_edit(video, caption: str, src_id: int, notify, photos: list | None = No
     start = outbox.mark()
     try:
         r = plan.get("render") if isinstance(plan.get("render"), dict) else {}
+        if not music:  # paketda trek yo'q - kutubxonadan yoki sintez (mualliflik huquqi muammosiz)
+            from .skills.music import for_video, mood_of
+            from .skills.video_edit import info
+            mood = "cinematic" if str(r.get("grade")) == "cinematic" else mood_of(caption)
+            music, src = for_video(info(Path(video))["duration"] + 2, mood)
+            notify(f"🎵 Musiqa: {mood} ({src})")
         result = video_pro(video, hook=plan.get("hook", ""), cta=plan.get("cta", ""), music=music,
                            cut_silence=bool(plan.get("cut_silence", len(paths) == 1)),
                            subtitles=bool(r.get("subtitles", True)), progress_bar=bool(r.get("progress_bar", True)),
@@ -503,6 +509,12 @@ def _poll_channel(notify) -> None:
         else:
             threading.Thread(target=auto_edit, args=(paths, brief, clips[0]["id"], notify, photos, music),
                              daemon=True).start()
+    # Alohida tashlangan audio - musiqa kutubxonasiga (izohdagi so'z bo'yicha kayfiyat: cinematic/energetic/calm)
+    for x in items:
+        if x["kind"] == "audio" and x["path"] and x["id"] not in used:
+            from .skills.music import save_track
+            dest = save_track(x["path"], x["text"])
+            notify(f"🎵 Musiqa kutubxonaga qo'shildi: {dest.parent.name}/{dest.name}")
     # Videosiz rasmlar: kadr so'roviga javob (B-roll) yoki kreativ brif
     for x in items:
         if x["kind"] != "photo" or not x["path"] or x["id"] in used:

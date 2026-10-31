@@ -34,6 +34,7 @@ TOOL_LABELS = {
     "web_search": "🌐 Internetdan qidirish",
     "telegram_send": "✉️ Telegram'da xabar yuborish (sizning nomingizdan)",
     "fire_agent": "🚪 Agentni ishdan bo'shatish (3 marta past baho)",
+    "browser_click": "🌐 Chrome'da muhim tugmani bosish",
     "run_powershell": "💻 PowerShell", "take_screenshot": "🖥 Ekran rasmi", "get_weather": "⛅ Ob-havo",
     "get_my_location": "📍 Joylashuv", "open_application": "🚀 Ilova ochish", "open_website": "🔗 Sayt ochish",
     "instagram_analytics": "📊 Instagram analitika", "instagram_competitor": "🔍 Raqobatchi tahlili",
@@ -55,6 +56,7 @@ COMMANDS = [
     ("kuchaytir", "Ali o'zini kuchaytirsin: /kuchaytir yangi imkoniyat"),
     ("tugma_test", "Tugmalar ishlayotganini tekshirish"),
     ("ekotizim", "Agentlar: baho, rag'bat va jazo"),
+    ("chrome", "Ali'ning Chrome'i: sayt ochish / kirish (login)"),
     ("kompyuter", "Kompyuterni telefondan boshqarish (ekran + bosish)"),
     ("kontent_reja", "Instagram tahlili va kontent reja: /kontent_reja [kunlar]"),
     ("kontent", "Bugungi kontent (hook, ssenariy, caption)"),
@@ -169,6 +171,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("kuchaytir", self.cmd_upgrade))
         a.add_handler(CommandHandler("tugma_test", self.cmd_button_test))
         a.add_handler(CommandHandler("ekotizim", self.cmd_ecosystem))
+        a.add_handler(CommandHandler("chrome", self.cmd_chrome))
         a.add_handler(CommandHandler("kompyuter", self.cmd_pc))
         a.add_handler(CommandHandler("kontent", self.cmd_content_today))
         a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
@@ -324,6 +327,22 @@ class TelegramBot(PublicTelegram, Listener):
         self.owner_id=update.effective_user.id
         self._save_users()
         await update.effective_chat.send_message("Kirish tasdiqlandi. Salom, Abbos! /start")
+
+    async def cmd_chrome(self, update: Update, ctx):
+        """/chrome [sayt] - Ali'ning Chrome profilini ochadi: saytlarga egasi o'zi kiradi, keyin Ali shu sessiyadan foydalanadi."""
+        from . import browser
+        if not await self._guard(update) or update.effective_user.id != self.owner_id:
+            return
+        url = ctx.args[0] if ctx.args else "https://www.google.com"
+        try:
+            snap = await asyncio.to_thread(browser.open_url, url)
+        except Exception as e:
+            await update.message.reply_text(f"⚠️ Chrome ochilmadi: {str(e)[:300]}")
+            return
+        await update.message.reply_text(
+            f"🌐 Kompyuterda Ali'ning Chrome'i ochildi: {snap['title']}\n\nKerakli saytlarga (Google, Facebook, Ads Manager...) "
+            "shu oynada O'ZINGIZ kiring - parolni Ali kiritmaydi. Telefondan: /kompyuter → «📺 Jonli boshqarish».\n"
+            "Keyin topshiriq bering: «Chrome'da … ».")
 
     async def cmd_ecosystem(self, update: Update, ctx):
         """/ekotizim - agentlar bahosi va ogohlantirishlari; /ekotizim baholash - hozir baholash."""

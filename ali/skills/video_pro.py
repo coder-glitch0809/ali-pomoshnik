@@ -159,15 +159,22 @@ def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = 
               fps: int = FPS, uhd: bool = False) -> str:
     src, out, notes = _src(path), _out("pro montaj reels"), []
     i = info(src)
-    vertical = i["height"] > i["width"]
+    # faqat aniq 9:16 bo'lsa to'ldirib kesiladi; boshqa nisbat (3:4, kvadrat, gorizontal) - kesilmaydi, xira fon bilan
+    vertical = i["width"] and abs(i["height"] / i["width"] - 16 / 9) < 0.03
+    # Reels formati: asl fps saqlanadi (30 -> 24 kabi o'zgartirilmaydi - harakat "sakramasin"), 4K ga kattalashtirilmaydi
+    src_fps = round(i["fps"] or FPS)
+    fps = src_fps if src_fps in (24, 25, 30, 60) else FPS
+    if uhd:
+        notes.append("4K o'rniga Reels standarti 1080x1920 (Instagram baribir siqadi)")
+        uhd = False
 
     def base(n: int) -> str:
         """9:16 ga moslash; gorizontal video - xira fon bilan (har bo'lakda alohida nomlar - graf to'qnashmasin)."""
         if vertical:
-            return f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps={FPS}"
+            return f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps={fps}"
         return (f"split[s{n}a][s{n}b];[s{n}a]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
                 f"boxblur=25:2[bg{n}];[s{n}b]scale={W}:{H}:force_original_aspect_ratio=decrease[fg{n}];"
-                f"[bg{n}][fg{n}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps={FPS}")
+                f"[bg{n}][fg{n}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps={fps}")
     with tempfile.TemporaryDirectory() as tmp:
         tmp_p = Path(tmp)
         # 1) Jump-cut + punch-in (har ikkinchi bo'lak 8% yaqinroq)
@@ -231,8 +238,8 @@ def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = 
             notes.append("musiqa (gapirganda pasayadi)")
         else:
             args = ["-i", "cut.mp4", *(["-vf", ",".join(vf)] if vf else []), "-c:a", "copy"]
-        quality = ["-crf", "16", "-maxrate", "45M", "-bufsize", "90M"] if uhd else ["-crf", "18"]
+        quality = ["-crf", "18", "-maxrate", "12M", "-bufsize", "24M", "-level:v", "4.2"]  # Instagram Reels tavsiyasi
         _run([*args, "-c:v", "libx264", "-preset", "medium", *quality, "-profile:v", "high", "-pix_fmt", "yuv420p",
-              "-r", str(int(fps) if int(fps or 0) in (24, 25, 30, 60) else FPS), "-movflags", "+faststart", str(out)], cwd=tmp_p)
+              "-r", str(fps), "-movflags", "+faststart", str(out)], cwd=tmp_p)
     size = "2160x3840 (4K)" if uhd else "1080x1920"
     return _done(out, "Professional montaj: " + ", ".join(notes + [f"rang: {grade}", "ovoz tozalandi", size, f"{fps} fps"]) + ".")

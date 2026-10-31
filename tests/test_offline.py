@@ -44,3 +44,18 @@ class OfflineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrowserTests(unittest.TestCase):
+    def test_requests_and_risky_click_needs_confirmation(self):
+        from ali import browser
+        self.assertTrue(browser.is_request("Chrome'da Ads Manager'ni och va natijalarni ko'r"))
+        self.assertTrue(browser.is_request("brauzerda pixabay.com ga kir"))
+        self.assertFalse(browser.is_request("kontent reja tuz"))
+        with patch.object(browser, "_call", return_value={"ok": 1}) as call:
+            with self.assertRaises(RuntimeError):
+                browser.click(3, "Buyurtma berish", confirm=lambda n, a: False)
+            call.assert_not_called()                      # tasdiqsiz xavfli tugma bosilmaydi
+            browser.click(3, "Buyurtma berish", confirm=lambda n, a: True)
+            browser.click(4, "Keyingi sahifa")             # oddiy tugma - tasdiqsiz
+        self.assertEqual(call.call_count, 2)

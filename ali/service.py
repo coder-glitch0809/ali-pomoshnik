@@ -488,6 +488,19 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                                                        *(() if creating else ("oxirgi",)), brain.registry, ready_m)
                 except Exception as e:
                     recalled = f"⚠️ Video {'yaratilmadi' if creating else 'montaji bajarilmadi'}: {e}"
+            # Musiqa: «musiqa top / yukla: cinematic» - Pixabay Music'dan (reklamada bepul) trek kutubxonaga yuklanadi
+            if not recalled and owner and not images and re.search(r"musiqa\S*\s+(top|yukla|izla|qidir)|"
+                                                                   r"музыка\S*\s+(топ|юкла|излa)", text, re.I):
+                from .skills.music import find_online, mood_of
+                ready_m2 = local_ai.connected() if local_ai.access() is True else []
+                recalled = await asyncio.to_thread(find_online, mood_of(text), ready_m2,
+                                                   lambda name, args: hub.confirm(name, args, timeout=600))
+            # Chrome: «Chrome'da ...» - Ali o'z profilidagi Chrome'ni boshqaradi (xavfli tugma - tasdiq bilan, parol - yo'q)
+            from . import browser
+            if not recalled and owner and not images and browser.is_request(text):
+                ready_b = local_ai.connected() if local_ai.access() is True else []
+                recalled = await asyncio.to_thread(browser.agent, text, ready_b,
+                                                   lambda name, args: hub.confirm(name, args, timeout=600))
             # Ekotizim: «yangi agent kerak: ...» - Ali yangi agentni o'zi ishga oladi (kadrlar bo'limi)
             from . import ecosystem
             if not recalled and owner and not images and ecosystem.is_hire(text):
