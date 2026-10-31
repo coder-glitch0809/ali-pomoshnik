@@ -530,6 +530,10 @@ def send_files(text: str, files: list[str]) -> None:
     uid = config.telegram_owner_id
     if not (config.telegram_token and uid):
         return
+    big = [f for f in files if Path(f).is_file() and Path(f).stat().st_size > 45 * 1024 * 1024]
+    if big:  # Telegram bot 50 MB dan katta fayl yubora olmaydi (4K video) - kanaldagi postga havola
+        text += f"\n\n🎬 Video katta ({Path(big[0]).stat().st_size // 1048576} MB) - kanalda ko'ring: https://t.me/{CHANNEL}"
+        files = [f for f in files if f not in big]
     try:
         httpx.post(api + "/sendMessage", data={"chat_id": uid, "text": text[:4000]}, timeout=30)
         for f in files:
