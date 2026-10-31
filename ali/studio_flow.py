@@ -182,9 +182,14 @@ Planet Print) kanalga video tashladi. Biriktirilgan rasmlar - videodan olingan k
 Davomiylik: {dur:.1f} s, o'lcham: {size}. Egam izohi: {caption}
 Nutq (taxminiy): {speech}
 
+{style}
+Egam izohi/topshirig'i bo'lsa - unga ANIQ amal qil (sahnalar tartibi, uzunlik, ritm, rang, yozuv yo'qligi, fps, 4K).
+"render": premium/kinematografik topshiriqda - grade "cinematic", fade true, progress_bar false, hook/cta faqat so'ralsa;
+nutq bo'lmasa subtitles false; 24 fps yoki 4K so'ralsa - fps 24, uhd true. Oddiy Reels - natural, 30 fps, progress_bar true.
 Shu videoni Instagram tavsiyasiga chiqadigan Reels qilish uchun montaj rejasini tuz. FAQAT JSON:
 {{"hook": "birinchi 2.5 s uchun kuchli yozuv (o'zbekcha, ko'pi bilan 6 so'z)", "cta": "oxirgi yozuv (3-4 so'z)",
   "cut_silence": true, "caption": "post matni (CTA bilan)", "hashtags": "#... (8-12 ta)",
+  "render": {{"subtitles": true, "progress_bar": true, "grade": "natural|cinematic", "fade": false, "fps": 30, "uhd": false}},
   "post_time": "qachon joylash + nega", "trial": "sinov Reels qilib joylashmi: ha/yo'q + nega",
   "missing": [{{"why": "nega kerak (o'zbekcha)", "prompt": "English prompt for ChatGPT/Gemini image, vertical 9:16, photorealistic, no text"}}]}}
 "missing" - faqat haqiqatan yetishmayotgan kadrlar (masalan: natija, yaqin plan, oldin/keyin, mahsulot): 0-4 ta."""
@@ -216,7 +221,8 @@ def _plan(video: Path, caption: str) -> dict:
             speech = " ".join(l for l in _srt(video, tmp_p).splitlines() if l and "-->" not in l and not l.isdigit())[:3000]
         except Exception:
             speech = "(nutq yo'q yoki tanilmadi)"
-        prompt = EDIT_PLAN.format(dur=i["duration"], size=f"{i['width']}x{i['height']}", caption=caption or "-", speech=speech)
+        prompt = EDIT_PLAN.format(dur=i["duration"], size=f"{i['width']}x{i['height']}", caption=caption or "-", speech=speech,
+                                  style=_style_hint())
         got = local_ai.ask_pro(prompt, 300, None, frames) if local_ai.access() is True else None
     try:
         raw = got[1] if got else ""
@@ -229,22 +235,42 @@ ALBUM_PLAN = """Sen professional Reels montajchisisan. Egam kanalga {n} ta klipd
 Reels yasash kerak. Biriktirilgan rasmlar - har klipdan 2 tadan kadr (tartib bilan: 1-klip, 2-klip, ...).
 Klipler (raqam: davomiylik): {clips}
 Egam izohi: {caption}
-Eng kuchli qismlarni tanla, tartibla va kes: jami 20-60 soniya, boshida eng qiziq kadr (hook). FAQAT JSON:
-{{"clips": [{{"n": 1, "start": 0.0, "end": 4.5}}], "hook": "...", "cta": "...", "caption": "...", "hashtags": "...",
+{style}
+Eng kuchli qismlarni tanla, tartibla va kes: jami 20-60 soniya, boshida eng qiziq kadr (hook), kadrlar 1.5-4 s (dinamik).
+Harakatli kadrlarga (o'rnatish, yig'ish, ko'tarish, yonish) SPEED RAMP qo'y: "ramp": true (normal -> tez -> slow-motion).
+Har o'tish uchun turini tanla: zoomin, slideleft, slideright, smoothup, fadewhite (flash), circleopen, fade. FAQAT JSON:
+Egam izohi/topshirig'i bo'lsa - unga ANIQ amal qil (sahnalar tartibi, uzunlik, ritm, rang, yozuv yo'qligi, fps, 4K).
+"render": premium/kinematografik topshiriqda - grade "cinematic", fade true, progress_bar false, hook/cta faqat so'ralsa;
+nutq bo'lmasa subtitles false; 24 fps yoki 4K so'ralsa - fps 24, uhd true. Oddiy Reels - natural, 30 fps, progress_bar true.
+{{"clips": [{{"n": 1, "start": 0.0, "end": 4.5, "ramp": false}}], "transitions": ["zoomin", "..."],
+  "render": {{"subtitles": true, "progress_bar": true, "grade": "natural|cinematic", "fade": false, "fps": 30, "uhd": false}},
+  "hook": "...", "cta": "...", "caption": "...", "hashtags": "...",
   "post_time": "...", "trial": "...", "missing": [{{"why": "...", "prompt": "English prompt, vertical 9:16, no text"}}]}}"""
+
+
+def _style_hint() -> str:
+    """/organ bilan o'rganilgan oxirgi uslub - montaj rejasiga qo'shiladi."""
+    from .skills.video_motion import latest_style
+    st = latest_style()
+    if not st:
+        return ""
+    return ("Egam o'rgatgan uslub (shunga moslab montaj qil): " + json.dumps(
+        {k: st.get(k) for k in ("name", "pacing", "hook", "text_style", "transitions", "effects", "avg_shot", "lessons")},
+        ensure_ascii=False)[:1500])
 
 
 def _album(paths: list[str], caption: str, tmp: Path) -> tuple[str, dict]:
     """Albom: AI eng yaxshi qismlarni tanlaydi -> kesib, silliq o'tishlar bilan bitta videoga yig'iladi."""
     from . import local_ai
     from .skills.video_edit import _fit, _run, info
+    from .skills.video_motion import join_dynamic, ramp_clip
     infos = [info(Path(p)) for p in paths]
     frames = []
     for k, p in enumerate(paths):
         (tmp / f"c{k}").mkdir()
         frames += _frames(Path(p), tmp / f"c{k}", 2)
     prompt = ALBUM_PLAN.format(n=len(paths), clips=", ".join(f"{k}: {i['duration']:.1f} s" for k, i in enumerate(infos, 1)),
-                               caption=caption or "-")
+                               caption=(caption or "-")[:6000], style=_style_hint())
     got = local_ai.ask_pro(prompt, 300, None, frames[:16]) if local_ai.access() is True else None
     try:
         raw = got[1] if got else ""
@@ -262,20 +288,27 @@ def _album(paths: list[str], caption: str, tmp: Path) -> tuple[str, dict]:
         if b - a < 0.8:
             continue
         part = tmp / f"p{j}.mp4"
-        audio = [] if infos[int(c["n"]) - 1]["audio"] else ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
-        _run(["-ss", f"{a:.2f}", "-to", f"{b:.2f}", "-i", src, *audio, "-filter_complex", _fit("blur") + "[v]",
+        has_audio = infos[int(c["n"]) - 1]["audio"]
+        if c.get("ramp") and b - a >= 2.0:  # speed ramp: normal -> tez -> slow-motion
+            parts.append(ramp_clip(src, a, b, part, has_audio))
+            continue
+        audio = [] if has_audio else ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
+        _run(["-ss", f"{a:.2f}", "-to", f"{b:.2f}", "-i", src, *audio, "-filter_complex", _fit("blur") + ",format=yuv420p[v]",
               "-map", "[v]", "-map", "1:a" if audio else "0:a", "-shortest", "-c:v", "libx264", "-preset", "veryfast",
               "-crf", "18", "-c:a", "aac", "-ar", "48000", "-ac", "2", str(part)])
         parts.append(part)
     if not parts:
         raise RuntimeError("Albomdan yaroqli qism tanlanmadi")
     joined = tmp / "joined.mp4"
-    (tmp / "list.txt").write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
-    _run(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", str(joined)], cwd=tmp)
+    try:  # motion: kliplar orasida dinamik o'tishlar (zoom, slayd, flash)
+        join_dynamic(parts, joined, [str(t) for t in plan.get("transitions", [])])
+    except RuntimeError:  # o'tish ishlamasa - oddiy ulash
+        (tmp / "list.txt").write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
+        _run(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", str(joined)], cwd=tmp)
     return str(joined), plan
 
 
-def auto_edit(video, caption: str, src_id: int, notify) -> None:
+def auto_edit(video, caption: str, src_id: int, notify, photos: list | None = None, music: str = "") -> None:
     """Kanaldagi video (yoki albom - bir nechta klip) - o'zi montaj qiladi, kanalga (javob qilib) va egasiga yuboradi;
     kadr yetmasa - kanalga prompt yozadi."""
     import tempfile
@@ -296,8 +329,18 @@ def auto_edit(video, caption: str, src_id: int, notify) -> None:
         return
     start = outbox.mark()
     try:
-        result = video_pro(video, hook=plan.get("hook", ""), cta=plan.get("cta", ""),
-                           cut_silence=bool(plan.get("cut_silence", True)))
+        r = plan.get("render") if isinstance(plan.get("render"), dict) else {}
+        result = video_pro(video, hook=plan.get("hook", ""), cta=plan.get("cta", ""), music=music,
+                           cut_silence=bool(plan.get("cut_silence", len(paths) == 1)),
+                           subtitles=bool(r.get("subtitles", True)), progress_bar=bool(r.get("progress_bar", True)),
+                           grade=str(r.get("grade", "natural")), fade=bool(r.get("fade", False)),
+                           fps=int(r.get("fps", 30) or 30), uhd=bool(r.get("uhd", False)))
+        if photos:  # paketdagi rasmlar - B-roll (asl ovoz davom etadi)
+            from .skills.video_pro import video_broll
+            made = [f for f in outbox.since(start) if f.suffix == ".mp4"]
+            if made:
+                result += "\n" + video_broll(str(made[-1]), photos)
+                outbox.forget(made[-1])
     except Exception as e:
         notify(f"⚠️ Montaj bajarilmadi: {str(e)[:400]}")
         return
@@ -358,7 +401,37 @@ def _broll(req_id: str, notify) -> None:
     send_files(f"✅ Qo'shimcha kadrlar bilan yangi variant: {result}", [str(out)] if out else [])
 
 
+LEARN = re.compile(r"/\s*(o['ʻ‘’]?rgan|organ|ўрган|урган|learn)\b", re.I)
+
+
+def learn(videos: list[str], caption: str, src_id: int, notify) -> None:
+    """«/organ» - namuna video(lar)dan montaj uslubini o'rganadi va kanalga/egasiga hisobot beradi."""
+    from . import tg_account
+    from .skills.video_motion import analyze_style, style_text
+    notify(f"🎓 Namuna videoni o'rganyapman ({len(videos)} ta) - kesimlar, ritm, effektlar, yozuvlar…")
+    reports = []
+    for v in videos:
+        try:
+            reports.append(style_text(analyze_style(v, LEARN.sub("", caption).strip())))
+        except Exception as e:
+            reports.append(f"⚠️ O'rganib bo'lmadi: {str(e)[:200]}")
+    text = "\n\n".join(reports)
+    try:
+        pid = tg_account.send_text(CHANNEL, f"{text}\n\n{MARK}", reply_to=src_id)
+        st = _state()
+        st.setdefault("posted", []).append(pid)
+        _save(st)
+    except Exception as e:
+        log.warning("O'rganish hisoboti kanalga joylanmadi: %s", e)
+    send_files(text, [])
+
+
+QUIET = 90  # kanalda shuncha soniya yangi post bo'lmasa - paket (albom + topshiriq + rasmlar + musiqa) to'liq deb olinadi
+BATCH = 600  # albom bilan bir paket: ±10 daqiqa ichidagi matn, rasm va audio
+
+
 def _poll_channel(notify) -> None:
+    from datetime import datetime, timezone
     from . import tg_account
     if not tg_account.authorized():
         return
@@ -369,49 +442,73 @@ def _poll_channel(notify) -> None:
     folder.mkdir(parents=True, exist_ok=True)
 
     async def go(client):
+        msgs = [m async for m in client.iter_messages(CHANNEL, limit=40, min_id=last)]
+        if not msgs:
+            return None
+        newest = max(m.date for m in msgs)
+        if (datetime.now(timezone.utc) - newest).total_seconds() < QUIET:
+            return None  # egasi hali yuboryapti - paket tugashini kutamiz
         got = []
-        async for m in client.iter_messages(CHANNEL, limit=30, min_id=last):
-            state["channel_last"] = max(state.get("channel_last", 0), m.id)
+        for m in sorted(msgs, key=lambda x: x.id):
             if m.id in posted or MARK in (m.text or ""):
                 continue  # Ali o'zi joylagan
             mime = (m.file.mime_type or "") if m.file else ""
-            if m.video or mime.startswith("video/"):
-                got.append(("video", m.id, await m.download_media(file=str(folder)), m.text or "",
-                            m.grouped_id))  # albom raqami - bir nechta klip bitta videoga
-            elif m.photo or mime.startswith("image/"):
-                got.append(("photo", m.id, await m.download_media(file=str(folder)), m.text or "", m.reply_to_msg_id))
-        return sorted(got, key=lambda x: x[1])
+            kind = ("video" if m.video or mime.startswith("video/") else
+                    "photo" if m.photo or mime.startswith("image/") else
+                    "audio" if m.audio or m.voice or mime.startswith("audio/") else "text" if m.text else "")
+            if not kind:
+                continue
+            path = await m.download_media(file=str(folder)) if kind != "text" else None
+            got.append({"kind": kind, "id": m.id, "path": path, "text": m.text or "", "group": m.grouped_id,
+                        "reply": m.reply_to_msg_id, "at": m.date.timestamp()})
+        return got, max(m.id for m in msgs)
     try:
-        items = tg_account._run(go)
+        res = tg_account._run(go)
     except Exception as e:
         log.warning("Kanal kuzatilmadi: %s", e)
         return
+    if res is None:
+        return
+    items, top = res
     fresh = _state()
-    fresh["channel_last"] = state.get("channel_last", last)
+    fresh["channel_last"] = max(fresh.get("channel_last", 0), top)
     _save(fresh)
-    # Videolar: albom (bir vaqtda yuborilgan bir nechta klip) - bitta video; alohidasi - alohida
+
+    # Videolar: albom (bir nechta klip) - bitta video; atrofidagi matn - topshiriq, rasm - B-roll, audio - musiqa
+    videos = [x for x in items if x["kind"] == "video" and x["path"]]
     albums: dict = {}
-    for kind, mid, path, caption, group in items:
-        if kind == "video" and path:
-            albums.setdefault(group or f"one{mid}", []).append((mid, path, caption))
+    for x in videos:
+        albums.setdefault(x["group"] or f"one{x['id']}", []).append(x)
+    used: set[int] = set()
     for clips in albums.values():
-        clips.sort()
-        text = next((c for _, _, c in clips if c), "")
-        threading.Thread(target=auto_edit, args=([p for _, p, _ in clips], text, clips[0][0], notify), daemon=True).start()
-    for kind, mid, path, caption, reply_to in items:
-        if not path or kind == "video":
+        clips.sort(key=lambda x: x["id"])
+        t0 = clips[0]["at"]
+        near = [x for x in items if x["kind"] != "video" and abs(x["at"] - t0) <= BATCH and not x["reply"]]
+        used.update(x["id"] for x in near)
+        brief = "\n\n".join(t for t in [*(c["text"] for c in clips), *(x["text"] for x in near if x["kind"] == "text")] if t)
+        photos = [x["path"] for x in near if x["kind"] == "photo" and x["path"]]
+        music = next((x["path"] for x in near if x["kind"] == "audio" and x["path"]), "")
+        paths = [c["path"] for c in clips]
+        if LEARN.search(brief):  # «/organ» - namuna: montaj emas, uslubni o'rganish
+            threading.Thread(target=learn, args=(paths, brief, clips[0]["id"], notify), daemon=True).start()
+        else:
+            threading.Thread(target=auto_edit, args=(paths, brief, clips[0]["id"], notify, photos, music),
+                             daemon=True).start()
+    # Videosiz rasmlar: kadr so'roviga javob (B-roll) yoki kreativ brif
+    for x in items:
+        if x["kind"] != "photo" or not x["path"] or x["id"] in used:
             continue
-        req = _state().get("requests", {}).get(str(reply_to)) if reply_to else None
-        if req is not None:  # kadr so'roviga javob - B-roll
+        req = _state().get("requests", {}).get(str(x["reply"])) if x["reply"] else None
+        if req is not None:
             st = _state()
-            st["requests"][str(reply_to)]["images"].append(path)
+            st["requests"][str(x["reply"])]["images"].append(x["path"])
             _save(st)
-            got_n = len(st["requests"][str(reply_to)]["images"])
+            got_n = len(st["requests"][str(x["reply"])]["images"])
             notify(f"🖼 Qo'shimcha kadr: {got_n}/{req['need']}")
             if got_n >= req["need"]:
-                threading.Thread(target=_broll, args=(str(reply_to), notify), daemon=True).start()
+                threading.Thread(target=_broll, args=(str(x["reply"]), notify), daemon=True).start()
             continue
-        full, note = add_image(path, caption)
+        full, note = add_image(x["path"], x["text"])
         if note:
             notify(note)
         if full:

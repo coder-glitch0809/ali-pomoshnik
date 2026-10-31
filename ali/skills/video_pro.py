@@ -82,6 +82,14 @@ def karaoke_ass(srt: str) -> str:
     return head + "\n".join(lines) + "\n"
 
 
+GRADES = {
+    "natural": "eq=contrast=1.06:saturation=1.12:brightness=0.01,unsharp=5:5:0.5",
+    # premium reklama: iliq yorug'lik, sovuqroq soyalar, chuqur qora, yumshoq aniqlik
+    "cinematic": ("eq=contrast=1.12:saturation=1.04:gamma=0.96,colorbalance=rs=-0.03:bs=0.05:rh=0.07:gh=0.02:bh=-0.05,"
+                  "curves=preset=medium_contrast,unsharp=5:5:0.35"),
+}
+
+
 def title_events(text: str, start: float, end: float, top: bool = True) -> str:
     """Hook (tepada) yoki CTA (pastroqda): qora fonli qalin yozuv, o'rtaga tekislangan, ko'pi bilan 7 so'z, "pop"."""
     words = _EMOJI.sub("", " ".join((text or "").split())).split()[:7]
@@ -137,11 +145,18 @@ def video_broll(path: str = "oxirgi", images: list | None = None) -> str:
             "cta": {"type": "string", "description": "Oxiridagi chaqiriq (oxirgi 2.5 s), ixtiyoriy"},
             "music": {"type": "string", "description": "Fon musiqasi fayli (ixtiyoriy) - gapirganda o'zi pasayadi"},
             "cut_silence": {"type": "boolean", "description": "Pauzalarni kesish (standart ha)"},
-            "subtitles": {"type": "boolean", "description": "Animatsiyali subtitr (standart ha)"}},
+            "subtitles": {"type": "boolean", "description": "Animatsiyali subtitr (standart ha)"},
+            "progress_bar": {"type": "boolean", "description": "Pastda o'sib boruvchi progress chizig'i (standart ha)"},
+            "grade": {"type": "string", "enum": ["natural", "cinematic"],
+                      "description": "Rang: natural yoki cinematic (iliq yorug'lik, chuqur qora - premium reklama)"},
+            "fade": {"type": "boolean", "description": "Qoradan ochilish va oxirida sekin qoraga o'tish"},
+            "fps": {"type": "integer", "description": "Kadr tezligi: 30 (Reels) yoki 24 (kinematografik)"},
+            "uhd": {"type": "boolean", "description": "Vertikal 4K (2160x3840) eksport"}},
     required=[],
 )
 def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = "", cut_silence: bool = True,
-              subtitles: bool = True) -> str:
+              subtitles: bool = True, progress_bar: bool = True, grade: str = "natural", fade: bool = False,
+              fps: int = FPS, uhd: bool = False) -> str:
     src, out, notes = _src(path), _out("pro montaj reels"), []
     i = info(src)
     vertical = i["height"] > i["width"]
@@ -166,7 +181,7 @@ def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = 
                               f"afade=t=out:st={max(0.0, b - a - 0.03):.3f}:d=0.03[a{n}]")
             labels.append(f"[v{n}]" + (f"[a{n}]" if i["audio"] else ""))
         graph = chains + [f"{''.join(labels)}concat=n={len(parts)}:v=1:a={int(i['audio'])}[cv]" + ("[ca]" if i["audio"] else ""),
-                          "[cv]eq=contrast=1.06:saturation=1.12:brightness=0.01,unsharp=5:5:0.5[v]"]
+                          "[cv]" + GRADES.get(grade, GRADES["natural"]) + "[v]"]
         if i["audio"]:
             graph.append("[ca]afftdn=nf=-25,loudnorm=I=-14:TP=-1.5:LRA=11[a]")
         cut = tmp_p / "cut.mp4"
@@ -186,13 +201,28 @@ def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = 
             except Exception as e:
                 notes.append(f"subtitr qo'shilmadi ({str(e)[:80]})")
         # Hook va CTA - o'rtaga tekislangan, satrlarni libass o'zi bo'ladi (ekrandan chiqmaydi)
-        ass += title_events(hook, 0.0, min(2.8, ci["duration"]), top=True)
+        from .video_motion import kinetic_hook, progress_bar as bar
+        ass += kinetic_hook(hook, 0.0, min(2.8, ci["duration"]), _ass_time)  # motion: so'zlar pastdan uchib chiqadi
         ass += title_events(cta, max(0.0, ci["duration"] - 2.6), ci["duration"], top=False)
         if "Dialogue:" in ass:
             (tmp_p / "s.ass").write_text(ass, encoding="utf-8")
             vf.append("subtitles=s.ass")
+        if progress_bar:
+            vf.append(bar(ci["duration"]))
+            notes.append("motion grafika (kinetik hook, progress-bar)")
+        if fade:  # kinematografik: qoradan ochiladi, oxirida sekin qoraga o'tadi
+            vf += ["fade=t=in:st=0:d=0.8", f"fade=t=out:st={max(0.0, ci['duration'] - 1.4):.2f}:d=1.4"]
+            notes.append("qoradan ochilish va qoraga o'tish")
+        if uhd:
+            vf.append("scale=2160:3840:flags=lanczos")
         m = Path(music) if music else None
-        if m and m.is_file() and ci["audio"]:
+        if m and m.is_file() and not ci["audio"]:  # ovozsiz video - musiqa asosiy ovoz
+            out_fade = f",afade=t=out:st={max(0.0, ci['duration'] - 1.5):.2f}:d=1.5"
+            args = ["-i", "cut.mp4", "-stream_loop", "-1", "-i", str(m), "-filter_complex",
+                    f"[0:v]{','.join(vf) or 'null'}[v];[1:a]afade=t=in:d=1{out_fade},loudnorm=I=-14:TP=-1.5[a]",
+                    "-map", "[v]", "-map", "[a]", "-shortest", "-c:a", "aac", "-b:a", "192k"]
+            notes.append("musiqa")
+        elif m and m.is_file() and ci["audio"]:
             graph2 = (f"[0:v]{','.join(vf) or 'null'}[v];[1:a]volume=0.35[m];[0:a]asplit[a1][a2];"
                       "[m][a2]sidechaincompress=threshold=0.04:ratio=10:attack=15:release=350[md];"
                       "[a1][md]amix=inputs=2:duration=first:dropout_transition=0,loudnorm=I=-14:TP=-1.5[a]")
@@ -201,6 +231,8 @@ def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = 
             notes.append("musiqa (gapirganda pasayadi)")
         else:
             args = ["-i", "cut.mp4", *(["-vf", ",".join(vf)] if vf else []), "-c:a", "copy"]
-        _run([*args, "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-profile:v", "high", "-pix_fmt", "yuv420p",
-              "-r", str(FPS), "-movflags", "+faststart", str(out)], cwd=tmp_p)
-    return _done(out, "Professional montaj: " + ", ".join(notes + ["rang va ovoz tozalandi", "1080x1920"]) + ".")
+        quality = ["-crf", "16", "-maxrate", "45M", "-bufsize", "90M"] if uhd else ["-crf", "18"]
+        _run([*args, "-c:v", "libx264", "-preset", "medium", *quality, "-profile:v", "high", "-pix_fmt", "yuv420p",
+              "-r", str(int(fps) if int(fps or 0) in (24, 25, 30, 60) else FPS), "-movflags", "+faststart", str(out)], cwd=tmp_p)
+    size = "2160x3840 (4K)" if uhd else "1080x1920"
+    return _done(out, "Professional montaj: " + ", ".join(notes + [f"rang: {grade}", "ovoz tozalandi", size, f"{fps} fps"]) + ".")
