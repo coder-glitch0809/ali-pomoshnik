@@ -12,7 +12,10 @@ class DasturchiTests(unittest.TestCase):
         self.assertTrue(su.is_request("Али дастурчига айт pr media гурухидан менга нарса ташламасин, шуни тогирласин"))
         self.assertTrue(su.is_request("dasturchi, /ob_havo ga 3 kunlik prognoz qo'sh"))
         self.assertTrue(su.is_request("Ali o'zingni kuchaytir: tugmalarni tuzat"))
+        self.assertTrue(su.is_request("Али дастурчига айт телеграмда pr media гурухи бор мени белгиламаса хабар келмасин "
+                                      "хар бир агентга алохида буйрук гурухларда бера олай"))
         self.assertFalse(su.is_request("Али нега дастурчи халихам тогирламади"))
+        self.assertFalse(su.is_request("Нега дастурчи жавоб бермаябти, дастурчига буйруклар бердим"))
         self.assertFalse(su.is_request("dasturchi nima qila oladi?"))
 
     def test_api_coder_applies_exact_edits_and_skips_secrets(self):

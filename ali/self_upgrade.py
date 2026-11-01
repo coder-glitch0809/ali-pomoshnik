@@ -35,6 +35,11 @@ CHANGE = re.compile(r"(to['ʻ‘’]?g['ʻ‘’]?irla|togirla|тогирла|т
                     r"ўзгартир|узгартир|qo['ʻ‘’]?sh|qosh|кош|қўш|кўш|sozla|созла|qil|кил|қил|yoz|ёз|йоз|"
                     r"olib\s*tashla|олиб\s*ташла|o['ʻ‘’]?chir|очир|ўчир|ulab\s*ber|улаб\s*бер)"
                     r"(sin|син|gin|гин|ib\s+ber|иб\s+бер|ing|инг)?(?=[\s.,!:;)]|$)", re.I)
+# «dasturchiga ayt/yoz/buyur ...», «dasturchiga: ...» - qanday fe'l bo'lishidan qat'i nazar topshiriq
+TO_CODER = re.compile(r"(dasturchi|дастурчи|programmist|программист)(ga|га)\b\s*[:,-]?\s*"
+                      r"(ayt|айт|yoz|ёз|йоз|buyur|буюр|топшир|topshir|тушунтир|tushuntir|\S)", re.I)
+# Dasturchi haqidagi shikoyat/savol - topshiriq emas («nega to'g'irlamadi», «javob bermayapti»)
+NOT_ORDER = re.compile(r"^\W*(ali|али)?\W*(nega|нега|nima\s+uchun|нима\s+учун|qachon|качон|қачон)\b", re.I)
 PERMISSION = "ali_kuchaytirish"  # Ruxsatlar: "auto" - testlar o'tsa o'zi qo'llaydi va GitHub'ga push qiladi; "ask" - tugma
 SECRET_ENV = re.compile(r"TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|TELEGRAM|SESSION", re.I)
 _lock = threading.Lock()
@@ -56,7 +61,9 @@ Qoidalar:
 
 def is_request(text: str) -> bool:
     text = text or ""
-    return bool(QUERY.search(text) or (CODER.search(text) and CHANGE.search(text) and not text.rstrip().endswith("?")))
+    if text.rstrip().endswith("?") or NOT_ORDER.search(text):
+        return bool(QUERY.search(text))
+    return bool(QUERY.search(text) or TO_CODER.search(text) or (CODER.search(text) and CHANGE.search(text)))
 
 
 def extract_task(text: str) -> str:
