@@ -265,7 +265,7 @@ TG_CHATS_HOURS = 3      # yozishmalardan faktlar va rejalar (eslatmalar)
 
 def _telegram_tick(state: dict, now: float) -> None:
     """Shaxsiy Telegram akkaunt (faqat o'qish): kanallardan o'rganish va yozishmalarni ko'rib chiqish."""
-    from . import tg_account
+    from . import team_hub, tg_account
     if not tg_account.configured():
         return
     if now - state.get("tg_chats", 0) >= TG_CHATS_HOURS * 3600:
@@ -275,6 +275,9 @@ def _telegram_tick(state: dict, now: float) -> None:
             r = tg_account.review_chats()
             if r["reminders"]:
                 hub.notify("📅 Yozishmalaringizdan rejalar topildi, eslatma qo'yildi:\n" + "\n".join(r["reminders"]))
+            if r["summary"] or r["reminders"]:
+                team_hub.post("telegram", "💬 Yozishmalar xulosasi:\n" + (r["summary"] or "")
+                              + ("\n\n📅 " + "\n📅 ".join(r["reminders"]) if r["reminders"] else ""))
             log.info("Yozishmalar ko'rildi: %s fakt, %s eslatma", r["facts"], len(r["reminders"]))
         except Exception as e:
             log.warning("Yozishmalarni ko'rib bo'lmadi: %s", e)
@@ -284,16 +287,22 @@ def _telegram_tick(state: dict, now: float) -> None:
         try:
             results = tg_account.learn_all_channels()
             if results:
-                hub.notify("📢 Kanallardan o'rganildi:\n" + "\n".join(
-                    f"• {r['channel']}: {r['posts']} post, {r['files']} fayl → {r['saved']} bilim" for r in results)[:3500])
+                text = "📢 Kanallardan o'rganildi:\n" + "\n".join(
+                    f"• {r['channel']}: {r['posts']} post, {r['files']} fayl → {r['saved']} bilim" for r in results)[:3500]
+                hub.notify(text)
+                team_hub.post("telegram", text)
         except Exception as e:
             log.warning("Kanallardan o'rganib bo'lmadi: %s", e)
+    from . import tg_watch  # guruhlar (5-D sinf, dars jadvali), botlar, kelgan rasm/videolar
+    tg_watch.tick(hub.notify, now)
 
 
 def _tick(brain) -> None:
     state = _load()
     now = time.time()
     _telegram_tick(state, now)
+    from . import team_hub  # Ali nazorati: kunlik faoliyat hisoboti, bekorchi agentlar
+    team_hub.tick(brain.agents, hub.notify, now)
     from . import ecosystem  # kunlik baholash: rag'bat va jazo (bo'shatish - egasining tasdig'i bilan)
     ecosystem.tick(brain, hub.notify, lambda name, args: hub.confirm(name, args, timeout=1800))
     if config.self_improve and not _improve_tick(brain, state, now):
@@ -342,7 +351,9 @@ def _tick(brain) -> None:
 
 
 def start(brain) -> None:
-    if not (config.auto_learn or config.watch_projects or config.self_improve):
+    from . import team_hub, tg_account
+    if not (config.auto_learn or config.watch_projects or config.self_improve or tg_account.configured()
+            or team_hub.ready()):
         return
     if config.self_improve:
         from . import evolution

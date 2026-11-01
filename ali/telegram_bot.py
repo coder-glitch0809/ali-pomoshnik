@@ -176,6 +176,11 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("kontent", self.cmd_content_today))
         a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
         a.add_handler(CommandHandler("kanallar_organ", self.cmd_learn_all))
+        a.add_handler(CommandHandler("jamoa", self.cmd_team))
+        a.add_handler(CommandHandler("maslahat", self.cmd_council))
+        a.add_handler(CommandHandler("nazorat", self.cmd_team_report))
+        a.add_handler(CommandHandler("tekshir", self.cmd_check_group))
+        a.add_handler(CommandHandler("sinf", self.cmd_class))
         a.add_handler(CallbackQueryHandler(self.on_ai_button, pattern=r"^ai:"))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
@@ -497,6 +502,7 @@ class TelegramBot(PublicTelegram, Listener):
 
     # ---------- xabarlar ----------
     async def on_text(self, update: Update, ctx):
+        if await self.team_text(update, ctx): return  # «Ali jamoasi» guruhidagi mavzular
         if not self.is_private(update): return
         if await self.menu_text(update,ctx,update.message.text):return
         if update.effective_user.id==self.owner_id:
@@ -512,6 +518,11 @@ class TelegramBot(PublicTelegram, Listener):
             # Uzatilgan (forward) xabar - o'rganiladigan material; havolalar - sahifasi o'qiladi va o'rganiladi
             if getattr(update.message, "forward_origin", None):
                 self.learn_bg(update, " ".join(text.split()[:8]), text, "Telegram (uzatilgan xabar)")
+            if self.TEAM_RE.search(text):  # «jamoa guruhini och» - /jamoa
+                await self.cmd_team(update, ctx)
+                return
+            if await self.group_check_in_text(update, text):  # «X guruhini tekshir» - to'liq hisobot
+                return
             if await self.channel_in_text(update, text):  # «X kanalini o'rgan» - kanal o'qiladi
                 return
             from . import self_upgrade
@@ -854,6 +865,167 @@ class TelegramBot(PublicTelegram, Listener):
         self.learn_tasks = getattr(self, "learn_tasks", set())
         self.learn_tasks.add(task)
         task.add_done_callback(self.learn_tasks.discard)
+
+    # ---------- Ali jamoasi: forum-guruh, maslahat kengashi, nazorat ----------
+    TEAM_RE = re.compile(r"(jamoa\w*|жамоа\w*|ali\s+jamoasi|али\s+жамоаси)\s+(guruh|гуруҳ|гурух|групп)\w*\s*\w*\s*"
+                         r"(och|оч|yarat|ярат|qur|қур|кур)", re.I)
+    CHECK_WORDS = ("tekshir", "текшир", "провер", "ko'rib chiq", "кўриб чиқ", "кориб чик")
+    GROUP_WORDS = ("guruh", "гуруҳ", "гурух", "групп", "chat", "чат")
+
+    def _team_owner(self, update: Update) -> bool:
+        """Egasi: shaxsiy chatda yoki «Ali jamoasi» guruhida."""
+        from . import team_hub
+        chat, user = update.effective_chat, update.effective_user
+        return bool(chat and user and user.id == self.owner_id and (chat.type == "private" or chat.id == team_hub.chat_id()))
+
+    def _bg(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self.learn_tasks = getattr(self, "learn_tasks", set())
+        self.learn_tasks.add(task)
+        task.add_done_callback(self.learn_tasks.discard)
+
+    @staticmethod
+    def _ready_apps() -> list[str]:
+        from . import local_ai
+        return local_ai.connected() if local_ai.access() is True else []
+
+    async def cmd_team(self, update: Update, ctx):
+        """/jamoa - «Ali jamoasi» forum-guruhini ochadi (bir marta) yoki mavzularni tekshiradi."""
+        from . import team_hub
+        from .service import brain
+        if not self._team_owner(update):
+            return
+        msg = await update.message.reply_text("🤖 Ali jamoasi guruhini tayyorlayapman: guruh, mavzular, agentlar…")
+        try:
+            text = await asyncio.to_thread(team_hub.setup, brain.agents)
+        except Exception as e:
+            text = f"⚠️ Guruh ochilmadi: {str(e)[:500]}"
+        names = "\n".join(f"{team_hub.label(k, brain.agents)}" for k in brain.agents)
+        await msg.edit_text(f"{text}\n\nJamoa:\n{names}"[:4000])
+
+    async def cmd_council(self, update: Update, ctx):
+        """/maslahat MASALA - agentlar maslahatlashadi, Ali qaror chiqaradi."""
+        if not self._team_owner(update):
+            return
+        question = " ".join(ctx.args or []).strip()
+        if not question:
+            await update.message.reply_text("Masalani yozing: /maslahat Instagram reklamasini qanday kuchaytiramiz?")
+            return
+        await self.run_council(update, question)
+
+    async def run_council(self, update: Update, question: str) -> None:
+        from . import team_hub
+        from .service import brain
+        msg = update.message
+        await msg.reply_text("🤝 Maslahat kengashi yig'ildi - agentlar fikr bildiryapti…")
+
+        async def run():
+            try:
+                decision = await asyncio.to_thread(team_hub.council, question, brain.agents, None, self._ready_apps())
+            except Exception as e:
+                decision = f"⚠️ Maslahat bajarilmadi: {str(e)[:400]}"
+            await msg.reply_text(f"👑 Qaror:\n{decision}"[:4000])
+        self._bg(run())
+
+    async def cmd_team_report(self, update: Update, ctx):
+        """/nazorat - kim ishlayapti, kim bekorchi."""
+        from . import team_hub
+        from .service import brain
+        if self._team_owner(update):
+            await update.message.reply_text(team_hub.watch_report(brain.agents)[:4000])
+
+    async def cmd_check_group(self, update: Update, ctx):
+        """/tekshir GURUH - guruhni to'liq ko'rib chiqadi."""
+        if not self._team_owner(update):
+            return
+        name = " ".join(ctx.args or []).strip()
+        if not name:
+            await update.message.reply_text("Guruh nomini yozing: /tekshir IDEAL SCHOOL 5")
+            return
+        self.check_group_bg(update, name)
+
+    def check_group_bg(self, update: Update, name: str) -> None:
+        from . import tg_watch
+        msg = update.message
+
+        async def run():
+            await msg.reply_text(f"🔎 «{name}» guruhini ko'rib chiqyapman (xabarlar, rasmlar, video kadrlari)…")
+            try:
+                text = await asyncio.to_thread(tg_watch.check_group, name)
+            except Exception as e:
+                text = f"⚠️ {str(e)[:600]}"
+            await msg.reply_text(text[:4000])
+        self._bg(run())
+
+    async def cmd_class(self, update: Update, ctx):
+        """/sinf - sinfga oid yangi xabarlar, muammolar va dars jadvali (hozir)."""
+        from . import tg_watch
+        if not self._team_owner(update):
+            return
+        msg = await update.message.reply_text(f"🏫 {tg_watch.CLASS_NAME} sinf guruhlarini tekshiryapman…")
+        try:
+            r = await asyncio.to_thread(tg_watch.review_class, 24)
+            text = ("\n".join([*(f"⚠️ {i.get('group', '')}: {i['what']}" + (f"\n   👉 {i['action']}" if i.get("action") else "")
+                                 for i in r["issues"]), *(f"📅 Dars jadvali: {s}" for s in r["schedules"])])
+                    or "Yangi muammo yoki dars jadvali yo'q.") + (f"\n\n{r['summary']}" if r["summary"] else "")
+        except Exception as e:
+            text = f"⚠️ {str(e)[:500]}"
+        await msg.edit_text(text[:4000])
+
+    async def group_check_in_text(self, update: Update, text: str) -> bool:
+        """«IDEAL SCHOOL 5 guruhini tekshir» - guruh to'liq ko'rib chiqiladi. True - ishlov berildi."""
+        from . import tg_account
+        low = text.lower()
+        if not any(w in low for w in self.CHECK_WORDS) or not any(w in low for w in self.GROUP_WORDS):
+            return False
+        if not tg_account.configured():
+            return False
+        ch = await asyncio.to_thread(tg_account.find_in_text, text)
+        if ch is None:
+            return False
+        self.check_group_bg(update, ch["title"])
+        return True
+
+    async def team_text(self, update: Update, ctx) -> bool:
+        """«Ali jamoasi» guruhidagi xabar: agent mavzusi - o'sha agent javob beradi, Maslahat - kengash,
+        Telegram nazorati - guruh tekshirish, 5-D sinf - sinf tekshiruvi, Ali/umumiy - Ali javob beradi."""
+        from . import team_hub
+        chat = update.effective_chat
+        if not chat or chat.type == "private" or chat.id != team_hub.chat_id():
+            return False
+        msg = update.message
+        if not msg or not update.effective_user or update.effective_user.id != self.owner_id:
+            return True  # guruhda faqat egasi buyruq beradi
+        text = msg.text or ""
+        thread = msg.message_thread_id if getattr(msg, "is_topic_message", False) else None
+        key = team_hub.topic_key(thread)
+        from .service import brain
+        if key == "maslahat":
+            await self.run_council(update, text)
+            return True
+        if key == "telegram" and await self.group_check_in_text(update, text):
+            return True
+        if key == "sinf":
+            await self.cmd_class(update, ctx)
+            return True
+        agent = key if key in brain.agents else ("telegram_nazoratchi" if key == "telegram" and
+                                                 "telegram_nazoratchi" in brain.agents else None)
+
+        async def run():
+            try:
+                await self.app.bot.send_chat_action(chat.id, "typing", message_thread_id=thread)
+                if agent:
+                    out = await asyncio.to_thread(team_hub.agent_answer, agent, text, self._ready_apps())
+                    team_hub.touch(agent)
+                else:
+                    from .service import team_reply
+                    out = await team_reply(text, None, self._ready_apps())
+            except Exception as e:
+                out = f"⚠️ {str(e)[:500]}"
+            for start in range(0, len(out or "…"), 4000):
+                await msg.reply_text((out or "Javob yo'q.")[start:start + 4000])
+        self._bg(run())
+        return True
 
     def learn_channel_bg(self, update: Update, name: str) -> None:
         """Kanalni fonda o'qib o'rganadi; har bir natija va yakuniy hisobot Telegram'ga keladi."""

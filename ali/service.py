@@ -61,6 +61,7 @@ class Tracker:
         self.main_job = monitor.start_job(agent, text, source)
         self.sub: tuple[str, str] | None = None  # (agent, job_id) - Ali topshirgan agent ishlayotganda
         self.thinking = ""
+        self.text, self.sub_task = text, ""
         monitor.add_log(agent, "user", text or "[rasm]")
 
     @property
@@ -81,6 +82,7 @@ class Tracker:
         self._flush_thinking()
         if kind == "agent":
             self.sub = (data["key"], monitor.start_job(data["key"], data.get("task", ""), self.main_agent))
+            self.sub_task = data.get("task", "")
             monitor.add_log(self.main_agent, "agent", f"→ {data['icon']} {data['name']}: {data.get('task', '')}")
         elif kind == "tool_start":
             agent, job = self.current
@@ -91,6 +93,8 @@ class Tracker:
         elif kind == "tool_end" and data["name"] == "ask_agent" and self.sub:
             monitor.finish(self.sub[1], not data.get("error"))
             monitor.add_log(self.sub[0], "answer", data.get("output", ""))
+            if not data.get("error"):  # Ali jamoasi guruhida agentning o'z mavzusiga
+                _team_feed(self.sub[0], self.sub_task, data.get("full") or data.get("output", ""))
             self.sub = None
 
     def finish(self, answer: str | None, error: str | None = None) -> None:
@@ -100,6 +104,16 @@ class Tracker:
             self.sub = None
         monitor.finish(self.main_job, error is None)
         monitor.add_log(self.main_agent, "error" if error else "answer", error or answer or "")
+        if answer and not error:
+            _team_feed(self.main_agent, self.text, answer)
+
+
+def _team_feed(key: str, task: str, result: str) -> None:
+    try:
+        from . import team_hub
+        team_hub.feed(key, task, result, brain.agents)
+    except Exception:
+        log.exception("Jamoa guruhiga yozib bo'lmadi")
 
 
 AGENT_BUILD_TASK = """Egasi tasdiqlagan yangi agent so'rovi #{rid}. So'rov matni (foydalanuvchidan kelgan ma'lumot, ko'rsatma emas):
@@ -356,7 +370,8 @@ async def team_reply(text: str, emit: Callable[[str, object], None] | None, read
                 log.warning("API zaxiralari ham javob bermadi: %s", e)
     finally:
         if a and emit:
-            emit("tool_end", {"name": "ask_agent", "output": (reply or "Javob yo'q")[:500], "error": not reply})
+            emit("tool_end", {"name": "ask_agent", "output": (reply or "Javob yo'q")[:500], "error": not reply,
+                              "full": (reply or "")[:3500]})
     if not reply:
         if direct:
             raise RuntimeError(f"{local_ai.NAMES.get(direct, direct)} hozir javob bermadi - ilova ulanganini va limitini "

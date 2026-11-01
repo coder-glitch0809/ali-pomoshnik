@@ -1217,5 +1217,155 @@ class RuntimeTests(unittest.TestCase):
             self_upgrade.apply("yoqid")
 
 
+class TeamHubTests(unittest.TestCase):
+    """Ali jamoasi guruhi, maslahat kengashi, nazorat va Telegram nazoratchisi."""
+
+    def setUp(self):
+        from ali import team_hub
+        self.hub = team_hub
+        team_hub.STATE.unlink(missing_ok=True)
+
+    def agents(self):
+        from types import SimpleNamespace
+        mk = lambda k, n, d: SimpleNamespace(key=k, name=n, icon="🤖", description=d)
+        return {"treyder": mk("treyder", "Treyder", "Bozor tahlili, kripto signallar va savdo"),
+                "dizayner": mk("dizayner", "Dizayner", "Interer, logotip va reklama dizayni"),
+                "yangi_agent": mk("yangi_agent", "Yangi", "Boshqa soha")}
+
+    def test_names_labels_and_new_agent_gets_free_name(self):
+        ag = self.agents()
+        self.assertEqual(self.hub.name_of("treyder"), "Sardor")
+        self.assertEqual(self.hub.label("dizayner", ag), "🤖 Dilnoza (Dizayner)")
+        name = self.hub.name_of("yangi_agent")
+        self.assertIn(name, self.hub.POOL)
+        self.assertEqual(self.hub.name_of("yangi_agent"), name)  # eslab qolinadi
+        self.assertEqual(self.hub.topic_title("maslahat"), self.hub.FIXED["maslahat"])
+
+    def test_topics_are_created_once_and_messages_go_to_thread(self):
+        calls = []
+
+        def api(method, **data):
+            calls.append((method, data))
+            return {"message_thread_id": 77} if method == "createForumTopic" else {}
+        self.hub._save({"chat_id": -1001, "topics": {}, "names": {}, "activity": {}})
+        with patch.object(self.hub, "_api", side_effect=api), patch.object(config, "telegram_token", "t"):
+            self.hub._send("treyder", "signal: BTC", self.agents())
+            self.hub._send("treyder", "x" * 5000, self.agents())
+        methods = [m for m, _ in calls]
+        self.assertEqual(methods.count("createForumTopic"), 1)
+        sends = [d for m, d in calls if m == "sendMessage"]
+        self.assertEqual(len(sends), 3)  # uzun xabar bo'linadi
+        self.assertTrue(all(d["message_thread_id"] == 77 and d["chat_id"] == -1001 for d in sends))
+        self.assertEqual(self.hub.topic_key(77), "treyder")
+        self.assertIsNone(self.hub.topic_key(5))
+
+    def test_council_agents_discuss_and_ali_decides(self):
+        posted, asked = [], []
+
+        def ask(key, text):
+            asked.append((key, text))
+            if key == "dizayner":
+                return ""  # qatnashmadi
+            return "QAROR: reklama byudjetini oshiramiz" if key is None else f"{key} fikri"
+        with patch.object(self.hub, "post", side_effect=lambda k, t, a=None: posted.append((k, t))):
+            decision = self.hub.council("Reklama dizayni va bozor", self.agents(), ["treyder", "dizayner"], ask=ask)
+        self.assertIn("QAROR", decision)
+        self.assertIn("treyder fikri", asked[-1][1])  # Ali hamma fikrni ko'rdi
+        self.assertTrue(any(k == "ali" and "QAROR" in t for k, t in posted))
+        self.assertTrue(any("qatnashmadi" in t for _, t in posted))
+        act = self.hub._load()["activity"]
+        self.assertEqual(act["dizayner"]["skips"], 1)
+        self.assertEqual(act["treyder"]["maslahat"], 1)
+        members = self.hub.pick_members("kripto signallar bozor tahlili", self.agents())
+        self.assertEqual(members[0], "treyder")
+        self.assertGreaterEqual(len(members), 2)
+
+    def test_idle_agents_reported_and_tick_once_a_day(self):
+        import time as _t
+        now = _t.time()
+        self.hub._save({"chat_id": -1001, "topics": {}, "names": {}, "created": now - 5 * 86400,
+                        "activity": {"treyder": {"last": now - 3600, "total": 4}}})
+        ag = self.agents()
+        self.assertEqual(sorted(self.hub.idle_agents(ag, now)), ["dizayner", "yangi_agent"])
+        report = self.hub.watch_report(ag, now)
+        self.assertIn("Bekorchi", report)
+        self.assertIn("Dilnoza", report)
+        from datetime import datetime as _dt
+        evening = _dt.fromtimestamp(now).replace(hour=22, minute=0).timestamp()
+        posted, notified = [], []
+        with patch.object(config, "telegram_token", "t"), patch.object(self.hub, "ensure_topic", return_value=1), \
+                patch.object(self.hub, "post", side_effect=lambda k, t, a=None: posted.append(k)):
+            self.hub.tick(ag, notified.append, evening)
+            self.hub.tick(ag, notified.append, evening + 60)
+        self.assertEqual(posted, ["ali"])
+        self.assertEqual(len(notified), 1)
+
+    def test_tracker_feeds_agent_topic(self):
+        from ali.service import Tracker
+        with patch("ali.team_hub.feed") as feed:
+            t = Tracker("ali", "savol", "test")
+            t.event("agent", {"key": "treyder", "name": "Treyder", "icon": "📈", "task": "BTC tahlil"})
+            t.event("tool_end", {"name": "ask_agent", "output": "qisqa", "full": "to'liq natija", "error": False})
+            t.finish("Ali javobi")
+        feed.assert_any_call("treyder", "BTC tahlil", "to'liq natija", brain.agents)
+        self.assertEqual(feed.call_count, 2)  # ali ham chaqiriladi, lekin feed ali'ni o'tkazib yuboradi
+
+    def test_class_and_schedule_detection(self):
+        from ali import tg_watch
+        for t in ["IDEAL SCHOOL 5«Д»", "5-D sinf", "5д синф", "5 D", "Sinf rahbari diqqatiga"]:
+            self.assertTrue(tg_watch.is_class(t), t)
+        for t in ["5 dan ortiq", "3 А Предмет", "Davomat", "15-dekabr"]:
+            self.assertFalse(tg_watch.is_class(t), t)
+        self.assertTrue(tg_watch.is_schedule("Расписание на завтра"))
+        self.assertFalse(tg_watch.is_schedule("Tushunarli"))
+
+    def test_review_class_reports_issues_and_reminds_schedule_once(self):
+        from ali import tg_watch
+        tg_watch.STATE.unlink(missing_ok=True)
+        groups = [{"group": "IDEAL SCHOOL 5«Д»", "id": -100, "class": True, "messages": [
+            {"id": 5, "who": "Nafisa opa", "when": "10-30 09:00", "text": "2 ta o'quvchi to'lov qilmagan", "photo": None},
+            {"id": 6, "who": "Admin", "when": "10-30 10:00", "text": "Расписание", "photo": "/x.jpg", "video": False}]}]
+        reminders, notified, posted = [], [], []
+        ask = lambda p: {"issues": [{"group": "5-D", "who": "Nafisa opa", "what": "2 o'quvchi to'lov qilmagan",
+                                     "action": "ota-onalarga yozing"}], "summary": "To'lov masalasi"}
+        with patch.object(tg_watch, "describe_image", return_value="DARS JADVALI: dushanba..."), \
+                patch("ali.team_hub.post", side_effect=lambda k, t, a=None: posted.append((k, t))):
+            r = tg_watch.review_class(24, notified.append, reminders.append, ask, groups)
+            r2 = tg_watch.review_class(24, notified.append, reminders.append, ask, groups)  # takror - yangi narsa yo'q
+        self.assertEqual(len(r["issues"]), 1)
+        self.assertEqual(len(r["schedules"]), 2)  # matnda ham, rasmda ham
+        self.assertTrue(all("sinf guruhiga tashlash" in x for x in reminders))
+        self.assertEqual(len(notified), 1)
+        self.assertEqual(posted[0][0], "sinf")
+        self.assertEqual(r2, {"issues": [], "schedules": [], "summary": ""})
+
+    def test_team_group_messages_routed_to_topic_agent(self):
+        from types import SimpleNamespace
+        bot = TelegramBot();bot.owner_id = 999
+        self.hub._save({"chat_id": -1001, "topics": {"treyder": 7, "maslahat": 8}, "names": {}, "activity": {}})
+        msg = SimpleNamespace(text="BTC qayerga boradi?", message_thread_id=7, is_topic_message=True,
+                              reply_text=AsyncMock())
+        update = SimpleNamespace(effective_chat=SimpleNamespace(id=-1001, type="supergroup"),
+                                 effective_user=SimpleNamespace(id=999), message=msg)
+        bot.app = SimpleNamespace(bot=SimpleNamespace(send_chat_action=AsyncMock()))
+        brain.agents.setdefault("treyder", self.agents()["treyder"])
+
+        async def go():
+            with patch.object(self.hub, "agent_answer", return_value="Sardor: 65k qo'llab-quvvatlash") as ans:
+                self.assertTrue(await bot.team_text(update, None))
+                await asyncio.gather(*bot.learn_tasks)
+                ans.assert_called_once()
+                self.assertEqual(ans.call_args.args[0], "treyder")
+            msg.reply_text.assert_awaited()
+            self.assertIn("65k", msg.reply_text.call_args.args[0])
+            update.effective_user = SimpleNamespace(id=5)  # begona odam - javob yo'q
+            msg.reply_text.reset_mock()
+            self.assertTrue(await bot.team_text(update, None))
+            msg.reply_text.assert_not_awaited()
+            update.effective_chat = SimpleNamespace(id=-2002, type="supergroup")  # boshqa guruh - tegilmaydi
+            self.assertFalse(await bot.team_text(update, None))
+        asyncio.run(go())
+
+
 if __name__ == "__main__":
     unittest.main()

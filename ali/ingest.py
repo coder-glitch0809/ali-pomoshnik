@@ -117,5 +117,13 @@ def learn(title: str, text: str, source: str, images: list[str] | None = None, h
     if not text.strip() and summary:  # faqat rasm bo'lsa - tavsifi ham saqlanadi
         memory.add_knowledge(f"[{prefix}] {title}", f"{summary}\n\nManba: {source} ({stamp})")
     log.info("Material o'rganildi: %s -> %s, %s ta bilim", title, prefix, saved)
+    if a and (summary or saved):  # Ali jamoasi guruhida agentning mavzusiga: nimani o'rgandi
+        try:
+            from . import team_hub
+            team_hub.touch(a.key, "bilim")
+            team_hub.post(a.key, f"📚 O'rgandim: {title}\nManba: {source}\n\n{(summary or f'{saved} ta bilim')[:1500]}",
+                          brain.agents)
+        except Exception:
+            log.exception("Jamoa guruhiga yozilmadi")
     return {"agent": prefix, "name": a.name if a else config.assistant_name, "icon": a.icon if a else "🧠",
             "saved": saved + (1 if text.strip() else 0), "summary": summary}

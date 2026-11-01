@@ -66,6 +66,20 @@ Buyruqlar: `/new` yangi suhbat · `/chuqur` · `/super` · `/ovozli` ovozli javo
 
 Ovozli xabarlarni tushunish uchun `GEMINI_API_KEY` kerak.
 
+### 🤖 Ali jamoasi guruhi (Telegram)
+
+`/jamoa` (yoki «jamoa guruhini och») - shaxsiy Telegram akkaunt orqali «🤖 Ali jamoasi» forum-guruhi ochiladi,
+Ali boti admin bo'ladi. Mavzular: 👑 Ali (eng muhim topilmalar, kunlik nazorat - bekorchi agentlar ham),
+🤝 Maslahat kengashi, 🔎 Telegram nazorati, 🏫 5-D sinf va har bir agent (Sardor - Treyder, Dilnoza - Dizayner,
+Otabek - Video montajchi, Ulug'bek - Telegram nazoratchi...). Agent mavzusiga yozsangiz - o'sha agent javob beradi;
+agentlarning har bir ishi va o'rgangan bilimi o'z mavzusiga chiqadi.
+
+- `/maslahat MASALA` - mos agentlar navbat bilan maslahatlashadi, Ali qaror chiqaradi.
+- `/nazorat` - kim qancha ishladi, kim maslahatda qatnashmadi, kim bekorchi (har kuni 21:30 da avtomatik).
+- `/tekshir GURUH` yoki «X guruhini tekshir» - guruh to'liq ko'rib chiqiladi (rasm va video kadrlari bilan).
+- `/sinf` - sinf (`CLASS_NAME=5-D`) guruhlaridagi muammolar; dars jadvali kelsa - sinf guruhiga tashlash eslatiladi.
+  Har soatda avtomatik; botlar va sizga kelgan rasm/videolar 3 soatda bir ko'rib chiqilib, bilimga qo'shiladi.
+
 ## O'z ovozingizni qo'yish
 
 Ali sizning (yoki tanlagan) ovozda gapiradi — ElevenLabs ovoz klonlash orqali.
