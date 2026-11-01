@@ -34,6 +34,8 @@ PROVIDERS = {
         steps=['AWS Console’da Amazon Bedrock → API keys bo‘limini oching va “Generate long-term API key” bilan kalit yarating.', 'Bedrock → Model access bo‘limida Anthropic Claude modellariga ruxsat yoqilganini tekshiring.', 'Kalitni pastga kiriting. Mintaqa us-east-1 emas bo‘lsa, oldiga yozing: “eu-central-1 ABSK…”. Ali modelni o‘zi topadi va tekshiradi.', 'Bedrock pullik (AWS hisobingizdan). Ali uni Pro ilovalardan keyin, bepul Gemini’dan oldin ishlatadi.'], field='bedrock_api_key', env='BEDROCK_API_KEY'),
     'tg_account': dict(name='Telegram akkaunt (to‘liq: kanallar va xabarlar)', url='https://my.telegram.org/apps', link='1) my.telegram.org → API kalitlari', action='/tg-login', action_label='2) 📱 Telefon raqam bilan kirish',
         steps=['Bir marta: my.telegram.org ga telefon raqamingiz bilan kiring → “API development tools” → ilova yarating (nomi: Ali). Chiqqan api_id va api_hash ni pastga bo‘sh joy bilan kiriting: “12345678 abcdef0123…” (allaqachon kiritilgan bo‘lsa - shart emas).', '«📱 Telefon raqam bilan kirish» tugmasini bosing: telefon raqamingiz → Telegram yuborgan kod → (bo‘lsa) ikki bosqichli parol. Hammasini O‘ZINGIZ kiritasiz, ma’lumot faqat shu kompyuterda qoladi.', 'Ali nima qiladi: kanal va guruhlaringizni o‘qiydi, post va fayllardan o‘rganadi, suhbatlaringizdan eslatmalar tuzadi; siz aytgan odamga xabar yozadi - HAR SAFAR sizning tasdig‘ingiz bilan. Hech narsani o‘chirmaydi.'], field='tg_api_hash', env='TG_API_HASH'),
+    'planetprint': dict(name='Planet Print (moliya paneli)', url='https://planet-print-max.vercel.app', link='Planet Print paneli', json=False,
+        steps=['Panelda Super admin sifatida Ali uchun alohida foydalanuvchi yarating (masalan login: ali) va unga «Xarajat» ruxsatini bering.', 'Shu login va parolni pastga bo‘sh joy bilan kiriting: «ali parol123». Ali kirib tekshiradi va saqlaydi.', 'Ali guruhlardagi «NOMI SUMMA SOM» ro‘yxatlarini eslatmaga qo‘yadi, saralab sizga yuboradi; siz tanlagan bandni zakazga xarajat qilib yozadi.']),
     'chatplace': dict(name='ChatPlace (Instagram/Telegram avtomatlashtirish)', url='https://chatplace.io', link='ChatPlace sayti', action='/api/mcp/chatplace/start', action_label='ChatPlace’ga kirish va ruxsat berish',
         steps=['Pastdagi tugmani bosing - ChatPlace sahifasi ochiladi, akkauntingizga kiring.', 'Ali so‘ragan ruxsatlarni tasdiqlang (avtomatlashtirish, chatlar, tarqatmalar, izohlar, AI agent).', '“Ali’ga ulandi” chiqqach, bu oynani yoping. Ali ma’lumotni erkin o‘qiydi, o‘zgartirishlarni (xabar, tarqatma, avtojavob) faqat sizning tasdig‘ingiz bilan qiladi.']),
     'gemini': dict(name='Gemini plagini', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
@@ -70,6 +72,9 @@ def catalog(telegram_live=False):
             configured=tg_account.authorized()
             status=('Ulangan · kanallar va xabarlar (yuborish - tasdiq bilan)' if configured else
                     ('API kalit bor · telefon bilan kirish kerak: “Sozlash” → 📱' if tg_account.credentials() else 'Sozlanmagan'))
+        if key=='planetprint':
+            configured=bool(os.getenv('PP_USER') and os.getenv('PP_PASS'))
+            status='Ulangan · xarajat yozadi (siz tanlagan bandlar)' if configured else 'Sozlanmagan · Ali uchun login kerak'
         if key=='chatplace':
             from . import mcp_client
             configured=mcp_client.connected('chatplace')
@@ -89,6 +94,7 @@ def catalog(telegram_live=False):
 
 async def connect(key, token):
     if key=='firebase':return await connect_firebase(token)
+    if key=='planetprint':return await connect_planetprint(token)
     if key=='tg_account':return await connect_tg_account(token)
     if key=='bedrock':return await connect_bedrock(token)
     p=PROVIDERS.get(key)
@@ -160,6 +166,24 @@ async def connect_firebase(text):
     try:result=await asyncio.to_thread(cloud.sync_once)
     except Exception as e:return {'ok':True,'message':f'Kalit saqlandi ({data["project_id"]}), lekin birinchi nusxa xato berdi: {str(e)[:200]}'}
     return {'ok':True,'message':f'Firebase ulandi ({data["project_id"]}). Birinchi nusxa: {result["pushed"]} ta yozuv yuborildi. Endi har daqiqada avtomatik.'}
+
+
+async def connect_planetprint(text):
+    """Planet Print: «login parol» - kirib tekshiriladi va .env ga saqlanadi (PP_USER, PP_PASS)."""
+    parts=(text or '').split()
+    if len(parts)!=2:raise ValueError('Login va parolni bo‘sh joy bilan kiriting: «ali parol123».')
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r=await client.post('https://planet-print-max.vercel.app/api/auth/login',json={'username':parts[0],'password':parts[1]})
+    except httpx.HTTPError:raise ValueError('Planet Print panelga ulanib bo‘lmadi.') from None
+    if r.status_code!=200:raise ValueError('Planet Print login yoki parolni qabul qilmadi.')
+    perms=(r.json().get('user') or {}).get('permissions') or []
+    role=(r.json().get('user') or {}).get('role')
+    if role!='super_admin' and 'expenses' not in perms:raise ValueError('Bu foydalanuvchida «Xarajat» ruxsati yo‘q - panelda bering.')
+    async with _lock:
+        for env,value in (('PP_USER',parts[0]),('PP_PASS',parts[1])):
+            await asyncio.to_thread(set_key,str(ENV_FILE),env,value);os.environ[env]=value
+    return {'ok':True,'message':'Planet Print ulandi: Ali xarajat yoza oladi.'}
 
 
 async def connect_bedrock(text):

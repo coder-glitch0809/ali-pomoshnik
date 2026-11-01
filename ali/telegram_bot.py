@@ -186,6 +186,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
         a.add_handler(CallbackQueryHandler(self.on_upgrade_button, pattern=r"^up:"))
         a.add_handler(CallbackQueryHandler(self.on_button_test, pattern=r"^tst:"))
+        a.add_handler(CallbackQueryHandler(self.on_pp_button, pattern=r"^pp:"))
         a.add_handler(CallbackQueryHandler(self.on_pc_button, pattern=r"^pc:"))
         a.add_handler(CallbackQueryHandler(self.public_button, pattern=r"^(pub:|own:)"))
         a.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, self.on_voice))
@@ -212,6 +213,8 @@ class TelegramBot(PublicTelegram, Listener):
         hub.listeners.append(self)
         from . import tunnel
         tunnel.on_url(lambda url: self._run(self.refresh_menus()))  # tunnel manzili o'zgarsa - "Ali panel" yangilanadi
+        from . import planetprint
+        planetprint.start_watch(self.on_pp_list)  # guruhlardagi «NOMI SUMMA SOM» ro'yxatlari -> eslatma + saralash
         if config.public_url.startswith("https://"):
             await self.refresh_menus()
         self.public_task=asyncio.create_task(self.public_loop())
@@ -332,6 +335,67 @@ class TelegramBot(PublicTelegram, Listener):
         self.owner_id=update.effective_user.id
         self._save_users()
         await update.effective_chat.send_message("Kirish tasdiqlandi. Salom, Abbos! /start")
+
+    # ---------- Planet Print: guruhdagi pul ro'yxati -> eslatma + saralash -> egasi tanlagan band xarajatga ----------
+    def on_pp_list(self, items: list, source: str, author: str) -> None:
+        """Kuzatuvchi oqimidan chaqiriladi: saralaydi, eslatmaga qo'yadi va egasiga tugmalar bilan yuboradi."""
+        from . import local_ai, planetprint as pp
+        ready = local_ai.connected() if local_ai.access() is True else []
+        items = pp.classify(items, ready)
+        pp.remember(items, source, author)
+        bid = pp.new_batch(items, source, author)
+        text = pp.report_text(items, source, author)
+        order = sorted(range(len(items)), key=lambda k: items[k]["kind"] != "material")
+        rows = [[InlineKeyboardButton(f"{'📦' if items[k]['kind'] == 'material' else '➕'} {k + 1}. {items[k]['name'][:22]}",
+                                      callback_data=f"pp:{bid}:{k}")] for k in order]
+        try:
+            from . import team_hub
+            if team_hub.ready():
+                team_hub.post("ali", text)
+        except Exception:
+            log.exception("Jamoa guruhiga yozilmadi")
+
+        async def send():
+            if self.owner_id:
+                await self.app.bot.send_message(self.owner_id, text[:4000], reply_markup=InlineKeyboardMarkup(rows[:30]))
+        self._run(send())
+
+    async def on_pp_button(self, update: Update, ctx):
+        from . import planetprint as pp
+        query = update.callback_query
+        if query.from_user.id != self.owner_id:
+            await self.safe_answer(query, "Ruxsat yo'q")
+            return
+        parts = query.data.split(":")
+        b = pp.batch(parts[1])
+        if not b:
+            await self.safe_answer(query, "Ro'yxat eskirgan")
+            return
+        item = b["items"][int(parts[2])]
+        await self.safe_answer(query)
+        try:
+            if len(parts) == 3:  # band tanlandi -> zakaz tanlash
+                projs = await asyncio.to_thread(pp.projects)
+                st = pp._state()
+                st["batches"][parts[1]]["projects"] = projs
+                pp._save(st)
+                rows = [[InlineKeyboardButton(f"{p['name'][:28]}" + (f" · {p['client'][:14]}" if p['client'] else ""),
+                                              callback_data=f"pp:{parts[1]}:{parts[2]}:{k}")] for k, p in enumerate(projs)]
+                await query.message.reply_text(f"📦 {item['name']} - {pp.money(item['amount'])}\nQaysi zakazga yozamiz?",
+                                               reply_markup=InlineKeyboardMarkup(rows or [[InlineKeyboardButton(
+                                                   "Faol zakaz yo'q", callback_data="tst:0")]]))
+            elif len(parts) == 4:  # zakaz tanlandi -> to'lov turi
+                rows = [[InlineKeyboardButton(label, callback_data=f"{query.data}:{key}") for key, label in pp.PAYMENT.items()]]
+                await query.edit_message_reply_markup(InlineKeyboardMarkup(rows))
+            else:  # to'lov turi -> Planet Print'ga yoziladi
+                proj = b["projects"][int(parts[3])]
+                note = f"{b['author']} ro'yxati ({b['source']}, {b['at']}) - Ali qo'shdi"
+                await asyncio.to_thread(pp.add_expense, item["name"], item["amount"], note, proj["id"], parts[4])
+                await self.drop_buttons(query)
+                await query.message.reply_text(f"✅ Planet Print'ga xarajat qo'shildi:\n{item['name']} - {pp.money(item['amount'])}\n"
+                                               f"Zakaz: {proj['name']} · {pp.PAYMENT[parts[4]]}\nIzoh: {note}")
+        except Exception as e:
+            await query.message.reply_text(f"⚠️ {str(e)[:400]}")
 
     async def cmd_chrome(self, update: Update, ctx):
         """/chrome [sayt] - Ali'ning Chrome profilini ochadi: saytlarga egasi o'zi kiradi, keyin Ali shu sessiyadan foydalanadi."""
