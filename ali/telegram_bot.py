@@ -1276,6 +1276,10 @@ class TelegramBot(PublicTelegram, Listener):
             await update.message.reply_text("Tushunolmadim, qaytadan ayting.")
             return
         await update.message.reply_text(f"🎙 <i>{html.escape(text)}</i>", parse_mode=ParseMode.HTML)
+        from . import self_upgrade
+        if update.effective_user.id == self.owner_id and self_upgrade.is_request(text):  # ovozli «dasturchiga ayt...»
+            await self.start_upgrade(update, text)
+            return
         await self.process(update, ctx, text)
 
     async def on_photo(self, update: Update, ctx):

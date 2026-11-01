@@ -29,6 +29,12 @@ TIMEOUT_MIN = 40
 QUERY = re.compile(r"(o['ʻ‘’]?zingni|ozingni|узингни|ўзингни|озингни|o['ʻ‘’]?zini|ozini|узини|ўзини|озини|ali|али)\s+"
                    r"(o['ʻ‘’]?zi\s+|ози\s+|ўзи\s+)?(kuchaytir|кучайтир|takomillashtir|такомиллаштир|yaxshila|яхшила|"
                    r"rivojlantir|ривожлантир)|/kuchaytir", re.I)
+# «Dasturchiga ayt: ... to'g'irlasin», «dasturchi, X ni qo'sh» - buyruq (o'tgan zamon/inkor emas: «to'g'irlamadi» buyruq emas)
+CODER = re.compile(r"(dasturchi|дастурчи|programmist|программист)", re.I)
+CHANGE = re.compile(r"(to['ʻ‘’]?g['ʻ‘’]?irla|togirla|тогирла|тўғрила|туғрила|tuzat|тузат|o['ʻ‘’]?zgartir|ozgartir|озгартир|"
+                    r"ўзгартир|узгартир|qo['ʻ‘’]?sh|qosh|кош|қўш|кўш|sozla|созла|qil|кил|қил|yoz|ёз|йоз|"
+                    r"olib\s*tashla|олиб\s*ташла|o['ʻ‘’]?chir|очир|ўчир|ulab\s*ber|улаб\s*бер)"
+                    r"(sin|син|gin|гин|ib\s+ber|иб\s+бер|ing|инг)?(?=[\s.,!:;)]|$)", re.I)
 PERMISSION = "ali_kuchaytirish"  # Ruxsatlar: "auto" - testlar o'tsa o'zi qo'llaydi va GitHub'ga push qiladi; "ask" - tugma
 SECRET_ENV = re.compile(r"TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|TELEGRAM|SESSION", re.I)
 _lock = threading.Lock()
@@ -49,7 +55,8 @@ Qoidalar:
 
 
 def is_request(text: str) -> bool:
-    return bool(QUERY.search(text or ""))
+    text = text or ""
+    return bool(QUERY.search(text) or (CODER.search(text) and CHANGE.search(text) and not text.rstrip().endswith("?")))
 
 
 def extract_task(text: str) -> str:
@@ -135,6 +142,98 @@ def _code(key: str, exe: str, prompt: str, path: Path) -> tuple[bool, str]:
     return r.returncode == 0, (out or r.stderr or "").strip()[-2500:]
 
 
+API_PICK = """{agent}
+
+Ali loyihasi fayllari (yo'l - qisqa tavsif):
+{index}
+
+Egasi so'ragan o'zgarish: <<<{task}>>>
+Shu o'zgarish uchun o'qish va tahrirlash kerak bo'lgan 1-5 ta faylni tanla (yangi fayl kerak bo'lsa ham mavjud
+bog'liq fayllarni tanla). FAQAT JSON: {{"files": ["ali/...py"]}}"""
+
+API_EDIT = """{prompt}
+
+Fayllar (to'liq matn):
+{files}
+
+Endi o'zgarishni qil. Har tahrir: "old" - fayldagi AYNAN mavjud, takrorlanmaydigan parcha (bo'shliqlari bilan),
+"new" - uning o'rniga. Yangi fayl: "old" bo'sh, "new" - to'liq matn. .env, data/, xotira/ ga tegma.
+FAQAT JSON: {{"edits": [{{"file": "ali/...py", "old": "...", "new": "..."}}], "report": "3-6 qator o'zbekcha hisobot"}}"""
+
+
+def _index(path: Path) -> str:
+    """Fayllar ro'yxati: yo'l va birinchi docstring qatori - AI qaysi faylni o'qishni tanlashi uchun."""
+    rows = []
+    for f in sorted([*path.glob("*.py"), *path.glob("ali/**/*.py"), *path.glob("agents/*.md"), *path.glob("web/*.html")]):
+        rel = f.relative_to(path).as_posix()
+        if "18-agent" in rel:
+            continue
+        head = f.read_text(encoding="utf-8", errors="replace")[:400]
+        m = re.search(r'"""(.+)', head) or re.search(r"^#\s*(.+)", head, re.M)
+        rows.append(f"{rel} - {m.group(1).strip()[:110] if m else ''}")
+    return "\n".join(rows)
+
+
+def _safe_rel(path: Path, rel: str) -> Path | None:
+    """Faqat loyiha ichidagi oddiy fayllar: .env, data/, xotira/, .git va 18+ agentga yozilmaydi."""
+    rel = rel.replace("\\", "/").lstrip("/")
+    target = (path / rel).resolve()
+    if path.resolve() not in target.parents or re.match(r"(\.env|data/|xotira/|\.git)", rel) or "18-agent" in rel:
+        return None
+    return target
+
+
+def _api_code(prompt: str, task: str, path: Path) -> tuple[bool, str]:
+    """Claude Code/Codex'siz kod yozish: AI (Gemini API va boshqalar) fayllarni tanlaydi, keyin aniq tahrirlarni beradi."""
+    from . import local_ai
+    from .service import _ask_json
+    ready = local_ai.connected()
+    try:
+        picked = _ask_json(API_PICK.format(agent=_dasturchi(task)[:6000], index=_index(path)[:20000], task=task), ready, 300)
+        files, total = [], 0
+        for rel in [str(x) for x in picked.get("files", [])][:5]:
+            f = _safe_rel(path, rel)
+            if f and f.is_file():
+                body = f.read_text(encoding="utf-8", errors="replace")
+                if total + len(body) > 120000:
+                    continue
+                total += len(body)
+                files.append(f"===== {rel} =====\n{body}")
+        res = _ask_json(API_EDIT.format(prompt=prompt, files="\n\n".join(files) or "(fayl tanlanmadi)"), ready, 600)
+    except (ValueError, RuntimeError) as e:
+        return False, f"AI javob bermadi: {e}"
+    applied = []
+    for e in res.get("edits", []) if isinstance(res.get("edits"), list) else []:
+        f = _safe_rel(path, str(e.get("file", "")))
+        old, new = str(e.get("old", "")), str(e.get("new", ""))
+        if not f or not (old or new):
+            continue
+        if not old:  # yangi fayl
+            if f.exists():
+                continue
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text(new, encoding="utf-8")
+        else:
+            body = f.read_text(encoding="utf-8") if f.is_file() else ""
+            if body.count(old) != 1:
+                log.warning("Dasturchi tahriri mos kelmadi: %s", e.get("file"))
+                continue
+            f.write_text(body.replace(old, new), encoding="utf-8")
+        applied.append(str(e.get("file")))
+    if not applied:
+        return False, "AI tahrirlari fayllarga mos kelmadi yoki tahrir berilmadi"
+    return True, (str(res.get("report") or "") + "\n\nO'zgargan: " + ", ".join(sorted(set(applied)))).strip()
+
+
+def _reopen_note() -> str:
+    """Limitlar qachon ochilishi - egasi qachon qayta yuborishni bilsin."""
+    from datetime import datetime
+    from . import local_ai
+    times = [t for t in (local_ai.paused_until(k) for k in ("claude", "codex", "gemini")) if t]
+    return (f"\n\n⏳ AI limitlari {datetime.fromtimestamp(min(times)).strftime('%H:%M')} da ochiladi - shunda qayta yuboring."
+            if times else "")
+
+
 def auto_apply() -> bool:
     """Ruxsatlar -> ali_kuchaytirish = "auto" bo'lsa testlar o'tgach o'zi qo'llaydi va GitHub'ga push qiladi."""
     from . import permissions
@@ -158,9 +257,6 @@ def run(task: str, progress) -> dict:
     job = monitor.start_job("dasturchi", f"Ali'ni kuchaytirish: {task[:200]}", "self_upgrade")
     try:
         coders = _coders()
-        if not coders:
-            raise RuntimeError("Kod yozadigan ilova yo'q: Claude Code ham, Codex (ChatGPT) ham topilmadi yoki ikkalasining "
-                               "limiti tugagan - Ruxsatlar -> Ilovalar")
         uid = uuid.uuid4().hex[:8]
         branch, path = f"ali-upgrade/{uid}", WORK / uid
         WORK.mkdir(parents=True, exist_ok=True)
@@ -179,8 +275,13 @@ def run(task: str, progress) -> dict:
             failures.append(f"{local_ai.NAMES[key]}: {report[-300:] if not done else 'hech narsa o‘zgartirmadi'}")
             _git("reset", "-q", "--hard", cwd=path)
             _git("clean", "-qfd", "-e", "data/", cwd=path)
-        else:
-            raise RuntimeError("Dasturchi vazifani bajara olmadi:\n" + "\n".join(failures))
+        else:  # Claude Code ham, Codex ham yo'q/limitda - Dasturchi o'z bilimi + API AI (Gemini) bilan aniq tahrir qiladi
+            key = "api"
+            progress("👨‍💻 Claude Code/Codex band - Dasturchi o'z bilimi va Gemini bilan kodni o'zgartiryapti…")
+            done, report = _api_code(prompt, task, path)
+            if not done:
+                failures.append(f"Dasturchi (API): {report[-300:]}")
+                raise RuntimeError("Dasturchi vazifani bajara olmadi:\n" + "\n".join(failures) + _reopen_note())
         _git("add", "-A", cwd=path)
         if not _git("diff", "--cached", "--stat", cwd=path):
             raise RuntimeError("Hech qanday o'zgarish qilinmadi")
@@ -188,7 +289,7 @@ def run(task: str, progress) -> dict:
         passed, tests = _tests(path)
         if not passed:
             return {"id": uid, "ok": False, "report": report, "tests": tests, "diff": ""}
-        _git("commit", "-q", "-m", f"Ali o'zini kuchaytirdi ({local_ai.NAMES[key]}): {task[:70]}\n\n{report[:1500]}"
+        _git("commit", "-q", "-m", f"Ali o'zini kuchaytirdi ({local_ai.NAMES.get(key, 'Dasturchi')}):{task[:70]}\n\n{report[:1500]}"
              + ("\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" if key == "claude" else ""), cwd=path)
         diff = _git("show", "--stat", "--format=", "HEAD", cwd=path)
         state = _state()
