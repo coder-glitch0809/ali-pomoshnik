@@ -567,7 +567,21 @@ class TelegramBot(PublicTelegram, Listener):
     # ---------- xabarlar ----------
     async def on_text(self, update: Update, ctx):
         if await self.team_text(update, ctx): return  # «Ali jamoasi» guruhidagi mavzular
-        if not self.is_private(update): return
+        if not self.is_private(update):
+            # PR media guruhi yoki boshqa guruhlardan faqat egasini belgilab yoki egasining xabariga javob yozgandagina xabar olinadi
+            if update.effective_chat and update.effective_message:
+                msg = update.effective_message
+                user = update.effective_user
+                text_msg = msg.text or msg.caption or ""
+                is_mentioned = (user and str(self.owner_id) in str(user.id)) or (f"@{ctx.bot.username}" in text_msg if getattr(ctx, 'bot', None) else False)
+                is_reply_to_owner = False
+                if msg.reply_to_message and msg.reply_to_message.from_user:
+                    if msg.reply_to_message.from_user.id == self.owner_id:
+                        is_reply_to_owner = True
+                if not is_mentioned and not is_reply_to_owner:
+                    return
+            else:
+                return
         if await self.menu_text(update,ctx,update.message.text):return
         if update.effective_user.id==self.owner_id:
             text = update.message.text
