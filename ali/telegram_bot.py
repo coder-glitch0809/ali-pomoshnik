@@ -1125,6 +1125,7 @@ class TelegramBot(PublicTelegram, Listener):
         msg = update.message
         if not msg or not update.effective_user or update.effective_user.id != self.owner_id:
             return True  # guruhda faqat egasi buyruq beradi
+        await self.mark(msg, "👀")  # «ko'rdim» - Ali xabarni oldi (botlar Telegram'da ikki ptichka qo'ya olmaydi)
         text = msg.text or ""
         thread = msg.message_thread_id if getattr(msg, "is_topic_message", False) else None
         key = team_hub.topic_key(thread)
@@ -1183,6 +1184,7 @@ class TelegramBot(PublicTelegram, Listener):
                 out = f"⚠️ {str(e)[:500]}"
             for start in range(0, len(out or "…"), 4000):
                 await msg.reply_text((out or "Javob yo'q.")[start:start + 4000])
+            await self.mark(msg, "👍" if out else "🤔")  # bajarildi
         self._bg(run())
         return True
 
@@ -1273,7 +1275,19 @@ class TelegramBot(PublicTelegram, Listener):
         def reply(text: str) -> None:
             for start in range(0, len(text), 4000):
                 asyncio.run_coroutine_threadsafe(msg.reply_text(text[start:start + 4000]), loop)
+            asyncio.run_coroutine_threadsafe(self.mark(msg, "👍"), loop)
         return reply
+
+    @staticmethod
+    async def mark(msg, emoji: str) -> None:
+        """Xabarga reaksiya: 👀 - oldim, 👍 - bajarildi. Reaksiya qo'yib bo'lmasa (huquq yo'q) - jim o'tadi."""
+        react = getattr(msg, "set_reaction", None)
+        if not react:
+            return
+        try:
+            await react(emoji)
+        except TelegramError:
+            pass
 
     async def cmd_organ(self, update: Update, ctx):
         """/organ <havola> yoki videoga javob qilib /organ - namuna videoning montaj uslubini o'rganadi (bot yoki jamoa guruhi).
@@ -1322,6 +1336,8 @@ class TelegramBot(PublicTelegram, Listener):
         if not in_team and (not await self._guard(update) or update.effective_user.id != self.owner_id):
             return
         media = m.video or m.video_note or m.document
+        if in_team:
+            await self.mark(m, "👀")
         if in_team or studio_flow.LEARN.search(m.caption or ""):  # guruhdagi har video - o'rganiladi (montaj - faqat kanalda)
             await self.learn_video(m, media, m.caption or "")
             return

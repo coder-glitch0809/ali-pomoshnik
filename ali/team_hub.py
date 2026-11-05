@@ -18,6 +18,7 @@ import re
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 
@@ -214,6 +215,49 @@ def _work():
         except Exception as e:
             log.warning("Jamoa guruhiga yozilmadi (%s): %s", key, e)
         time.sleep(1.2)  # guruhga daqiqasiga ~20 xabardan oshmasin
+
+
+def post_video(key: str, path: str, caption: str = "", agents: dict | None = None) -> bool:
+    """Mavzuga video (o'lchami bilan - Telegram kesib ko'rsatmasin). Fon oqimidan chaqiriladi."""
+    if not ready() or not Path(path).is_file():
+        return False
+    from .skills.video_edit import info
+    try:
+        thread, i = ensure_topic(key, agents), info(Path(path))
+        with open(path, "rb") as fh:
+            r = httpx.post(f"https://api.telegram.org/bot{config.telegram_token}/sendVideo",
+                           data={"chat_id": chat_id(), "message_thread_id": thread, "caption": caption[:1000],
+                                 "width": i["width"], "height": i["height"], "duration": int(round(i["duration"])),
+                                 "supports_streaming": "true"}, files={"video": (Path(path).name, fh)}, timeout=300)
+        return bool(r.json().get("ok"))
+    except Exception as e:
+        log.warning("Jamoa guruhiga video yuborilmadi (%s): %s", key, e)
+        return False
+
+
+SCORE = re.compile(r"(\d{1,2}(?:[.,]\d)?)\s*/\s*10|baho\D{0,25}?(\d{1,2}(?:[.,]\d)?)\b", re.I)
+
+
+def score_of(decision: str) -> float | None:
+    """Ali qaroridagi Instagram bahosi (1-10)."""
+    m = SCORE.search(decision or "")
+    if not m:
+        return None
+    value = float((m.group(1) or m.group(2)).replace(",", "."))
+    return value if 0 <= value <= 10 else None
+
+
+def review_video(path: str, about: str, agents: dict, ready_apps: list[str] | None = None) -> tuple[str, float | None]:
+    """Har tayyor video Maslahat kengashi muhokamasidan o'tadi: video mavzuga qo'yiladi, Kontent-meyker, Montajchi va
+    Dasturchi Instagram uchun baholaydi, Ali qaror va 1-10 baho chiqaradi. (qaror, baho)."""
+    post_video("maslahat", path, f"🎬 Muhokamaga: {about[:900]}", agents)
+    try:
+        decision = council(f"Shu tayyor Reels videoni Instagram uchun baholang va kanalga joylashga arziydimi ayting. "
+                           f"Video haqida: {about}", agents, None, ready_apps)
+    except Exception as e:
+        log.warning("Video muhokamasi bo'lmadi: %s", e)
+        return "", None
+    return decision, score_of(decision)
 
 
 def post(key: str, text: str, agents: dict | None = None) -> bool:

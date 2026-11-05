@@ -42,6 +42,35 @@ class DailyVideoTests(unittest.TestCase):
         self.assertGreaterEqual(len(first["scenes"]), 3)
 
 
+class CouncilGateTests(unittest.TestCase):
+    def _run(self, score):
+        from ali import studio_flow
+        res = {"path": "v.mp4", "sources": "g'oya: AI", "idea": {**daily_video.IDEAS[0], "caption": "c", "hashtags": "#h",
+                                                                 "scenes": daily_video.IDEAS[0]["scenes"]}}
+        with tempfile.TemporaryDirectory() as d, patch.object(daily_video, "STATE", Path(d) / "dv.json"), \
+                patch.object(studio_flow, "STATE", Path(d) / "st.json"), \
+                patch.object(daily_video, "make", return_value=res), \
+                patch("ali.team_hub.review_video", return_value=("qaror", score)), \
+                patch("ali.tg_account.send_file", return_value=7) as post, \
+                patch.object(studio_flow, "send_files") as owner:
+            daily_video.run("11:00", print)
+        return post.call_count, owner.call_args[0][0]
+
+    def test_video_goes_to_channel_only_after_council_approves(self):
+        posted, text = self._run(8.0)
+        self.assertEqual(posted, 1)
+        self.assertIn("Kengash bahosi: 8/10", text)
+        posted, text = self._run(3.0)
+        self.assertEqual(posted, 0)
+        self.assertIn("kengashdan o'tmadi", text)
+
+    def test_score_parsed_from_decision(self):
+        from ali.team_hub import score_of
+        self.assertEqual(score_of("📊 Instagram uchun BAHO: 7/10 - hook kuchli"), 7.0)
+        self.assertEqual(score_of("Baho: 6.5 — o'rtacha"), 6.5)
+        self.assertIsNone(score_of("baho berilmadi"))
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

@@ -59,6 +59,8 @@ async def lifespan(_app):
         print(f"  {config.assistant_name} allaqachon ishlayapti (data/ali.lock) - ikkinchi nusxa ishga tushmaydi.")
         raise RuntimeError("Ali allaqachon ishlayapti")
     hub.loop = asyncio.get_running_loop()
+    from ali import watchdog
+    watchdog.start(hub.loop)  # asosiy oqim 2 daqiqa qotsa - avtoyuklash Ali'ni qayta ishga tushiradi
     scheduler.start(hub.notify)
     autopilot.start(brain)
     from ali import cloud

@@ -406,7 +406,18 @@ def auto_edit(video, caption: str, src_id: int, notify, photos: list | None = No
             log.warning("Kadr so'rovi joylanmadi: %s", e)
     _save(state)
     advice = f"🕒 {plan.get('post_time', '')}\n🧪 Sinov Reels: {plan.get('trial', '')}"
-    send_files(f"{result}\n\n🪝 Hook: {plan.get('hook', '')}\n{advice}"
+    verdict = ""
+    if out:  # har tayyor video Maslahat kengashi muhokamasidan o'tadi (guruhdagi «Maslahat» mavzusida)
+        from . import local_ai, team_hub
+        from .service import brain
+        decision, score = team_hub.review_video(
+            str(out), f"Kanaldagi videodan montaj. Hook: {plan.get('hook', '')}. CTA: {plan.get('cta', '')}. "
+                      f"Izoh: {caption[:300]}. {result[:300]}", brain.agents,
+            local_ai.connected() if local_ai.access() is True else [])
+        if decision:
+            verdict = (f"\n\n🤝 Kengash bahosi: {score:g}/10" if score is not None else "\n\n🤝 Kengash muhokama qildi") \
+                + " (to'liq qaror - guruhdagi «Maslahat» mavzusida)"
+    send_files(f"{result}\n\n🪝 Hook: {plan.get('hook', '')}\n{advice}{verdict}"
                + (f"\n\n🖼 {len(missing)} ta qo'shimcha kadr prompti kanalga yozildi." if missing else ""),
                [str(out)] if out else [])
 

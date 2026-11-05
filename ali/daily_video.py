@@ -243,6 +243,17 @@ def run(slot: str, notify) -> None:
         _lock.release()
     data = res["idea"]
     text = f"{data.get('caption', '')}\n\n{data.get('hashtags', '')}".strip()
+    # Maslahat kengashi: video guruhga qo'yiladi, agentlar Instagram uchun baholaydi; 5 dan past - kanalga chiqmaydi
+    from . import team_hub
+    from .service import brain
+    about = (f"«{data.get('title', '')}». Hook: {data.get('hook', '')}. Sahnalar: "
+             + "; ".join(s["big"] for s in data["scenes"]) + f". CTA: {data.get('cta', '')}. {DURATION} s animatsiya, musiqa.")
+    decision, score = team_hub.review_video(res["path"], about, brain.agents, _ready())
+    verdict = f"\n\n🤝 Kengash bahosi: {score:g}/10" if score is not None else ""
+    if score is not None and score < 5:
+        studio_flow.send_files(f"🚫 {slot} kunlik Reels kengashdan o'tmadi ({score:g}/10) - kanalga joylanmadi.\n\n"
+                               f"{decision[-2500:]}", [res["path"]])
+        return
     st = studio_flow._state()
     try:
         pid = tg_account.send_file(studio_flow.CHANNEL, res["path"], f"{text}\n\n{studio_flow.MARK}"[:1024])
@@ -252,7 +263,7 @@ def run(slot: str, notify) -> None:
         st.setdefault("pending_post", []).append({"out": res["path"], "caption": text, "src": None})
     studio_flow._save(st)
     studio_flow.send_files(f"🎬 {slot} kunlik Reels tayyor: «{data.get('title', '')}»\n🪝 {data.get('hook', '')}\n"
-                           f"💡 {data.get('why', '')}\n({res['sources']})\n\n{text}", [res["path"]])
+                           f"💡 {data.get('why', '')}\n({res['sources']}){verdict}\n\n{text}", [res["path"]])
     hist = _state()
     hist.setdefault("history", []).append({"title": data.get("title", ""), "at": datetime.now().isoformat(timespec="minutes")})
     hist["history"] = hist["history"][-60:]
