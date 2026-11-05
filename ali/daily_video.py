@@ -279,8 +279,9 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
         if voice:  # personaj ovozi videoga (video ovozdan uzunroq - oxirida jimlik bilan to'ldiriladi)
             from .skills.video_edit import _run
             spoken = Path(tmp) / "spoken.mp4"
-            _run(["-i", str(raw), "-i", str(voice), "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "apad",
-                  "-c:a", "aac", "-ar", "48000", "-shortest", str(spoken)])
+            # apad aniq video uzunligigacha (cheksiz apad + -shortest + copy - ffmpeg hech qachon tugamasdi)
+            _run(["-i", str(raw), "-i", str(voice), "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+                  "-af", f"apad=whole_dur={dur:.2f}", "-t", f"{dur:.2f}", "-c:a", "aac", "-ar", "48000", str(spoken)])
             raw = spoken
         music, music_src = for_video(dur + 2, data.get("mood") if data.get("mood") in ("energetic", "cinematic", "calm")
                                      else "energetic")
