@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+import unittest.mock
 from unittest.mock import patch
 
 import test_runtime  # noqa: F401 - vaqtinchalik ALI_STATE_DIR va test sozlamalari ali'dan oldin o'rnatilsin
@@ -61,6 +62,32 @@ class TeamAddressTests(unittest.TestCase):
             ig.tick(sent.append)  # qayta ishga tushgandek - fayldan o'qiydi
             dt.now.return_value = datetime(2026, 11, 5, 19, 0)
         self.assertEqual(len(sent), 1)
+
+
+class StudioDeliveryTests(unittest.TestCase):
+    def test_montage_request_detected(self):
+        from ali import studio_flow as sf
+        self.assertTrue(sf.is_edit_request("Каналга видео ташладим кор ва видео монтаж килиб бер"))
+        self.assertTrue(sf.is_edit_request("kanaldagi videoni montaj qil"))
+        self.assertFalse(sf.is_edit_request("kanal nomini o'zgartir"))
+
+    def test_result_queued_when_offline_and_sent_later(self):
+        import httpx
+        from ali import studio_flow as sf
+        with tempfile.TemporaryDirectory() as d:
+            video = Path(d) / "r.mp4"
+            video.write_bytes(b"0")
+            with patch.object(sf, "STATE", Path(d) / "st.json"), \
+                    patch.object(sf.config, "telegram_token", "t"), patch.object(sf.config, "telegram_owner_id", 1):
+                with patch.object(sf.httpx, "post", side_effect=httpx.ConnectError("offline")):
+                    self.assertFalse(sf.send_files("tayyor", [str(video)]))
+                self.assertEqual(len(sf._state()["pending_send"]), 1)
+                ok = unittest.mock.MagicMock()
+                with patch.object(sf.httpx, "post", return_value=ok) as post, \
+                        patch("ali.tg_account.send_file", return_value=5):
+                    sf.flush_pending()
+                self.assertEqual(sf._state()["pending_send"], [])
+                self.assertEqual(post.call_count, 2)  # matn + video
 
 
 if __name__ == "__main__":

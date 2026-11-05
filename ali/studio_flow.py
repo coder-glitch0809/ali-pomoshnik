@@ -368,8 +368,9 @@ def auto_edit(video, caption: str, src_id: int, notify, photos: list | None = No
         try:
             pid = tg_account.send_file(CHANNEL, str(out), f"{text}\n\n{MARK}"[:1024], reply_to=src_id)
             state.setdefault("posted", []).append(pid)
-        except Exception as e:
-            result += f"\n⚠️ Kanalga joylanmadi: {e}"
+        except Exception as e:  # internet/Telegram uzilgan - keyinroq o'zi qayta joylaydi
+            state.setdefault("pending_post", []).append({"out": str(out), "caption": text, "src": src_id})
+            result += f"\n⏳ Kanalga hozir joylanmadi ({str(e)[:80]}) - internet tiklanishi bilan o'zim joylayman."
     missing = [m for m in plan.get("missing", []) if isinstance(m, dict) and m.get("prompt")][:4]
     if missing and out:
         ask = (f"🖼 Videoni kuchaytirish uchun kerakli kadrlar ({len(missing)} ta). ChatGPT yoki Gemini'da yarating va "
@@ -545,30 +546,121 @@ def _build_and_send(bid: int, notify) -> None:
     send_files(res["text"], res["files"])
 
 
-def send_files(text: str, files: list[str]) -> None:
-    """Natijani egasiga Telegram bot orqali yuboradi (video - video bo'lib, qolgani - fayl)."""
+def send_files(text: str, files: list[str], queue: bool = True) -> bool:
+    """Natijani egasiga Telegram bot orqali yuboradi (video - video bo'lib, qolgani - fayl).
+    Internet uzilgan bo'lsa - navbatga qo'yiladi, kanal kuzatuvi har daqiqada qayta urinadi."""
     api = f"https://api.telegram.org/bot{config.telegram_token}"
     uid = config.telegram_owner_id
     if not (config.telegram_token and uid):
-        return
+        return False
+    original = (text, list(files))
     big = [f for f in files if Path(f).is_file() and Path(f).stat().st_size > 45 * 1024 * 1024]
     if big:  # Telegram bot 50 MB dan katta fayl yubora olmaydi (4K video) - kanaldagi postga havola
         text += f"\n\n🎬 Video katta ({Path(big[0]).stat().st_size // 1048576} MB) - kanalda ko'ring: https://t.me/{CHANNEL}"
         files = [f for f in files if f not in big]
     try:
-        httpx.post(api + "/sendMessage", data={"chat_id": uid, "text": text[:4000]}, timeout=30)
+        httpx.post(api + "/sendMessage", data={"chat_id": uid, "text": text[:4000]}, timeout=30).raise_for_status()
         for f in files:
             kind, field = ("sendVideo", "video") if f.endswith(".mp4") else ("sendDocument", "document")
             with open(f, "rb") as fh:
-                httpx.post(f"{api}/{kind}", data={"chat_id": uid}, files={field: (Path(f).name, fh)}, timeout=300)
+                httpx.post(f"{api}/{kind}", data={"chat_id": uid}, files={field: (Path(f).name, fh)},
+                           timeout=300).raise_for_status()
+        return True
     except (httpx.HTTPError, OSError) as e:
         log.warning("Studio natijasi yuborilmadi: %s", e)
+        if queue:
+            state = _state()
+            state.setdefault("pending_send", []).append({"text": original[0], "files": original[1]})
+            _save(state)
+        return False
+
+
+def flush_pending() -> None:
+    """Internet uzilganda yuborilmay qolgan natijalar: kanalga joylash va egasiga yuborish (navbat tartibida)."""
+    from . import tg_account
+    state = _state()
+    posts, sends = state.get("pending_post", []), state.get("pending_send", [])
+    if not posts and not sends:
+        return
+    left_posts = []
+    for p in posts:
+        if not Path(p["out"]).is_file():
+            continue
+        try:
+            pid = tg_account.send_file(CHANNEL, p["out"], f"{p.get('caption', '')}\n\n{MARK}"[:1024], reply_to=p.get("src"))
+            state.setdefault("posted", []).append(pid)
+            log.info("Kechikkan montaj kanalga joylandi: %s", Path(p["out"]).name)
+        except Exception as e:
+            log.info("Kechikkan montaj hali joylanmadi: %s", e)
+            left_posts.append(p)
+    state["pending_post"] = left_posts
+    _save(state)
+    left_sends = []
+    for item in sends:
+        if left_sends or not send_files("📬 (internet uzilganda yuborilmay qolgan edi)\n" + item["text"],
+                                        [f for f in item["files"] if Path(f).is_file()], queue=False):
+            left_sends.append(item)
+    state = _state()
+    state["pending_send"] = left_sends
+    _save(state)
+
+
+EDIT_ASK = re.compile(r"(kanal|канал)\S*.{0,80}(video|видео|klip|клип|reels|рилс).{0,80}(montaj|монтаж|ko['ʻ‘’]?r|кор|кўр)|"
+                      r"(video|видео)\S*.{0,40}(montaj|монтаж)\S*.{0,40}(kanal|канал)", re.I | re.S)
+
+
+def is_edit_request(text: str) -> bool:
+    """«Kanalga video tashladim, ko'r va montaj qil» - kanaldagi oxirgi videoni montaj qilish so'rovi."""
+    return bool(EDIT_ASK.search(text or ""))
+
+
+def edit_latest(notify) -> str:
+    """Egasi so'raganda: yuborilmay qolgan montaj bo'lsa - uni yuboradi, bo'lmasa kanaldagi oxirgi video(albom)ni
+    (yonidagi topshiriq matni, rasm va musiqa bilan) qayta montaj qiladi."""
+    from . import tg_account
+    state = _state()
+    if state.get("pending_post") or state.get("pending_send"):
+        threading.Thread(target=flush_pending, daemon=True).start()
+        return ("🎬 Montaj tayyor edi, lekin internet uzilgani uchun yuborilmay qolgan - hozir kanalga (videoga javob "
+                "qilib) va sizga yuboryapman.")
+    if not tg_account.authorized():
+        return "⚠️ Kanalni o'qish uchun Telegram akkaunt ulanmagan (/tg-login)."
+    folder = config.data_dir / "inbox" / "studio"
+    folder.mkdir(parents=True, exist_ok=True)
+
+    async def go(client):
+        msgs = [m async for m in client.iter_messages(CHANNEL, limit=40) if MARK not in (m.text or "")]
+        vids = [m for m in msgs if m.video or (m.file and (m.file.mime_type or "").startswith("video/"))]
+        if not vids:
+            return None
+        last = vids[0]
+        clips = [m for m in vids if last.grouped_id and m.grouped_id == last.grouped_id] or [last]
+        t0 = min(m.date.timestamp() for m in clips)
+        near = [m for m in msgs if m not in clips and abs(m.date.timestamp() - t0) <= BATCH and not m.reply_to_msg_id]
+        paths = [await m.download_media(file=str(folder)) for m in sorted(clips, key=lambda m: m.id)]
+        photos = [await m.download_media(file=str(folder)) for m in near if m.photo]
+        audio = next((m for m in near if m.audio or m.voice), None)
+        music = await audio.download_media(file=str(folder)) if audio else ""
+        brief = "\n\n".join(t for t in [*(m.text for m in clips), *(m.text for m in near if not m.media)] if t)
+        return paths, brief, min(m.id for m in clips), photos, music
+    try:
+        got = tg_account._run(go)
+    except Exception as e:
+        return f"⚠️ Kanal o'qilmadi: {str(e)[:300]}"
+    if not got:
+        return f"Kanalda (@{CHANNEL}) video topilmadi - videoni kanalga tashlang, men o'zim montaj qilaman."
+    paths, brief, src, photos, music = got
+    threading.Thread(target=auto_edit, args=(paths, brief, src, notify, photos, music), daemon=True).start()
+    return (f"🎬 Kanaldagi oxirgi videoni oldim ({len(paths)} ta klip"
+            + (f", {len(photos)} ta rasm" if photos else "") + (", musiqa" if music else "") + ") - montaj qilyapman. "
+            "Tayyor bo'lgach kanalga (videoga javob qilib) va sizga yuboraman.")
 
 
 def loop(notify) -> None:
     while True:
         time.sleep(60)
         try:
+            flush_pending()
             _poll_channel(notify)
         except Exception:
             log.exception("Studio kanal kuzatuvi xatosi")

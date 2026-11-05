@@ -485,7 +485,9 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
             # Kreativ video: «kreativ video / brif / virusli reels: mavzu» - brif va rasm promptlari; «#B3 video qil» - yig'ish
             from . import studio_flow
             build = re.search(r"#?\s*[BbВв](\d{1,4})\s+(video|видео)\s+(qil|қил|кил|yig|йиғ)", text or "")
-            if not recalled and owner and not images and build:
+            if not recalled and owner and not images and studio_flow.is_edit_request(text):  # «kanaldagi videoni montaj qil»
+                recalled = await asyncio.to_thread(studio_flow.edit_latest, hub.notify)
+            elif not recalled and owner and not images and build:
                 try:
                     recalled = (await asyncio.to_thread(studio_flow.build, int(build.group(1))))["text"]
                 except Exception as e:

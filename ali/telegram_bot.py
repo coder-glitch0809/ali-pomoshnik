@@ -1090,7 +1090,18 @@ class TelegramBot(PublicTelegram, Listener):
                                                  "telegram_nazoratchi" in brain.agents else None)
         if not agent:  # Ali/umumiy mavzuda «Sevara, ...», «Kontent meyker ...», «Dasturchiga ayt ...» - to'g'ridan-to'g'ri agentga
             agent = team_hub.addressed(text, brain.agents)
-        from . import self_upgrade
+        from . import self_upgrade, studio_flow
+        if studio_flow.is_edit_request(text):  # «kanaldagi videoni ko'r, montaj qil» - qaysi mavzuda bo'lsa ham montajchi
+            note = await asyncio.to_thread(studio_flow.edit_latest, hub.notify)
+            await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
+            team_hub.touch("video_montajchi")
+            if key != "ali":
+                team_hub.post("ali", f"👁 Nazorat: kanaldagi video montajga berildi - «{text[:200]}»", brain.agents)
+            return True
+        if agent == "dasturchi" and not self_upgrade.is_request(text):  # Dasturchi mavzusiga boshqa agentning ishi yozilsa
+            from .service import route
+            other = await asyncio.to_thread(route, text, self._ready_apps())
+            agent = other if other and other != "dasturchi" else agent
         if agent == "dasturchi" or self_upgrade.is_request(text):  # Dasturchi gapirib qolmaydi - kodni o'zi o'zgartiradi
             team_hub.touch("dasturchi")
             if key != "ali":
