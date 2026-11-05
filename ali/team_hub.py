@@ -143,6 +143,35 @@ def topic_key(thread_id: int | None) -> str | None:
     return next((k for k, v in _load()["topics"].items() if v == thread_id), None)
 
 
+_CYR = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюяўқғҳ",
+                ["a", "b", "v", "g", "d", "e", "yo", "j", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r", "s", "t", "u",
+                 "f", "x", "ts", "ch", "sh", "sh", "", "i", "", "e", "yu", "ya", "o", "q", "g", "h"]))
+EXTRA = {"kontent": ("kontent meyker", "kontent maker", "kontentchi", "kontent"), "dasturchi": ("programmist", "dasturchi"),
+         "video_montajchi": ("montajchi", "montaj"), "telegram_nazoratchi": ("nazoratchi",), "dizayner": ("dizayner", "dizaynir"),
+         "yangiliklar": ("kutubxonachi",), "ingliz_tili": ("ingliz",), "rus_tili": ("rus tili",)}
+
+
+def _norm(text: str) -> str:
+    """Kirill -> lotin, kichik harf, tutuq belgisiz - «Контент мейкер» ham «kontent meyker» bo'ladi."""
+    text = "".join(_CYR.get(ch, ch) for ch in (text or "").lower())
+    return re.sub(r"['ʻ‘’`]", "", text)
+
+
+def addressed(text: str, agents: dict) -> str | None:
+    """Guruhda kimga yozilgani: matn boshida (birinchi 6 so'z) agent ismi yoki kasbi - «Sevara, ...», «Kontent meyker
+    post yoz», «@dasturchi ...», «Dasturchiga ayt ...». Topilmasa None - Ali o'zi javob beradi/taqsimlaydi."""
+    head = " ".join(_norm(text).split()[:6])
+    head = re.sub(r"^\W*(ali|али)\b\W*", "", head)
+    best = None
+    for key, a in agents.items():
+        names = {_norm(name_of(key)), _norm(a.name), key.replace("_", " "), *EXTRA.get(key, ())}
+        for n in filter(None, names):
+            m = re.search(rf"(^|[\s@,]){re.escape(n)}", head)
+            if m and (best is None or m.start() < best[0]):
+                best = (m.start(), key)
+    return best[1] if best else None
+
+
 def _chunks(text: str) -> list[str]:
     text = text.strip() or "…"
     out = []
@@ -267,9 +296,9 @@ def watch_report(agents: dict, now: float | None = None) -> str:
 def agent_answer(key: str | None, text: str, ready_apps: list[str] | None = None) -> str:
     """Agent (yoki Ali) o'z ko'rsatmasi va bilimlari bilan javob beradi. AI band bo'lsa - o'z bilimidan."""
     from . import local_ai, providers
-    from .service import agent_system, brain, knowledge_answer, knowledge_block
+    from .service import NO_EXCUSE, agent_system, brain, knowledge_answer, knowledge_block
     a = brain.agents.get(key) if key else None
-    system = (agent_system(a) if a else brain.system) + knowledge_block(text, key)
+    system = (agent_system(a) if a else brain.system) + knowledge_block(text, key) + NO_EXCUSE
     if a:
         system += (f"\n\nSening isming: {name_of(a.key)}. Ali jamoasining Telegram guruhida ishlayapsan: "
                    "qisqa, aniq va amaliy yoz.")

@@ -36,5 +36,32 @@ class DasturchiTests(unittest.TestCase):
             self.assertIn("ali/x.py", report)
 
 
+class TeamAddressTests(unittest.TestCase):
+    def test_group_message_goes_straight_to_named_agent(self):
+        from types import SimpleNamespace
+        from ali import team_hub
+        agents = {"kontent": SimpleNamespace(name="Kontent-meyker"), "dasturchi": SimpleNamespace(name="Dasturchi"),
+                  "video_montajchi": SimpleNamespace(name="Video montajchi")}
+        with patch.object(team_hub, "name_of", side_effect=lambda k: team_hub.NAMES.get(k, k)):
+            self.assertEqual(team_hub.addressed("Контент мейкер, эртага учун пост ёз", agents), "kontent")
+            self.assertEqual(team_hub.addressed("Sevara, reels g'oya ber", agents), "kontent")
+            self.assertEqual(team_hub.addressed("Ali dasturchiga ayt: tugmani tuzat", agents), "dasturchi")
+            self.assertEqual(team_hub.addressed("Али монтажчи видео кил", agents), "video_montajchi")
+            self.assertIsNone(team_hub.addressed("bugun ob-havo qanday", agents))
+
+    def test_instagram_daily_report_not_repeated_after_restart(self):
+        from datetime import datetime
+        from ali import instagram_audit as ig
+        sent = []
+        with tempfile.TemporaryDirectory() as d, patch.object(ig, "SENT", Path(d) / "ig_sent.json"), \
+                patch.object(ig, "snapshot", return_value=["obunachi +3"]), \
+                patch.object(ig, "datetime", wraps=datetime) as dt:
+            dt.now.return_value = datetime(2026, 11, 5, 20, 5)  # payshanba
+            ig.tick(sent.append)
+            ig.tick(sent.append)  # qayta ishga tushgandek - fayldan o'qiydi
+            dt.now.return_value = datetime(2026, 11, 5, 19, 0)
+        self.assertEqual(len(sent), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

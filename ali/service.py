@@ -172,8 +172,11 @@ def _plain_history(limit: int = 20) -> list[dict]:
 GEMINI_ROUTE_MODEL = "gemini-flash-lite-latest"  # dispetcher uchun eng tez model
 
 
-LOCAL_NOTE = ("\n\nHozir Ali vositalari (fayl yaratish, kompyuter, agent vositalari) ishlamaydi - bilimingdan to'liq javob ber. "
-              "Fayl kerak bo'lsa, mazmunini matnda to'liq yoz." + HIDE_SOURCE)
+NO_EXCUSE = ("\n\nHech qachon «vositalar ishlamayapti», «tizim tiklanganda qilaman», «eslab qoldim, keyin bajaramiz» dema - "
+             "bunday va'da bajarilmaydi. Kod/funksiya o'zgarishi kerak bo'lsa: «Dasturchiga ayt: ...» deb yozing - Dasturchi "
+             "darhol o'zi o'zgartiradi, de. Qolgan hamma narsani hozir bilimingdan to'liq bajar.")
+LOCAL_NOTE = ("\n\nBu suhbat javobi: bilimingdan to'liq javob ber. Fayl kerak bo'lsa, mazmunini matnda to'liq yoz."
+              + NO_EXCUSE + HIDE_SOURCE)
 
 
 SMALL_TALK = ("salom", "assalom", "rahmat", "raxmat", "привет", "спасибо", "hello", "hi", "ok", "ha", "yo'q", "xop", "xo'p")

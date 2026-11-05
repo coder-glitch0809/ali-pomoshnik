@@ -1088,6 +1088,16 @@ class TelegramBot(PublicTelegram, Listener):
             return True
         agent = key if key in brain.agents else ("telegram_nazoratchi" if key == "telegram" and
                                                  "telegram_nazoratchi" in brain.agents else None)
+        if not agent:  # Ali/umumiy mavzuda «Sevara, ...», «Kontent meyker ...», «Dasturchiga ayt ...» - to'g'ridan-to'g'ri agentga
+            agent = team_hub.addressed(text, brain.agents)
+        from . import self_upgrade
+        if agent == "dasturchi" or self_upgrade.is_request(text):  # Dasturchi gapirib qolmaydi - kodni o'zi o'zgartiradi
+            team_hub.touch("dasturchi")
+            if key != "ali":
+                team_hub.post("ali", f"👁 Nazorat: {team_hub.label('dasturchi', brain.agents)} ga kod topshirig'i - "
+                                     f"{text[:300]}", brain.agents)
+            await self.start_upgrade(update, text)
+            return True
 
         async def run():
             try:
@@ -1095,6 +1105,10 @@ class TelegramBot(PublicTelegram, Listener):
                 if agent:
                     out = await asyncio.to_thread(team_hub.agent_answer, agent, text, self._ready_apps())
                     team_hub.touch(agent)
+                    out = f"{team_hub.label(agent, brain.agents)}:\n{out}" if agent != key else out
+                    if key != "ali":  # Ali hammasini kuzatadi: kimga nima berildi va javob berdimi
+                        team_hub.post("ali", f"👁 Nazorat: {team_hub.label(agent, brain.agents)} - «{text[:200]}» → "
+                                             f"{'javob berdi' if out else 'javob bermadi'}", brain.agents)
                 else:
                     from .service import team_reply
                     out = await team_reply(text, None, self._ready_apps())

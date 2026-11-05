@@ -17,3 +17,6 @@ node_modules/
 agents/18-agent.md
 package.json
 package-lock.json
+
+# testlarning vaqtinchalik fayllari (Dasturchi commit qilib yubormasin)
+.test_tmp/

@@ -1,7 +1,7 @@
 """Instagram audit va kuzatuv: profil, postlar (rasmlarini AI ko'radi), joylash chastotasi -> aniq tavsiyalar.
 
 Manbalar: ChatPlace (bot orqali ulangan Instagram: obunachilar, postlar, Virale tahlili) va Instagram Graph API
-(token bo'lsa: qamrov, saqlash, ulashish). Kuzatuv: har kuni 21:30 da qisqa holat (obunachi o'zgarishi, post
+(token bo'lsa: qamrov, saqlash, ulashish). Kuzatuv: har kuni 20:00 da qisqa holat (obunachi o'zgarishi, post
 tanaffusi), har yakshanba 20:00 da to'liq audit. Tarix data/ig_history.json da.
 """
 import json
@@ -16,7 +16,8 @@ from .config import config
 log = logging.getLogger("ali.instagram_audit")
 
 HISTORY = config.data_dir / "ig_history.json"
-DAILY_AT, WEEKLY_AT, WEEKLY_DAY = "21:30", "20:00", 6  # yakshanba
+DAILY_AT, WEEKLY_AT, WEEKLY_DAY = "20:00", "20:00", 6  # yakshanba
+SENT = config.data_dir / "ig_sent.json"  # qachon yuborilgani - qayta ishga tushganda (deploy) takrorlanmasin
 QUERY_WORDS = ("instagram", "инстаграм", "insta", "инста", "profil", "профил")
 ACTION_WORDS = ("tahlil", "таҳлил", "тахлил", "analiz", "анализ", "audit", "аудит", "maslahat", "маслахат", "маслаҳат",
                 "to'g'rila", "togirla", "тўғрила", "тогрила", "kuzat", "кузат", "statistik", "статистик")
@@ -196,23 +197,34 @@ def is_query(text: str) -> bool:
     return any(w in low for w in QUERY_WORDS) and any(w in low for w in ACTION_WORDS)
 
 
-_last = {"daily": "", "weekly": ""}
+def _sent() -> dict:
+    try:
+        return json.loads(SENT.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"daily": "", "weekly": ""}
+
+
+def _mark(kind: str, day: str) -> None:
+    data = _sent()
+    data[kind] = day
+    SENT.write_text(json.dumps(data), encoding="utf-8")
 
 
 def tick(notify) -> None:
     """Kontent reja tsiklidan har 30 soniyada chaqiriladi: kunlik holat va haftalik audit."""
     now = datetime.now()
     today = now.date().isoformat()
-    if now.strftime("%H:%M") >= DAILY_AT and _last["daily"] != today:
-        _last["daily"] = today
+    sent = _sent()
+    if now.strftime("%H:%M") >= DAILY_AT and sent.get("daily") != today:
+        _mark("daily", today)
         try:
             notes = snapshot()
             if notes:
                 notify("📈 Instagram kunlik holat:\n" + "\n".join(notes))
         except Exception as e:
             log.warning("Instagram kunlik holat olinmadi: %s", e)
-    if now.weekday() == WEEKLY_DAY and now.strftime("%H:%M") >= WEEKLY_AT and _last["weekly"] != today:
-        _last["weekly"] = today
+    if now.weekday() == WEEKLY_DAY and now.strftime("%H:%M") >= WEEKLY_AT and sent.get("weekly") != today:
+        _mark("weekly", today)
         try:
             notify("🔍 Haftalik Instagram audit:\n\n" + report(audit())[:3800])
         except Exception as e:
