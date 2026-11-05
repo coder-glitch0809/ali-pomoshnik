@@ -28,7 +28,7 @@ _lock = threading.Lock()
 IDEA = """{agent}
 
 Sen Kontent-meykersan. Planet Print (tashqi reklama: pilon, lightbox, hajmli harflar, banner, vizitka; Beshariq) uchun
-bugungi {slot} Reels'ining g'oyasini tuz. {topic} Video - animatsiyali matn va grafika (motion design), {dur} soniya;
+bugungi {slot} Reels'ining g'oyasini tuz. {topic} Video - animatsiyali matn va grafika (motion design), {dur}-30 soniya (videoda aniq soniyani yozma);
 ekranda Planet Print personaji (3D multfilm qahramon) bor va u matnni ovoz chiqarib aytadi, ostida musiqa. Tomoshabin 1-2 soniyada to'xtashi, oxirigacha ko'rishi va direktga yozishi kerak.
 Haftalik Instagram audit xulosasi (shunga tayan):
 {audit}
@@ -293,13 +293,15 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
     hero = _data_uri(hero_file) if hero_file else ""
     with tempfile.TemporaryDirectory() as tmp:
         voice, dur = _voice(data, Path(tmp)) if hero else (None, DURATION)  # personaj bor - u matnni ovozda aytadi
-        page, code_src = code(data, topic, dur, hero)
+        # personajli video - Ali shabloni (matn har lahzada aniq ko'rinadi; AI kodi personaj bilan matnni xiralashtirib
+        # qo'yardi), personajsiz - Dasturchi AI kodi (tekshiruv bilan)
+        page, code_src = (template(data, dur, hero), "shablon + personaj") if hero else code(data, topic, dur)
         team_hub.feed("dasturchi", f"{slot} Reels animatsiya kodi", f"HTML animatsiya: {len(page) // 1024 + 1} KB ({code_src})")
         raw = Path(tmp) / "anim.mp4"
         try:
             render(page, raw, dur)
         except Exception as e:  # AI kodi ishlamadi - Ali shabloni bilan qayta
-            if code_src == "shablon":
+            if code_src.startswith("shablon"):
                 raise
             log.warning("AI animatsiyasi render bo'lmadi (%s) - shablon", e)
             page, code_src = template(data, dur, hero), "shablon"
