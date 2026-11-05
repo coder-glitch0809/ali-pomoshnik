@@ -1146,6 +1146,8 @@ class TelegramBot(PublicTelegram, Listener):
         if studio_flow.LINK.search(text):  # jamoa guruhidagi har bir video havolasi - namuna: uslubi o'rganiladi
             note = await asyncio.to_thread(studio_flow.learn_link, text, hub.notify, self._reply_later(msg))
             await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
+            if note.startswith("⚠️"):  # hech biri yuklanmadi - 👍 kelmaydi, «ko'rdim, lekin bo'lmadi»
+                await self.mark(msg, "🤔")
             team_hub.touch("video_montajchi", "organish")
             return True
         if studio_flow.is_edit_request(text):  # «kanaldagi videoni ko'r, montaj qil» - qaysi mavzuda bo'lsa ham montajchi
