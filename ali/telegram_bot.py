@@ -607,7 +607,10 @@ class TelegramBot(PublicTelegram, Listener):
                 return
             if await self.channel_in_text(update, text):  # «X kanalini o'rgan» - kanal o'qiladi
                 return
-            from . import self_upgrade
+            from . import self_upgrade, studio_flow
+            if studio_flow.is_learn_link(text):  # «/organ <havola>» - namuna videoni yuklab, uslubini o'rganadi
+                await update.message.reply_text(await asyncio.to_thread(studio_flow.learn_link, text, hub.notify))
+                return
             if self_upgrade.is_request(text):  # «o'zingni kuchaytir: ...» - Dasturchi o'z kodini yaxshilaydi
                 await self.start_upgrade(update, text)
                 return
@@ -1137,6 +1140,11 @@ class TelegramBot(PublicTelegram, Listener):
         if not agent:  # Ali/umumiy mavzuda «Sevara, ...», «Kontent meyker ...», «Dasturchiga ayt ...» - to'g'ridan-to'g'ri agentga
             agent = team_hub.addressed(text, brain.agents)
         from . import self_upgrade, studio_flow
+        if studio_flow.is_learn_link(text):  # «/organ <Instagram/YouTube havola>» - namuna uslubini o'rganish
+            note = await asyncio.to_thread(studio_flow.learn_link, text, hub.notify)
+            await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
+            team_hub.touch("video_montajchi", "organish")
+            return True
         if studio_flow.is_edit_request(text):  # «kanaldagi videoni ko'r, montaj qil» - qaysi mavzuda bo'lsa ham montajchi
             note = await asyncio.to_thread(studio_flow.edit_latest, hub.notify)
             await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")

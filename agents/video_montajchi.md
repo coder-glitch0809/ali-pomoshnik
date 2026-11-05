@@ -43,3 +43,6 @@ Vositalar va plaginlar (nima qachon):
 - Namuna video + «/organ» -> video_learn_style: uslub eslab qolinadi va keyingi montajlarda ishlatiladi.
 - Musiqa: kanalga tashlangan trek -> kutubxona; yo'q bo'lsa make_music (sintez) yoki music_find_online (Pixabay).
 - Qo'shimcha kadr kerak bo'lsa -> kanalga prompt yoz (gemini_image / chatgpt_image), kelgan rasmlar video_broll bilan qo'yiladi.
+- Havoladan o'rganish: «/organ <Instagram/YouTube/TikTok havola>» (guruhda yoki botda) - Ali videoni yuklab, uslubini o'rganadi.
+  Instagram ko'pincha kirishni (login) talab qiladi - unda yuklanmaydi; egamga videoni .mp4 qilib tashlashni ayt. Yuklanishini
+  oldindan va'da qilma.

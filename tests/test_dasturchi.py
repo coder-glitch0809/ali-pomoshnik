@@ -71,6 +71,19 @@ class StudioDeliveryTests(unittest.TestCase):
         self.assertTrue(sf.is_edit_request("kanaldagi videoni montaj qil"))
         self.assertFalse(sf.is_edit_request("kanal nomini o'zgartir"))
 
+    def test_learn_from_link_downloads_and_reports_failures(self):
+        from ali import studio_flow as sf
+        self.assertTrue(sf.is_learn_link("/organ https://www.instagram.com/reel/abc/"))
+        self.assertFalse(sf.is_learn_link("https://www.instagram.com/reel/abc/"))
+        started = []
+        with patch.object(sf, "_download", side_effect=["a.mp4", RuntimeError("login required")]), \
+                patch.object(sf.threading, "Thread", side_effect=lambda target, args, **kw: started.append(args[0])
+                             or unittest.mock.MagicMock()):
+            note = sf.learn_link("shuni o'rgan https://youtu.be/x https://instagram.com/reel/y", print)
+        self.assertEqual(started, [["a.mp4"]])
+        self.assertIn("1 ta videoni yukladim", note)
+        self.assertIn("Instagram kirishni talab qildi", note)
+
     def test_result_queued_when_offline_and_sent_later(self):
         import httpx
         from ali import studio_flow as sf

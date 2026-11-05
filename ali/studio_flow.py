@@ -463,6 +463,57 @@ def learn(videos: list[str], caption: str, src_id: int, notify) -> None:
     send_files(text, [])
 
 
+LINK = re.compile(r"https?://(?:www\.)?(?:instagram\.com|youtube\.com|youtu\.be|tiktok\.com|vm\.tiktok\.com|t\.me)/\S+", re.I)
+LEARN_WORD = re.compile(r"o['ʻ‘’]?rgan|organ|ўрган|урган|орган|learn", re.I)
+
+
+def is_learn_link(text: str) -> bool:
+    """«/organ https://instagram.com/reel/...» yoki «shuni o'rgan <havola>» - namuna videoni havoladan o'rganish."""
+    return bool(LINK.search(text or "") and LEARN_WORD.search(text or ""))
+
+
+def _download(url: str, folder: Path) -> str:
+    """Bitta ochiq videoni yuklaydi (yt-dlp, login/cookie'siz). Yopiq yoki Instagram ruxsat bermasa - xato."""
+    import yt_dlp
+    from .skills.video_edit import ffmpeg
+    folder.mkdir(parents=True, exist_ok=True)
+    opts = {"outtmpl": str(folder / "%(extractor)s_%(id)s.%(ext)s"), "format": "mp4/bestvideo*+bestaudio/best",
+            "merge_output_format": "mp4", "noplaylist": True, "quiet": True, "no_warnings": True,
+            "max_filesize": 300 * 1024 * 1024, "ffmpeg_location": ffmpeg()}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        path = Path(ydl.prepare_filename(info))
+    found = path if path.exists() else next(iter(sorted(folder.glob(path.stem + ".*"))), None)
+    if not found:
+        raise RuntimeError("fayl topilmadi")
+    return str(found)
+
+
+def learn_link(text: str, notify) -> str:
+    """Havoladagi namuna video(lar)ni yuklab, uslubini o'rganadi (fonda). Darhol javob matni qaytadi."""
+    urls = list(dict.fromkeys(m.group(0).rstrip(").,»") for m in LINK.finditer(text or "")))[:3]
+    folder = config.data_dir / "inbox" / "learn"
+    paths, errors = [], []
+    for u in urls:
+        try:
+            paths.append(_download(u, folder))
+        except Exception as e:
+            msg = str(e)
+            why = ("Instagram kirishni talab qildi (yopiq akkaunt yoki cheklov)" if re.search(r"login|cookie|private|rate",
+                                                                                             msg, re.I) else msg[:150])
+            errors.append(f"• {u[:60]}: yuklab bo'lmadi - {why}")
+    if paths:
+        threading.Thread(target=learn, args=(paths, text, None, notify), daemon=True).start()
+    out = []
+    if paths:
+        out.append(f"🎓 {len(paths)} ta videoni yukladim - uslubini o'rganyapman (kesimlar, ritm, effektlar, yozuvlar). "
+                   "Hisobot 1-3 daqiqada keladi va keyingi montajlarda shu uslub ishlatiladi.")
+    if errors:
+        out.append(("⚠️ Ba'zilari yuklanmadi:\n" if paths else "⚠️ Yuklab bo'lmadi:\n") + "\n".join(errors) +
+                   "\nBunday holda videoning o'zini (.mp4) shu yerga yoki kanalga «/organ» izohi bilan tashlang.")
+    return "\n\n".join(out) or "Havola topilmadi."
+
+
 QUIET = 90  # kanalda shuncha soniya yangi post bo'lmasa - paket (albom + topshiriq + rasmlar + musiqa) to'liq deb olinadi
 BATCH = 600  # albom bilan bir paket: ±10 daqiqa ichidagi matn, rasm va audio
 
