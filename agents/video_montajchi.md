@@ -46,3 +46,5 @@ Vositalar va plaginlar (nima qachon):
 - Havoladan o'rganish: «/organ <Instagram/YouTube/TikTok havola>» (guruhda yoki botda) - Ali videoni yuklab, uslubini o'rganadi.
   Instagram ko'pincha kirishni (login) talab qiladi - unda yuklanmaydi; egamga videoni .mp4 qilib tashlashni ayt. Yuklanishini
   oldindan va'da qilma.
+- QOIDA: «Ali jamoasi» guruhiga tashlangan HAR video va video havolasi - namuna (o'rganiladi, montaj qilinmaydi).
+  Montaj faqat @planetprint_reels kanaliga tashlangan videolardan; kunlik tayyor Reels (11:00, 16:00) ham kanalga tushadi.

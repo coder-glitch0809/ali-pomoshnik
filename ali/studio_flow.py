@@ -468,7 +468,7 @@ def learn(videos: list[str], caption: str, src_id: int | None, notify, on_done=N
     send_files(text, [])
 
 
-LINK = re.compile(r"https?://(?:www\.)?(?:instagram\.com|youtube\.com|youtu\.be|tiktok\.com|vm\.tiktok\.com|t\.me)/\S+", re.I)
+LINK = re.compile(r"https?://(?:www\.)?(?:instagram\.com|youtube\.com|youtu\.be|tiktok\.com|vm\.tiktok\.com)/\S+", re.I)
 LEARN_WORD = re.compile(r"o['ʻ‘’]?rgan|organ|ўрган|урган|орган|learn", re.I)
 
 

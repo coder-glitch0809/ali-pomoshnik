@@ -1142,7 +1142,7 @@ class TelegramBot(PublicTelegram, Listener):
         if not agent:  # Ali/umumiy mavzuda «Sevara, ...», «Kontent meyker ...», «Dasturchiga ayt ...» - to'g'ridan-to'g'ri agentga
             agent = team_hub.addressed(text, brain.agents)
         from . import self_upgrade, studio_flow
-        if studio_flow.is_learn_link(text):  # «/organ <Instagram/YouTube havola>» - namuna uslubini o'rganish
+        if studio_flow.LINK.search(text):  # jamoa guruhidagi har bir video havolasi - namuna: uslubi o'rganiladi
             note = await asyncio.to_thread(studio_flow.learn_link, text, hub.notify, self._reply_later(msg))
             await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
             team_hub.touch("video_montajchi", "organish")
@@ -1313,7 +1313,8 @@ class TelegramBot(PublicTelegram, Listener):
 
     async def on_video(self, update: Update, ctx):
         """Video: saqlanadi va montaj qilinadi - izoh (caption) topshiriq; izohsiz - 9:16 + avtomatik subtitr.
-        Izohda «/organ» bo'lsa - montaj emas, uslubini o'rganadi (jamoa guruhida ham)."""
+        Jamoa guruhidagi har video (va izohda «/organ» bo'lsa botda ham) - montaj emas, uslubi o'rganiladi.
+        Montaj qilinadigan videolar - @planetprint_reels kanaliga tashlanadi."""
         from . import ingest, local_ai, montage, studio_flow, team_hub
         m = update.message
         chat, user = update.effective_chat, update.effective_user
@@ -1321,7 +1322,7 @@ class TelegramBot(PublicTelegram, Listener):
         if not in_team and (not await self._guard(update) or update.effective_user.id != self.owner_id):
             return
         media = m.video or m.video_note or m.document
-        if studio_flow.LEARN.search(m.caption or "") or (studio_flow.LEARN_WORD.search(m.caption or "") and in_team):
+        if in_team or studio_flow.LEARN.search(m.caption or ""):  # guruhdagi har video - o'rganiladi (montaj - faqat kanalda)
             await self.learn_video(m, media, m.caption or "")
             return
         if media.file_size and media.file_size > 20 * 1024 * 1024:
