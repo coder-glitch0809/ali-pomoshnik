@@ -53,6 +53,7 @@ COMMANDS = [
     ("jadval", "Dars jadvalim"),
     ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
     ("instagram", "Instagram profil audit: nimani to'g'rilash kerak"),
+    ("organ", "Namuna videodan montaj uslubini o'rganish: /organ <havola> yoki video + /organ"),
     ("tarix", "ChatGPT va Claude suhbatlar tarixini Ali bilimiga o'tkazish"),
     ("kunlik_video", "Jamoa Reels yasaydi: kontent -> kod -> montaj (har kuni 11:00 va 16:00)"),
     ("kuchaytir", "Ali o'zini kuchaytirsin: /kuchaytir yangi imkoniyat"),
@@ -172,6 +173,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("instagram", self.cmd_instagram))
         a.add_handler(CommandHandler("kunlik_video", self.cmd_daily_video))
         a.add_handler(CommandHandler("tarix", self.cmd_history_import))
+        a.add_handler(CommandHandler("organ", self.cmd_organ))
         a.add_handler(CommandHandler("kuchaytir", self.cmd_upgrade))
         a.add_handler(CommandHandler("tugma_test", self.cmd_button_test))
         a.add_handler(CommandHandler("ekotizim", self.cmd_ecosystem))
@@ -1141,7 +1143,7 @@ class TelegramBot(PublicTelegram, Listener):
             agent = team_hub.addressed(text, brain.agents)
         from . import self_upgrade, studio_flow
         if studio_flow.is_learn_link(text):  # «/organ <Instagram/YouTube havola>» - namuna uslubini o'rganish
-            note = await asyncio.to_thread(studio_flow.learn_link, text, hub.notify)
+            note = await asyncio.to_thread(studio_flow.learn_link, text, hub.notify, self._reply_later(msg))
             await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
             team_hub.touch("video_montajchi", "organish")
             return True
@@ -1264,13 +1266,64 @@ class TelegramBot(PublicTelegram, Listener):
                          else f"[Havola: {url} - sahifani WebFetch bilan o'zing ochib o'qi]")
         return text + ("\n\n" + "\n\n".join(extra) if extra else "")
 
-    async def on_video(self, update: Update, ctx):
-        """Video: saqlanadi va montaj qilinadi - izoh (caption) topshiriq; izohsiz - 9:16 + avtomatik subtitr."""
-        from . import ingest, local_ai, montage
-        if not await self._guard(update) or update.effective_user.id != self.owner_id:
+    def _reply_later(self, msg):
+        """Fon ishidan (boshqa oqim) shu xabarga javob yozish - masalan o'rganish hisoboti guruhdagi o'sha mavzuga."""
+        loop = asyncio.get_running_loop()
+
+        def reply(text: str) -> None:
+            for start in range(0, len(text), 4000):
+                asyncio.run_coroutine_threadsafe(msg.reply_text(text[start:start + 4000]), loop)
+        return reply
+
+    async def cmd_organ(self, update: Update, ctx):
+        """/organ <havola> yoki videoga javob qilib /organ - namuna videoning montaj uslubini o'rganadi (bot yoki jamoa guruhi).
+        Telegram «/organ ...» ni buyruq deb oladi - oddiy matn ishlovchisiga tushmaydi, shuning uchun alohida."""
+        from . import studio_flow, team_hub
+        m, user, chat = update.message, update.effective_user, update.effective_chat
+        if not (m and user and user.id == self.owner_id and (chat.type == "private" or chat.id == team_hub.chat_id())):
             return
+        text = m.text or ""
+        if studio_flow.LINK.search(text):
+            note = await asyncio.to_thread(studio_flow.learn_link, text, hub.notify, self._reply_later(m))
+            await m.reply_text(note)
+            return
+        src = m.reply_to_message
+        media = src and (src.video or src.video_note or (src.document if (src.document and (src.document.mime_type or "")
+                                                                         .startswith("video/")) else None))
+        if not media:
+            await m.reply_text("Namunani bering: «/organ https://www.instagram.com/reel/...» yoki videoni «/organ» izohi "
+                               "bilan tashlang (yoki videoga javob qilib /organ yozing).")
+            return
+        await self.learn_video(m, media, text)
+
+    async def learn_video(self, m, media, caption: str) -> None:
+        """Telegram'dagi videoni yuklab, uslubini o'rganadi; hisobot shu xabarga javob bo'lib keladi."""
+        from . import ingest, studio_flow
+        if media.file_size and media.file_size > 20 * 1024 * 1024:
+            await m.reply_text("Video 20 MB dan katta - bot yuklay olmaydi. Uni @planetprint_reels kanaliga «/organ» izohi "
+                               "bilan tashlang (kanaldan katta video ham olinadi).")
+            return
+        file = await media.get_file()
+        name = getattr(media, "file_name", None) or f"organ_{media.file_unique_id}.mp4"
+        path = await asyncio.to_thread(ingest.save_upload, name, bytes(await file.download_as_bytearray()))
+        await m.reply_text("🎓 Videoni oldim - uslubini o'rganyapman (kesimlar, ritm, o'tishlar, effektlar, yozuvlar, "
+                           "musiqa). Hisobot 1-3 daqiqada shu yerga keladi.")
+        threading.Thread(target=studio_flow.learn, args=([str(path)], caption, None, hub.notify, self._reply_later(m)),
+                         daemon=True).start()
+
+    async def on_video(self, update: Update, ctx):
+        """Video: saqlanadi va montaj qilinadi - izoh (caption) topshiriq; izohsiz - 9:16 + avtomatik subtitr.
+        Izohda «/organ» bo'lsa - montaj emas, uslubini o'rganadi (jamoa guruhida ham)."""
+        from . import ingest, local_ai, montage, studio_flow, team_hub
         m = update.message
+        chat, user = update.effective_chat, update.effective_user
+        in_team = bool(chat and user and chat.id == team_hub.chat_id() and user.id == self.owner_id)
+        if not in_team and (not await self._guard(update) or update.effective_user.id != self.owner_id):
+            return
         media = m.video or m.video_note or m.document
+        if studio_flow.LEARN.search(m.caption or "") or (studio_flow.LEARN_WORD.search(m.caption or "") and in_team):
+            await self.learn_video(m, media, m.caption or "")
+            return
         if media.file_size and media.file_size > 20 * 1024 * 1024:
             await m.reply_text("Video juda katta: Telegram botlar 20 MB gacha yuklab oladi. Qisqaroq yoki siqilgan "
                                "variantini yuboring, yoki kompyuterdagi fayl yo'lini yozing.")

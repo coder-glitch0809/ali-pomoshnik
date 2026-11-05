@@ -441,11 +441,13 @@ def _broll(req_id: str, notify) -> None:
 LEARN = re.compile(r"/\s*(o['ʻ‘’]?rgan|organ|ўрган|урган|learn)\b", re.I)
 
 
-def learn(videos: list[str], caption: str, src_id: int, notify) -> None:
-    """«/organ» - namuna video(lar)dan montaj uslubini o'rganadi va kanalga/egasiga hisobot beradi."""
+def learn(videos: list[str], caption: str, src_id: int | None, notify, on_done=None) -> None:
+    """«/organ» - namuna video(lar)dan montaj uslubini o'rganadi. Hisobot: on_done bo'lsa - unga (masalan jamoa
+    guruhidagi o'sha xabarga javob), bo'lmasa - kanalga va egasiga."""
     from . import tg_account
     from .skills.video_motion import analyze_style, style_text
-    notify(f"🎓 Namuna videoni o'rganyapman ({len(videos)} ta) - kesimlar, ritm, effektlar, yozuvlar…")
+    if not on_done:
+        notify(f"🎓 Namuna videoni o'rganyapman ({len(videos)} ta) - kesimlar, ritm, effektlar, yozuvlar…")
     reports = []
     for v in videos:
         try:
@@ -453,6 +455,9 @@ def learn(videos: list[str], caption: str, src_id: int, notify) -> None:
         except Exception as e:
             reports.append(f"⚠️ O'rganib bo'lmadi: {str(e)[:200]}")
     text = "\n\n".join(reports)
+    if on_done:
+        on_done("🎓 O'rgandim - keyingi montajlar shu uslubda bo'ladi:\n\n" + text)
+        return
     try:
         pid = tg_account.send_text(CHANNEL, f"{text}\n\n{MARK}", reply_to=src_id)
         st = _state()
@@ -489,7 +494,7 @@ def _download(url: str, folder: Path) -> str:
     return str(found)
 
 
-def learn_link(text: str, notify) -> str:
+def learn_link(text: str, notify, on_done=None) -> str:
     """Havoladagi namuna video(lar)ni yuklab, uslubini o'rganadi (fonda). Darhol javob matni qaytadi."""
     urls = list(dict.fromkeys(m.group(0).rstrip(").,»") for m in LINK.finditer(text or "")))[:3]
     folder = config.data_dir / "inbox" / "learn"
@@ -503,7 +508,7 @@ def learn_link(text: str, notify) -> str:
                                                                                              msg, re.I) else msg[:150])
             errors.append(f"• {u[:60]}: yuklab bo'lmadi - {why}")
     if paths:
-        threading.Thread(target=learn, args=(paths, text, None, notify), daemon=True).start()
+        threading.Thread(target=learn, args=(paths, text, None, notify, on_done), daemon=True).start()
     out = []
     if paths:
         out.append(f"🎓 {len(paths)} ta videoni yukladim - uslubini o'rganyapman (kesimlar, ritm, effektlar, yozuvlar). "
