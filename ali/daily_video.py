@@ -42,7 +42,7 @@ FAQAT JSON: {{"title": "...", "hook": "1-sahna - 3-6 so'z, kuchli", "scenes": [{
 CODE = """{agent}
 
 Sen Dasturchisan. Video montajchi uchun {dur} soniyalik vertikal motion-grafika ANIMATSIYA KODINI yoz - bitta HTML fayl.
-Sahnalar (tartib bilan, teng vaqt): {scenes}
+Sahnalar - AYNAN shu vaqtlarda ko'rinsin (animation-delay = boshlanish, har lahzada ekranda bitta sahna matni bo'lsin): {scenes}
 CTA (oxirgi sahna): {cta}
 QOIDALAR (buzilsa video chiqmaydi):
 - <body> aniq 1080x1920 px, margin 0, overflow hidden; fon to'q (qora/ko'k), Planet Print uslubi: neon sariq/to'q sariq nur.
@@ -213,7 +213,9 @@ HERO_RULE = """- PERSONAJ RASMI bor (egamning 3D qahramoni, portret 4:5): <img c
 def code(data: dict, topic: str = "", dur: float = DURATION, hero: str = "") -> tuple[str, str]:
     """Dasturchi animatsiya kodi: (html, manba). AI kodi yaroqsiz bo'lsa - Ali shabloni. hero - personaj (data URI)."""
     from .service import _ask_json
-    scenes = " | ".join(f"{s['big']} — {s.get('small', '')}" for s in data["scenes"])
+    step = dur / (len(data["scenes"]) + 1)  # +1 - oxirgi CTA sahnasi
+    scenes = " | ".join(f"{k + 1}) {k * step:.1f}-{(k + 1) * step:.1f} s: {s['big']} — {s.get('small', '')}"
+                        for k, s in enumerate(data["scenes"])) + f" | CTA: {len(data['scenes']) * step:.1f}-{dur:.0f} s"
     extra = "\n".join(filter(None, [CHARACTERS if PERSONA.search(topic) and not hero else "", HERO_RULE if hero else ""]))
     try:
         got = _ask_json(CODE.format(agent=_agent("dasturchi")[:4000], dur=round(dur), scenes=scenes, cta=data.get("cta", ""),
@@ -229,6 +231,31 @@ def code(data: dict, topic: str = "", dur: float = DURATION, hero: str = "") -> 
 SEEK = """t => { const all = document.getAnimations(); all.forEach(a => { a.pause(); a.currentTime = t; }); return all.length; }"""
 
 
+VISIBLE_TEXT = """() => { const out = [];
+  document.querySelectorAll('body *').forEach(e => {
+    if (![...e.childNodes].some(c => c.nodeType === 3 && c.textContent.trim().length > 1)) return;
+    let o = 1;
+    for (let x = e; x && x.nodeType === 1; x = x.parentElement) {
+      const cs = getComputedStyle(x); o *= parseFloat(cs.opacity);
+      if (cs.visibility === 'hidden' || cs.display === 'none') o = 0; }
+    const r = e.getBoundingClientRect();
+    if (o > 0.3 && r.width > 0 && r.bottom > 0 && r.top < 1920 && r.right > 0 && r.left < 1080) out.push(e.textContent.trim());
+  }); return out; }"""
+
+
+def _check_text(tab, dur: float, samples: int = 10) -> None:
+    """Video bo'ylab ekranda sahna matni bo'lishi shart (doim turadigan «PLANET PRINT» kabi yozuvlar hisobga olinmaydi).
+    Bo'sh oraliq bo'lsa - AI kodi rad etiladi, Ali shabloni ishlatiladi."""
+    seen = []
+    for k in range(samples):
+        tab.evaluate(SEEK, (0.6 + k * (dur - 1.0) / (samples - 1)) * 1000)
+        seen.append(set(tab.evaluate(VISIBLE_TEXT)))
+    always = set.intersection(*seen) if seen else set()
+    empty = sum(1 for texts in seen if not texts - always)
+    if empty > 1:
+        raise RuntimeError(f"Animatsiyada {empty}/{samples} lahzada matn yo'q (sahnalar vaqti noto'g'ri)")
+
+
 def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS) -> Path:
     """HTML animatsiyani kadrma-kadr (har kadrda vaqt aniq o'rnatiladi - sakrashsiz) videoga aylantiradi."""
     from playwright.sync_api import sync_playwright
@@ -242,6 +269,7 @@ def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS) -> Path:
             tab.set_content(page, wait_until="load")
             if not tab.evaluate(SEEK, 0):
                 raise RuntimeError("Kodda animatsiya yo'q")
+            _check_text(tab, dur)
             for n in range(int(dur * fps)):
                 tab.evaluate(SEEK, n * 1000 / fps)
                 tab.screenshot(path=str(Path(tmp) / f"f{n:05d}.jpg"), type="jpeg", quality=92)
