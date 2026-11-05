@@ -362,23 +362,31 @@ class RuntimeTests(unittest.TestCase):
     def test_self_upgrade_falls_back_to_codex(self):
         from ali import self_upgrade
         calls = []
+        # Sinov haqiqiy repozitoriyda branch yoki commit yaratmasin.
+        def git(*args, **kwargs):
+            if args[:2] == ("worktree", "add"):
+                (Path(args[4]) / "ali").mkdir(parents=True)
+            if args[0] in ("status", "diff", "show"):
+                return "ali/codex_test_note.py"
+            return ""
         def code(key, exe, prompt, path):
             calls.append(key)
             if key == "claude":
                 return False, "You've hit your weekly limit"
             (path / "ali" / "codex_test_note.py").write_text("X = 1\n", encoding="utf-8")
             return True, "Codex qo'shdi"
-        with patch.object(self_upgrade, "_coders", return_value=[("claude", "c"), ("codex", "x")]), \
+        with patch.object(self_upgrade, "_git", side_effect=git), \
+                patch.object(self_upgrade, "_coders", return_value=[("claude", "c"), ("codex", "x")]), \
                 patch.object(self_upgrade, "_code", side_effect=code), \
                 patch.object(self_upgrade, "_tests", return_value=(True, "1 ta test; hammasi o'tdi")), \
                 patch.object(self_upgrade, "_dasturchi", return_value=""):
             res = self_upgrade.run("sinov uchun kichik o'zgarish", lambda note: None)
-        try:
-            self.assertEqual(calls, ["claude", "codex"])
-            self.assertTrue(res["ok"])
-            self.assertIn("codex_test_note.py", res["diff"])
-        finally:
-            self_upgrade.discard(res["id"])
+            try:
+                self.assertEqual(calls, ["claude", "codex"])
+                self.assertTrue(res["ok"])
+                self.assertIn("codex_test_note.py", res["diff"])
+            finally:
+                self_upgrade.discard(res["id"])
 
     def test_permission_request_sends_voice(self):
         from types import SimpleNamespace
@@ -1329,6 +1337,7 @@ class TeamHubTests(unittest.TestCase):
         ask = lambda p: {"issues": [{"group": "5-D", "who": "Nafisa opa", "what": "2 o'quvchi to'lov qilmagan",
                                      "action": "ota-onalarga yozing"}], "summary": "To'lov masalasi"}
         with patch.object(tg_watch, "describe_image", return_value="DARS JADVALI: dushanba..."), \
+                patch("ali.tg_account.reminder_sources", return_value={"-100": "IDEAL SCHOOL"}), \
                 patch("ali.team_hub.post", side_effect=lambda k, t, a=None: posted.append((k, t))):
             r = tg_watch.review_class(24, notified.append, reminders.append, ask, groups)
             r2 = tg_watch.review_class(24, notified.append, reminders.append, ask, groups)  # takror - yangi narsa yo'q

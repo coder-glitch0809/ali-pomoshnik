@@ -108,12 +108,15 @@ def collect_groups(hours: float = 24, only: int | None = None, everything: bool 
     from . import team_hub, tg_account
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     team = team_hub.chat_id()
+    allowed = tg_account.reminder_sources()
     MEDIA.mkdir(parents=True, exist_ok=True)
 
     async def go(client):
         out, left = [], photos
         async for d in client.iter_dialogs():
             if not d.is_group or d.date is None or d.date < since:
+                continue
+            if only is None and str(d.id) not in allowed:
                 continue
             if only is not None and d.id != only:
                 continue
@@ -174,13 +177,16 @@ def _ready_apps() -> list[str]:
 
 def review_class(hours: float = 24, notify=None, remind=None, ask_json=None, groups=None) -> dict:
     """Sinf rahbari uchun: yangi (oldin ko'rilmagan) sinfga oid xabarlar, muammolar va dars jadvali."""
-    from . import team_hub
+    from . import team_hub, tg_account
     from .memory import memory
     state = _state()
     seen = state.setdefault("seen", {})
     groups = collect_groups(hours) if groups is None else groups
     fresh = []
+    allowed = tg_account.reminder_sources()
     for g in groups:
+        if str(g["id"]) not in allowed:
+            continue
         msgs = [m for m in g["messages"] if m["id"] > seen.get(str(g["id"]), 0)]
         if msgs:
             fresh.append({**g, "messages": msgs})

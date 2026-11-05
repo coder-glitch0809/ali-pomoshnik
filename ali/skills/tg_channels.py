@@ -3,10 +3,32 @@ from .. import tg_account
 from . import skill
 
 
+@skill(description="Telegram eslatmalariga ruxsat berilgan guruh va kanallar ro'yxati.")
+def tg_reminder_sources() -> str:
+    return "\n".join(f"- {title} (ID: {cid})" for cid, title in tg_account.reminder_sources().items()) or "Eslatmalar uchun hech bir guruh yoki kanalga ruxsat berilmagan."
+
+
+@skill(
+    description="Egasi tanlagan Telegram guruh/kanalidan avtomatik eslatmalarga ruxsat beradi yoki bekor qiladi. Avval tg_channels orqali ID ni aniqlang.",
+    params={"chat_id": {"type": "integer", "description": "Guruh yoki kanal ID si"},
+            "allowed": {"type": "boolean", "description": "true — ruxsat, false — bekor qilish"}},
+    dangerous=True,
+)
+def tg_reminder_permission(chat_id: int, allowed: bool) -> str:
+    if not allowed:
+        tg_account.set_reminder_source(chat_id, "", False)
+        return "Eslatmalarga ruxsat bekor qilindi."
+    ch = next((c for c in tg_account.channels() if c["id"] == chat_id), None)
+    if ch is None:
+        return "Guruh yoki kanal topilmadi. ID ni tg_channels orqali tekshiring."
+    tg_account.set_reminder_source(chat_id, ch["title"], True)
+    return f"«{ch['title']}» eslatmalariga ruxsat berildi."
+
+
 @skill(description="Egasining Telegram akkauntidagi kanal va guruhlar ro'yxati (nomi, username, o'qilmaganlar).")
 def tg_channels() -> str:
     items = tg_account.channels()
-    return "\n".join(f"- {c['title']}{' @' + c['username'] if c['username'] else ''} ({c['kind']}, o'qilmagan: {c['unread']})"
+    return "\n".join(f"- {c['title']}{' @' + c['username'] if c['username'] else ''} (ID: {c['id']}, {c['kind']}, o'qilmagan: {c['unread']})"
                      for c in items) or "Kanal yo'q."
 
 
