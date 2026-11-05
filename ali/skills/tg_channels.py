@@ -45,3 +45,22 @@ def tg_learn_channel(name: str, limit: int = 100) -> str:
     r = tg_account.learn_channel(name, max(1, min(limit, 500)))
     return (f"«{r['channel']}»: {r['posts']} ta post, {r['files']} ta fayl o'qildi -> {r['saved']} ta bilim. "
             f"Agentlar: {', '.join(r['agents']) or '-'}")
+
+
+@skill(
+    description=(
+        "Telegram kanal/guruhga tashlangan ENG OXIRGI videoni yuklab oladi, ko'radi va montaj qiladi (jump-cut, subtitr, "
+        "ovoz, rang; Reels 9:16). task - montaj topshirig'i (ixtiyoriy; bo'sh bo'lsa standart professional ishlov). "
+        "Kanalga hech narsa yuborilmaydi, tayyor video egasiga beriladi."
+    ),
+    params={"channel": {"type": "string", "description": "Kanal nomi yoki @username"},
+            "task": {"type": "string", "description": "Montaj topshirig'i, masalan: «hook qo'sh, subtitr qo'y» (ixtiyoriy)"}},
+    required=["channel"],
+)
+def channel_video_edit(channel: str, task: str = "") -> str:
+    from .. import local_ai, montage
+    from ..service import brain
+    path, title = tg_account.download_latest_video(channel)
+    ready = local_ai.connected() if local_ai.access() is True else []
+    report = montage.run(task, str(path), brain.registry, ready)
+    return f"«{title}» kanalidagi oxirgi video ({path.name}) olindi.\n{report}"

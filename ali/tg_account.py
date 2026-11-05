@@ -306,6 +306,33 @@ def learn_channel(name: str, limit: int = 100, progress=None) -> dict:
     return {"channel": ch["title"], "posts": len(posts), "files": len(files), "saved": total, "agents": agents}
 
 
+def download_latest_video(name: str, limit: int = 30, max_mb: int = 200) -> tuple[Path, str]:
+    """Kanal/guruhga tashlangan ENG OXIRGI videoni yuklab, inbox'ga saqlaydi (faqat o'qish). Qaytaradi: (fayl, kanal nomi)."""
+    from . import ingest
+
+    items = channels()
+    ch = _match(items, name)
+    if ch is None:
+        raise RuntimeError(f"«{name}» kanali topilmadi. Mavjudlar: " + ", ".join(c["title"] for c in items[:30]))
+    folder = ingest.INBOX / re.sub(r"[^\w\- ]+", "_", ch["title"])[:60]
+
+    async def go(client):
+        async for m in client.iter_messages(ch["id"], limit=max(1, min(limit, 200))):
+            if not (m.video or m.video_note or (m.document and (m.file.mime_type or "").startswith("video/"))):
+                continue
+            if m.file.size and m.file.size > max_mb * 1024 * 1024:
+                raise RuntimeError(f"Oxirgi video juda katta ({m.file.size // 1048576} MB, chegara {max_mb} MB)")
+            folder.mkdir(parents=True, exist_ok=True)
+            path = await m.download_media(file=str(folder))
+            return Path(path) if path else None
+        return None
+
+    path = _run(go)
+    if path is None:
+        raise RuntimeError(f"«{ch['title']}» ichida oxirgi {limit} ta xabarda video topilmadi")
+    return path, ch["title"]
+
+
 def learn_all_channels(progress=None, limit: int = 100) -> list[dict]:
     """Barcha kanallardagi yangi post va fayllardan o'rganish (avtopilot)."""
     results = []
