@@ -189,7 +189,7 @@ def handle_text(s: Session, text: str) -> str:
 # --- Jonli boshqaruv (/remote sahifasi): ekran tez-tez yangilanadi, barmoq bilan bosish/sudrash/yozish ---
 def frame(max_w: int = 1280, quality: int = 60) -> bytes:
     """Ekran rasmi (to'rsiz), sichqoncha joyi qizil nuqta bilan - telefonda jonli ko'rish uchun."""
-    from PIL import ImageDraw, ImageGrab
+    from PIL import Image, ImageDraw, ImageGrab
 
     from .skills import desktop
 
@@ -201,8 +201,8 @@ def frame(max_w: int = 1280, quality: int = 60) -> bytes:
     except Exception:  # sichqoncha joyi olinmasa ham rasm yuboriladi
         pass
     max_w = max(480, min(int(max_w), 1920))
-    if image.width > max_w:
-        image = image.resize((max_w, round(image.height * max_w / image.width)))
+    if image.width > max_w:  # BILINEAR - LANCZOS'dan bir necha baravar tez, telefonda farqi sezilmaydi
+        image = image.resize((max_w, round(image.height * max_w / image.width)), Image.BILINEAR)
     buf = io.BytesIO()
     image.save(buf, format="JPEG", quality=max(30, min(int(quality), 85)))
     return buf.getvalue()

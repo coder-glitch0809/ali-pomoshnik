@@ -226,13 +226,19 @@ def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = 
         if m and m.is_file() and not ci["audio"]:  # ovozsiz video - musiqa asosiy ovoz
             out_fade = f",afade=t=out:st={max(0.0, ci['duration'] - 1.5):.2f}:d=1.5"
             args = ["-i", "cut.mp4", "-stream_loop", "-1", "-i", str(m), "-filter_complex",
-                    f"[0:v]{','.join(vf) or 'null'}[v];[1:a]afade=t=in:d=1{out_fade},loudnorm=I=-14:TP=-1.5[a]",
+                    f"[0:v]{','.join(vf) or 'null'}[v];[1:a]afade=t=in:d=1{out_fade},loudnorm=I=-14:TP=-1.5,"
+                    "aresample=48000[a]",
                     "-map", "[v]", "-map", "[a]", "-shortest", "-c:a", "aac", "-b:a", "192k"]
             notes.append("musiqa")
         elif m and m.is_file() and ci["audio"]:
-            graph2 = (f"[0:v]{','.join(vf) or 'null'}[v];[1:a]volume=0.35[m];[0:a]asplit[a1][a2];"
-                      "[m][a2]sidechaincompress=threshold=0.04:ratio=10:attack=15:release=350[md];"
-                      "[a1][md]amix=inputs=2:duration=first:dropout_transition=0,loudnorm=I=-14:TP=-1.5[a]")
+            # musiqa gapirganda ~2 baravar pasayadi, lekin yo'qolmaydi (ko'cha shovqini ham «gap» bo'lib, avval butunlay
+            # o'chib qolardi); amix normalize=0 - musiqa ikki baravar pasaymaydi; chiqish 48 kHz
+            out_fade = f",afade=t=out:st={max(0.0, ci['duration'] - 1.5):.2f}:d=1.5"
+            graph2 = (f"[0:v]{','.join(vf) or 'null'}[v];[1:a]aresample=48000,loudnorm=I=-20:TP=-2,afade=t=in:d=1{out_fade},"
+                      "volume=0.8[m];[0:a]aresample=48000,asplit[a1][a2];"
+                      "[m][a2]sidechaincompress=threshold=0.12:ratio=3:attack=30:release=500:makeup=1[md];"
+                      "[a1][md]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+                      "loudnorm=I=-14:TP=-1.5,aresample=48000[a]")
             args = ["-i", "cut.mp4", "-stream_loop", "-1", "-i", str(m), "-filter_complex", graph2, "-map", "[v]",
                     "-map", "[a]", "-shortest", "-c:a", "aac", "-b:a", "192k"]
             notes.append("musiqa (gapirganda pasayadi)")

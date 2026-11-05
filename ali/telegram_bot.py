@@ -53,6 +53,8 @@ COMMANDS = [
     ("jadval", "Dars jadvalim"),
     ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
     ("instagram", "Instagram profil audit: nimani to'g'rilash kerak"),
+    ("tarix", "ChatGPT va Claude suhbatlar tarixini Ali bilimiga o'tkazish"),
+    ("kunlik_video", "Jamoa Reels yasaydi: kontent -> kod -> montaj (har kuni 11:00 va 16:00)"),
     ("kuchaytir", "Ali o'zini kuchaytirsin: /kuchaytir yangi imkoniyat"),
     ("tugma_test", "Tugmalar ishlayotganini tekshirish"),
     ("ekotizim", "Agentlar: baho, rag'bat va jazo"),
@@ -168,6 +170,8 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("dars", self.cmd_lesson))
         a.add_handler(CommandHandler("kontent_reja", self.cmd_content_plan))
         a.add_handler(CommandHandler("instagram", self.cmd_instagram))
+        a.add_handler(CommandHandler("kunlik_video", self.cmd_daily_video))
+        a.add_handler(CommandHandler("tarix", self.cmd_history_import))
         a.add_handler(CommandHandler("kuchaytir", self.cmd_upgrade))
         a.add_handler(CommandHandler("tugma_test", self.cmd_button_test))
         a.add_handler(CommandHandler("ekotizim", self.cmd_ecosystem))
@@ -635,6 +639,48 @@ class TelegramBot(PublicTelegram, Listener):
             await update.message.reply_text("Kanal nomini yozing: /kanal Kanal nomi")
             return
         self.learn_channel_bg(update, name)
+
+    async def cmd_history_import(self, update: Update, ctx):
+        """/tarix - «Yuklab olishlar»dagi ChatGPT/Claude eksport zip'larini topib, suhbatlarni bilimga o'tkazadi."""
+        from . import chat_import
+        if not await self._guard(update):
+            return
+        found = await asyncio.to_thread(chat_import.find_exports)
+        if not found:
+            await update.message.reply_text(
+                "Eksport topilmadi. Qanday olinadi:\n• ChatGPT: Settings → Data controls → Export data (pochtaga zip keladi)\n"
+                "• Claude: Settings → Privacy → Export data\nZip'ni kompyuterdagi «Yuklab olishlar» (Downloads) papkasiga "
+                "saqlang va /tarix ni qayta yuboring (yoki 20 MB gacha bo'lsa - zip'ni shu yerga tashlang).")
+            return
+        await self.import_chats(update, found[:4])
+
+    async def import_chats(self, update: Update, paths: list) -> None:
+        from . import chat_import
+        msg = await update.message.reply_text(f"📚 {len(paths)} ta eksport faylini o'qiyapman…")
+        lines = []
+        for p in paths:
+            try:
+                r = await asyncio.to_thread(chat_import.import_file, p)
+            except Exception as e:
+                lines.append(f"⚠️ {p.name}: {str(e)[:200]}")
+                continue
+            if not r["chats"]:
+                lines.append(f"• {p.name}: ichida suhbatlar (conversations.json) yo'q")
+                continue
+            who = ", ".join(f"{k}: {v}" for k, v in sorted(r["agents"].items(), key=lambda x: -x[1])[:8])
+            lines.append(f"✅ {p.name} ({r['source']}): {r['chats']} ta suhbat, {r['saved']} tasi bilimga yozildi\n   {who}")
+        await msg.edit_text("📚 Suhbatlar tarixi Ali bilimiga o'tkazildi - limitlar tugaganda ham agentlar shunga "
+                            "tayanadi.\n\n" + "\n".join(lines)[:3500])
+
+    async def cmd_daily_video(self, update: Update, ctx):
+        """/kunlik_video - 11:00/16:00 dagi avtomatik Reels'ni hozir yasaydi (kontent -> animatsiya kodi -> montaj)."""
+        from . import daily_video
+        if not await self._guard(update):
+            return
+        await update.message.reply_text("🎬 Jamoa ishga tushdi: Kontent-meyker g'oya tuzyapti, Dasturchi animatsiya kodini "
+                                        "yozadi, Montajchi videoga aylantiradi (3-6 daqiqa). Tayyor bo'lgach kanalga va "
+                                        "sizga yuboraman.")
+        threading.Thread(target=daily_video.run, args=("Hozir", hub.notify), daemon=True).start()
 
     async def cmd_instagram(self, update: Update, ctx):
         """/instagram - profil audit: postlarni ko'rib, aniq tavsiyalar (bir necha daqiqa)."""
@@ -1270,6 +1316,9 @@ class TelegramBot(PublicTelegram, Listener):
             data = base64.b64encode(path.read_bytes()).decode()
             self.learn_bg(update, f"Rasm: {path.name}", caption, "Telegram (rasm fayl)", [str(path)], hint=caption)
             await self.process(update, ctx, caption, [{"media_type": "image/jpeg", "data": data}])
+            return
+        if path.suffix.lower() == ".zip" or path.name.endswith("conversations.json"):  # ChatGPT/Claude tarixi eksporti
+            await self.import_chats(update, [path])
             return
         try:
             text = await asyncio.to_thread(ingest.extract_text, path)

@@ -243,7 +243,8 @@ Reels yasash kerak. Biriktirilgan rasmlar - har klipdan 2 tadan kadr (tartib bil
 Klipler (raqam: davomiylik): {clips}
 Egam izohi: {caption}
 {style}
-Eng kuchli qismlarni tanla, tartibla va kes: jami 20-60 soniya, boshida eng qiziq kadr (hook), kadrlar 1.5-4 s (dinamik).
+Eng kuchli qismlarni tanla, tartibla va kes: jami 20-60 soniya, boshida eng qiziq kadr (hook), nutqsiz kadrlar 1.5-4 s.
+Egam GAPIRGAN klipni KESMA: gapning boshidan oxirigacha to'liq qoldir (gap o'rtasidan kesilmaydi), unga ramp qo'yma.
 Harakatli kadrlarga (o'rnatish, yig'ish, ko'tarish, yonish) SPEED RAMP qo'y: "ramp": true (normal -> tez -> slow-motion).
 Har o'tish uchun turini tanla: zoomin, slideleft, slideright, smoothup, fadewhite (flash), circleopen, fade. FAQAT JSON:
 Egam izohi/topshirig'i bo'lsa - unga ANIQ amal qil (sahnalar tartibi, uzunlik, ritm, rang, yozuv yo'qligi, fps, 4K).
@@ -264,6 +265,20 @@ def _style_hint() -> str:
     return ("Egam o'rgatgan uslub (shunga moslab montaj qil): " + json.dumps(
         {k: st.get(k) for k in ("name", "pacing", "hook", "text_style", "transitions", "effects", "avg_shot", "lessons")},
         ensure_ascii=False)[:1500])
+
+
+def _speech(path: str) -> list[tuple[float, float]]:
+    """Klipda egasi gapirganmi: gapirilgan bo'laklar (nutq kam yoki ovoz past bo'lsa - bo'sh ro'yxat)."""
+    from .skills.video_edit import _run, info
+    from .skills.video_pro import speech_parts
+    d = info(Path(path))["duration"]
+    log_ = _run(["-i", str(path), "-af", "volumedetect", "-vn", "-f", "null", "-"])
+    m = re.search(r"mean_volume: (-?[\d.]+) dB", log_)
+    if not m or float(m.group(1)) < -30 or d < 1:  # deyarli jim (faqat shamol/shovqin) - nutq yo'q
+        return []
+    parts = speech_parts(Path(path), noise="-30dB", min_silence=0.6)
+    spoken = sum(b - a for a, b in parts)
+    return parts if 0.25 * d <= spoken else []
 
 
 def _album(paths: list[str], caption: str, tmp: Path) -> tuple[str, dict]:
@@ -289,11 +304,17 @@ def _album(paths: list[str], caption: str, tmp: Path) -> tuple[str, dict]:
         from .skills.video_motion import rule_plan
         plan = rule_plan(paths, caption)
         picks = plan["clips"]
-    parts = []
+    parts, spoken_done = [], set()
     for j, c in enumerate(picks[:12]):
         src, d = paths[int(c["n"]) - 1], infos[int(c["n"]) - 1]["duration"]
         a = max(0.0, float(c.get("start", 0)))
         b = min(d, float(c.get("end", d)) or d)
+        speech = _speech(src) if infos[int(c["n"]) - 1]["audio"] else []
+        if speech:  # egasi gapirgan klip: gap to'liq qoladi (bir marta), ramp yo'q - ovoz buzilmasin
+            if src in spoken_done:
+                continue
+            spoken_done.add(src)
+            a, b, c = min(a, speech[0][0]), max(b, speech[-1][1]), {**c, "ramp": False}
         if b - a < 0.8:
             continue
         part = tmp / f"p{j}.mp4"
@@ -562,8 +583,14 @@ def send_files(text: str, files: list[str], queue: bool = True) -> bool:
         httpx.post(api + "/sendMessage", data={"chat_id": uid, "text": text[:4000]}, timeout=30).raise_for_status()
         for f in files:
             kind, field = ("sendVideo", "video") if f.endswith(".mp4") else ("sendDocument", "document")
+            data = {"chat_id": uid}
+            if kind == "sendVideo":  # o'lcham - Telegram videoni kesib ko'rsatmasin
+                from .skills.video_edit import info
+                i = info(Path(f))
+                data.update(width=i["width"], height=i["height"], duration=int(round(i["duration"])),
+                            supports_streaming="true")
             with open(f, "rb") as fh:
-                httpx.post(f"{api}/{kind}", data={"chat_id": uid}, files={field: (Path(f).name, fh)},
+                httpx.post(f"{api}/{kind}", data=data, files={field: (Path(f).name, fh)},
                            timeout=300).raise_for_status()
         return True
     except (httpx.HTTPError, OSError) as e:

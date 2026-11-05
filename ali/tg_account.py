@@ -189,8 +189,17 @@ def people(name: str, limit: int = 300) -> list[dict]:
 
 def send_file(chat, path: str, caption: str = "", reply_to: int | None = None) -> int:
     """Faylni (video/rasm) kanal yoki chatga joylaydi - egasi belgilagan kanal (VIDEO_CHANNEL) uchun. Post raqami."""
+    attrs = None
+    if str(path).lower().endswith((".mp4", ".mov")):  # o'lcham va davomiylik - Telegram videoni kesib/cho'zib ko'rsatmasin
+        from telethon.tl.types import DocumentAttributeVideo
+        from .skills.video_edit import info
+        i = info(Path(path))
+        attrs = [DocumentAttributeVideo(duration=int(round(i["duration"])), w=i["width"], h=i["height"],
+                                        supports_streaming=True)]
+
     async def go(client):
-        m = await client.send_file(chat, path, caption=caption[:1024], supports_streaming=True, reply_to=reply_to)
+        m = await client.send_file(chat, path, caption=caption[:1024], supports_streaming=True, reply_to=reply_to,
+                                   attributes=attrs)
         return m.id
     return _run(go)
 

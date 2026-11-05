@@ -321,6 +321,11 @@ def start(notify) -> None:
                 instagram_audit.tick(notify)
             except Exception:
                 log.exception("Instagram kuzatuvi xatosi")
+            try:  # 11:00 va 16:00 - jamoa o'zi Reels yasaydi (kontent -> kod -> montaj)
+                from . import daily_video
+                daily_video.tick(notify)
+            except Exception:
+                log.exception("Kunlik video xatosi")
             if time.time() - checked > 6 * 3600:  # Instagram tokeni muddati tugab qolmasin
                 checked = time.time()
                 try:

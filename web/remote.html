@@ -60,29 +60,36 @@
     return r.ok;
   }
 
-  async function loop() {
-    let triedLogin = false;
+  // 3 ta parallel so'rov: tunnel kechikishi (~0.2-0.3 s) yashiriladi - kadr tezligi ~3 baravar oshadi.
+  // Kadrlar tartib raqami bilan: kechikib kelgan eski kadr yangisining ustiga chiqmaydi.
+  let seq = 0, shown = 0, triedLogin = false;
+  async function worker() {
     while (running) {
-      const t0 = performance.now();
+      const my = ++seq, t0 = performance.now();
       try {
-        const r = await fetch(`/api/remote/frame?w=${hd ? 1600 : 1100}&q=${hd ? 70 : 50}&t=${Date.now()}`, { cache: 'no-store' });
+        const r = await fetch(`/api/remote/frame?w=${hd ? 1600 : 960}&q=${hd ? 70 : 45}&t=${Date.now()}`, { cache: 'no-store' });
         if (r.status === 403) {
           if (!triedLogin) { triedLogin = true; if (await login()) continue; }
           msg.textContent = 'Kirish faqat Telegram’dagi Ali bot orqali: /kompyuter → «📺 Jonli boshqarish».';
           dot.classList.remove('live'); await new Promise(s => setTimeout(s, 4000)); continue;
         }
         if (!r.ok) throw new Error(r.status);
-        const url = URL.createObjectURL(await r.blob());
-        img.src = url; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = url;
-        msg.style.display = 'none'; dot.classList.add('live'); frames++;
+        const blob = await r.blob();
+        if (my > shown) {
+          shown = my;
+          const url = URL.createObjectURL(blob);
+          img.src = url; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = url;
+          msg.style.display = 'none'; dot.classList.add('live'); frames++;
+        }
       } catch {
         dot.classList.remove('live'); msg.style.display = 'flex'; msg.textContent = 'Ulanish uzildi, qayta urinmoqda…';
         await new Promise(s => setTimeout(s, 1500));
       }
       const spent = performance.now() - t0;
-      if (spent < 150) await new Promise(s => setTimeout(s, 150 - spent));
+      if (spent < 60) await new Promise(s => setTimeout(s, 60 - spent));
     }
   }
+  function loop() { for (let k = 0; k < 3; k++) worker(); }
   setInterval(() => { fpsEl.textContent = frames + ' kadr/s'; frames = 0; }, 1000);
   document.addEventListener('visibilitychange', () => { if (document.hidden) running = false; else if (!running) { running = true; loop(); } });
 

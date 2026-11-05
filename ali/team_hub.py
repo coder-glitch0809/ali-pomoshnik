@@ -324,6 +324,7 @@ Hamkasblaringiz fikri:
 {previous}
 
 Sen - {me}. O'z sohang nuqtai nazaridan 3-8 gapda fikr bildir: nima qilish kerak, xavf va muhim jihatlar.
+Video/kontent masalasi bo'lsa - Instagram'da qanchalik ishlashini 1-10 baho bilan ayt (hook, ushlab turish, saqlash).
 Hamkasbing to'g'ri aytgan bo'lsa - qo'shil va to'ldir, noto'g'ri bo'lsa - asoslab e'tiroz bildir. Takrorlama."""
 
 SUMMARY_TASK = """Sen {ali} - jamoa boshlig'isan. Maslahat kengashi tugadi.
@@ -333,11 +334,24 @@ Agentlar fikri:
 {opinions}
 
 Yakuniy QAROR chiqar: 1) qisqa xulosa, 2) aniq harakat rejasi (kim nima qiladi - agent ismi bilan),
-3) xavflar. Agentlar kelishmagan joyni ochiq ayt va tanlovingni asosla."""
+3) xavflar. Agentlar kelishmagan joyni ochiq ayt va tanlovingni asosla.
+Masala video, kontent, reklama yoki Instagram'ga tegishli bo'lsa, qo'shimcha:
+4) 📊 Instagram uchun BAHO: 1-10 (raqam bilan) - nima uchun; ✅ yaxshi tomonlari va ❌ yomon tomonlari (aniq, 2-4 tadan);
+5) 🎯 Kutilgan natija: qamrov/saqlash/direkt yozishlar bo'yicha taxmin va 7 kunda nimani o'lchab tekshiramiz."""
+
+
+# Video/kontent/kod masalasida albatta qatnashadigan eng yaxshi maslahatchilar
+EXPERTS = re.compile(r"video|видео|reels|рилс|kontent|контент|instagram|инстаграм|montaj|монтаж|post|пост|reklama|"
+                     r"реклама|dastur|дастур|\bkod\b|\bкод\b|sayt|сайт|\bbot\b|\bбот\b", re.I)
+CORE = ("kontent", "video_montajchi", "dasturchi")
 
 
 def pick_members(question: str, agents: dict, limit: int = 3) -> list[str]:
-    """Masalaga eng mos 2-3 agent: tavsifi va nomidagi so'zlar mosligi bo'yicha (+ dispetcher tanlagani)."""
+    """Masalaga eng mos 2-3 agent: tavsifi va nomidagi so'zlar mosligi bo'yicha (+ dispetcher tanlagani).
+    Video, kontent yoki kod haqida bo'lsa - Kontent-meyker, Video montajchi va Dasturchi albatta qatnashadi."""
+    core = [k for k in CORE if k in agents] if EXPERTS.search(question) else []
+    if core:
+        return core
     words = {w[:5] for w in re.findall(r"\w{4,}", question.lower())}
     scored = []
     for key, a in agents.items():

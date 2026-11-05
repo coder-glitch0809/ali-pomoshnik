@@ -37,7 +37,8 @@ FAQAT JSON qaytar:
   "profile_fixes": ["bio, nik, avatar, highlights, havola bo'yicha aniq o'zgartirishlar (tayyor matn bilan)"],
   "content_fixes": ["format, hook, muqova, caption, CTA bo'yicha"],
   "posting": "chastota va vaqt bo'yicha xulosa va tavsiya",
-  "next_7_days": ["1-kun: ...", "..."]}}"""
+  "next_7_days": ["1-kun: ...", "..."],
+  "video_types": ["Qaysi turdagi Reels olish kerak - aniq format va misol (masalan: «pilon kechasi yonishi, 3 s hook»)"]}}"""
 
 
 def _bots() -> list[dict]:
@@ -162,6 +163,8 @@ def report(r: dict) -> str:
         lines.append(f"\n🕒 Joylash: {r['posting']}")
     if r.get("next_7_days"):
         lines += ["\n📅 Keyingi 7 kun:"] + [f"• {s}" for s in r["next_7_days"]]
+    if r.get("video_types"):
+        lines += ["\n🎥 Qaysi videolarni olish kerak:"] + [f"• {s}" for s in r["video_types"]]
     return "\n".join(lines)
 
 
@@ -226,6 +229,9 @@ def tick(notify) -> None:
     if now.weekday() == WEEKLY_DAY and now.strftime("%H:%M") >= WEEKLY_AT and sent.get("weekly") != today:
         _mark("weekly", today)
         try:
-            notify("🔍 Haftalik Instagram audit:\n\n" + report(audit())[:3800])
+            text = report(audit())
+            notify("🔍 Haftalik Instagram audit:\n\n" + text[:3800])
+            from .memory import memory  # kunlik video g'oyalari (daily_video) shu xulosaga tayanadi
+            memory.add_knowledge(f"[kontent] Instagram haftalik audit {today}", text[:6000])
         except Exception as e:
             log.warning("Haftalik audit bajarilmadi: %s", e)
