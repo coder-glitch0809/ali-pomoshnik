@@ -16,7 +16,7 @@ class StudioFlowTests(unittest.TestCase):
         s._save({"next": 3, "channel_last": 0, "briefs": {"1": _brief(1), "2": _brief(2)}})
 
     def test_routing(self):
-        self.assertTrue(s.is_query("Targetolog haqida reels qilib ber"))
+        self.assertFalse(s.is_query("Targetolog haqida reels qilib ber"))  # endi tayyor video (daily_video), brif emas
         self.assertTrue(s.is_query("virusli kreativ video: tashqi reklama"))
         self.assertFalse(s.is_query("rasmsiz video yarat: SMM"))
         self.assertFalse(s.is_query("bugun ob-havo"))

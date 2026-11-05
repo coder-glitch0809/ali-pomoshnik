@@ -61,12 +61,12 @@ INSTANT = re.compile(r"rasmsiz|расмсиз|darhol|дарҳол|дархол|g
 def is_query(text: str) -> bool:
     """Brif yo'li: «kreativ/virusli video, brif» yoki oddiy «video yarat» (egasi 2-yo'lni tanlagan - rasmlarni o'zi
     ilovada yaratadi). «rasmsiz / darhol» deyilsa - tezkor (gradient) video, bu yo'l emas."""
-    from . import montage
     t = text or ""
     if INSTANT.search(t):
         return False
-    brief = bool(QUERY.search(t)) and bool(re.search(r"video|видео|reels|рилс|ролик", t, re.I))
-    return brief or montage.is_creation(t)
+    # «video qilib ber» - endi brif emas, TAYYOR video (daily_video: kontent -> kod -> personaj ovozi -> kanal);
+    # brif (ChatGPT/Gemini uchun rasm promptlari) - faqat «brif / rasmli video / kreativ» aniq so'ralsa
+    return bool(QUERY.search(t)) and bool(re.search(r"video|видео|reels|рилс|ролик", t, re.I))
 
 
 def waiting() -> dict | None:

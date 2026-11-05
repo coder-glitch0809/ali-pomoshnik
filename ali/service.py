@@ -8,6 +8,7 @@ import json
 import re
 import logging
 import secrets
+import threading
 from typing import Callable
 
 import anthropic
@@ -500,7 +501,16 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                     recalled = f"⚠️ Brif tuzilmadi: {e}"
             # Video yaratish (video berilmagan): «targetolog haqida reels qilib ber» - Video montajchi noldan yasaydi
             from . import local_ai, montage
-            if not recalled and owner and not images and (montage.is_creation(text) or montage.is_query(text)):
+            if not recalled and owner and not images and montage.is_creation(text):
+                # «video qilib ber» - jamoa tayyor video yasaydi (kontent -> animatsiya kodi -> personaj gapiradi ->
+                # musiqa -> kengash) va kanalga tashlaydi; fonda, 3-8 daqiqa
+                from . import daily_video
+                threading.Thread(target=daily_video.run, args=("Buyurtma", hub.notify, text), daemon=True,
+                                 name="video-order").start()
+                recalled = ("🎬 Qabul qildim - tayyor video yasayapman: Kontent-meyker matn yozadi, Dasturchi animatsiya "
+                            "kodini, personaj ovozda gapiradi, Montajchi musiqa qo'shadi, kengash baholaydi. 3-8 daqiqada "
+                            "@planetprint_reels kanaliga tashlayman va sizga yuboraman.")
+            elif not recalled and owner and not images and montage.is_query(text):
                 creating = montage.is_creation(text)
                 try:
                     ready_m = local_ai.connected() if local_ai.access() is True else []

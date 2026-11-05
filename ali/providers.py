@@ -256,7 +256,8 @@ def transcribe(audio: bytes, filename: str = "audio.webm") -> str:
         config.gemini_fast_model,
         [
             types.Part.from_bytes(data=audio, mime_type=mime),
-            "Bu audioni so'zma-so'z matnga yoz (asosan o'zbek tilida). Faqat matnni qaytar, boshqa hech narsa yozma.",
+            ("Bu audioni so'zma-so'z matnga yoz (asosan o'zbek tilida, ba'zan rus so'zlari bilan). Raqamlarni raqam bilan yoz "
+             "(«nol» - 0, «yuz ming» - 100 000). Faqat matnni qaytar, boshqa hech narsa yozma."),
         ],
     )
     return (response.text or "").strip()

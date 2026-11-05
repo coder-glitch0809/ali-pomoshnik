@@ -9,6 +9,7 @@ Har qadam «Ali jamoasi» guruhidagi agent mavzusiga yoziladi (Ali nazorat qilad
 import html as html_lib
 import json
 import logging
+import re
 import tempfile
 import threading
 from datetime import datetime
@@ -27,14 +28,16 @@ _lock = threading.Lock()
 IDEA = """{agent}
 
 Sen Kontent-meykersan. Planet Print (tashqi reklama: pilon, lightbox, hajmli harflar, banner, vizitka; Beshariq) uchun
-bugungi {slot} Reels'ining g'oyasini tuz. {topic} Video - animatsiyali matn va grafika (motion design), {dur} soniya, ovozsiz
-(musiqa bilan). Tomoshabin 1-2 soniyada to'xtashi, oxirigacha ko'rishi va direktga yozishi kerak.
+bugungi {slot} Reels'ining g'oyasini tuz. {topic} Video - animatsiyali matn va grafika (motion design), {dur} soniya;
+ekranda Planet Print personaji (3D multfilm qahramon) bor va u matnni ovoz chiqarib aytadi, ostida musiqa. Tomoshabin 1-2 soniyada to'xtashi, oxirigacha ko'rishi va direktga yozishi kerak.
 Haftalik Instagram audit xulosasi (shunga tayan):
 {audit}
 Oldingi videolar (TAKRORLAMA): {previous}
 FAQAT JSON: {{"title": "...", "hook": "1-sahna - 3-6 so'z, kuchli", "scenes": [{{"big": "3-6 so'z", "small": "qo'shimcha 0-8 so'z"}}],
 "cta": "direktga chaqiruv", "caption": "Instagram matni", "hashtags": "#...", "mood": "energetic|cinematic|calm",
-"why": "nega bu Instagram'da ishlaydi (1 gap)"}}  (scenes: 4-5 ta, hook birinchisi)"""
+"why": "nega bu Instagram'da ishlaydi (1 gap)",
+"voice": "personaj OVOZ chiqarib aytadigan matn: 30-40 so'z, sodda o'zbek tilida, foydali maslahat, sahnalar tartibida, oxirida CTA"}}
+(scenes: 4-5 ta, hook birinchisi)"""
 
 CODE = """{agent}
 
@@ -48,7 +51,14 @@ QOIDALAR (buzilsa video chiqmaydi):
 - Matn katta (asosiy 90-130px, kichik 48-60px), o'qiladigan; chetdan 110px ichkarida, 1500px dan pastga matn qo'yma (Reels tugmalari).
 - Har sahna: kirish (pastdan uchib chiqish / zoom / glow), 1-2 s turadi, chiqish. Fonda sekin harakatlanuvchi nur/chiziqlar.
 - Jami davomiylik aniq {dur} s; oxirgi sahna (CTA) oxirigacha ko'rinib turadi.
+{extra}
 FAQAT JSON: {{"html": "<!doctype html>..."}}"""
+
+CHARACTERS = """- PERSONAJLAR so'ralgan: inline <svg> bilan 1-2 ta multfilm personaj chiz (masalan: kaskali usta - Planet Print
+  ustasi, do'kon egasi - mijoz): bosh, ko'z, og'iz, tana, qo'llar alohida <g> guruhlar; CSS bilan jonlantir - ko'z qisish,
+  qo'l silkitish, yurib kirish, sakrash, gapirganda og'iz ochilishi. Sahnalar matni personaj yonida nutq pufagi (speech
+  bubble) yoki tepasida katta yozuv bo'lsin. Personajlar 1500px dan pastga tushmasin; ranglar yorqin, kontur qalin."""
+PERSONA = re.compile(r"personaj|персонаж|qahramon|қаҳрамон|multfilm|мультфильм|cartoon|mascot|maskot", re.I)
 
 # AI'lar band bo'lganda - Kontent-meyker o'z bilimidan navbat bilan oladi
 IDEAS = [
@@ -90,6 +100,30 @@ def _agent(key: str) -> str:
         return ""
 
 
+CHAR_DIR = config.data_dir / "characters"
+CHAR_SAVE = re.compile(r"personaj|персонаж|yuzni\s+eslab|юзни\s+эслаб|qahramon|қаҳрамон|maskot|маскот", re.I)
+
+
+def character() -> Path | None:
+    """Egam bergan personaj rasmi (eng oxirgisi) - videolarda shu qahramon gapiradi."""
+    files = sorted((f for f in CHAR_DIR.glob("*") if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")),
+                   key=lambda f: f.stat().st_mtime) if CHAR_DIR.is_dir() else []
+    return files[-1] if files else None
+
+
+def save_character(path: str) -> Path:
+    CHAR_DIR.mkdir(parents=True, exist_ok=True)
+    dest = CHAR_DIR / f"personaj{Path(path).suffix.lower() or '.jpg'}"
+    dest.write_bytes(Path(path).read_bytes())
+    return dest
+
+
+def _data_uri(path: Path) -> str:
+    import base64
+    mime = {".png": "image/png", ".webp": "image/webp"}.get(path.suffix.lower(), "image/jpeg")
+    return f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode()
+
+
 def _ready() -> list[str]:
     from . import local_ai
     return local_ai.connected() if local_ai.access() is True else []
@@ -118,8 +152,17 @@ def idea(slot: str, topic: str = "") -> tuple[dict, str]:
             "hashtags": "#planetprint #tashqireklama #reklama #beshariq #reels"}, "bilim"
 
 
-def template(data: dict, dur: float = DURATION) -> str:
-    """Ali'ning o'z animatsiya kodi (AI'siz): har sahna pastdan uchib chiqadi, neon nur, oxirida CTA."""
+HERO_CSS = """.s{{top:230px;height:620px}}.big{{font-size:96px}}.small{{font-size:50px;margin-top:28px}}
+.hero{{position:absolute;left:150px;width:780px;height:975px;top:880px;object-fit:cover;border-radius:60px;
+box-shadow:0 0 0 8px #ffb300,0 0 90px rgba(255,140,0,.55);animation:heroin .9s cubic-bezier(.2,.8,.2,1) both,
+talk .32s ease-in-out .9s infinite alternate}}
+@keyframes heroin{{0%{{opacity:0;transform:translateY(300px) scale(.85)}}100%{{opacity:1;transform:none}}}}
+@keyframes talk{{0%{{transform:scale(1) rotate(-.4deg)}}100%{{transform:scale(1.018) rotate(.4deg) translateY(-6px)}}}}"""
+
+
+def template(data: dict, dur: float = DURATION, hero: str = "") -> str:
+    """Ali'ning o'z animatsiya kodi (AI'siz): har sahna pastdan uchib chiqadi, neon nur, oxirida CTA.
+    hero - personaj rasmi (data URI): pastda turadi va gapirayotgandek tebranadi, matn tepada."""
     scenes = [*data["scenes"], {"big": data.get("cta", "Direktga yozing"), "small": "PLANET PRINT"}]
     step = dur / len(scenes)
     blocks, css = [], []
@@ -150,23 +193,37 @@ word-break:break-word}}
 .brand{{position:absolute;top:150px;left:0;right:0;text-align:center;font-size:44px;letter-spacing:12px;color:#ffb300}}
 .bar{{position:absolute;left:0;bottom:0;height:12px;background:#ffb300;animation:bar {dur:.2f}s linear both}}
 {''.join(css)}
+{HERO_CSS.format() if hero else ''}
 </style></head><body><div class="beam"></div><div class="beam b2"></div><div class="brand">PLANET PRINT</div>
-{''.join(blocks)}<div class="bar"></div></body></html>"""
+{f'<img class="hero" src="{hero}">' if hero else ''}{''.join(blocks)}<div class="bar"></div></body></html>"""
 
 
-def code(data: dict) -> tuple[str, str]:
-    """Dasturchi animatsiya kodi: (html, manba). AI kodi yaroqsiz bo'lsa - Ali shabloni."""
+def _offline(page: str) -> bool:
+    """Kodda tashqi manzil yo'q (SVG nomlar fazosi www.w3.org - manzil emas, ruxsat)."""
+    low = re.sub(r"http://www\.w3\.org/[\w/.-]*", "", page.lower()).replace("http-equiv", "")
+    return "http" not in low
+
+
+HERO_RULE = """- PERSONAJ RASMI bor (egamning 3D qahramoni, portret 4:5): <img class="hero" src="HERO_IMAGE"> - src AYNAN «HERO_IMAGE»
+  bo'lsin (Ali o'zi rasmga almashtiradi). Pastki yarmida katta (eni ~780px, top ~880px, 1850px dan oshmasin), yumaloq
+  burchak, neon sariq hoshiya; kirishda pastdan chiqadi, keyin butun video davomida «gapirayotgandek» yengil tebranadi
+  (scale 1-1.02, 0.3 s, alternate). Matn sahnalari TEPADA (230-850px), personaj bilan ustma-ust tushmasin."""
+
+
+def code(data: dict, topic: str = "", dur: float = DURATION, hero: str = "") -> tuple[str, str]:
+    """Dasturchi animatsiya kodi: (html, manba). AI kodi yaroqsiz bo'lsa - Ali shabloni. hero - personaj (data URI)."""
     from .service import _ask_json
     scenes = " | ".join(f"{s['big']} — {s.get('small', '')}" for s in data["scenes"])
+    extra = "\n".join(filter(None, [CHARACTERS if PERSONA.search(topic) and not hero else "", HERO_RULE if hero else ""]))
     try:
-        got = _ask_json(CODE.format(agent=_agent("dasturchi")[:4000], dur=DURATION, scenes=scenes,
-                                    cta=data.get("cta", "")), _ready(), 300)
+        got = _ask_json(CODE.format(agent=_agent("dasturchi")[:4000], dur=round(dur), scenes=scenes, cta=data.get("cta", ""),
+                                    extra=extra), _ready(), 420)
         page = str(got.get("html", ""))
-        if "@keyframes" in page and "<body" in page.lower() and "http" not in page.lower().replace("http-equiv", ""):
-            return page, "AI"
+        if "@keyframes" in page and "<body" in page.lower() and _offline(page) and (not hero or "HERO_IMAGE" in page):
+            return page.replace("HERO_IMAGE", hero), "AI"
     except Exception as e:
         log.info("Animatsiya kodi AI'siz: %s", e)
-    return template(data), "shablon"
+    return template(data, dur, hero), "shablon"
 
 
 SEEK = """t => { const all = document.getAnimations(); all.forEach(a => { a.pause(); a.currentTime = t; }); return all.length; }"""
@@ -204,37 +261,67 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
     team_hub.feed("kontent", f"{slot} Reels g'oyasi", f"🎬 {data.get('title', '')}\n🪝 {data.get('hook', '')}\n"
                   + "\n".join(f"• {s['big']} — {s.get('small', '')}" for s in data["scenes"])
                   + f"\n📣 {data.get('cta', '')}\n💡 {data.get('why', '')}\n(manba: {idea_src})")
-    page, code_src = code(data)
-    team_hub.feed("dasturchi", f"{slot} Reels animatsiya kodi", f"HTML animatsiya: {len(page) // 1024 + 1} KB ({code_src})")
+    hero_file = character()
+    hero = _data_uri(hero_file) if hero_file else ""
     with tempfile.TemporaryDirectory() as tmp:
+        voice, dur = _voice(data, Path(tmp)) if hero else (None, DURATION)  # personaj bor - u matnni ovozda aytadi
+        page, code_src = code(data, topic, dur, hero)
+        team_hub.feed("dasturchi", f"{slot} Reels animatsiya kodi", f"HTML animatsiya: {len(page) // 1024 + 1} KB ({code_src})")
         raw = Path(tmp) / "anim.mp4"
         try:
-            render(page, raw)
+            render(page, raw, dur)
         except Exception as e:  # AI kodi ishlamadi - Ali shabloni bilan qayta
             if code_src == "shablon":
                 raise
             log.warning("AI animatsiyasi render bo'lmadi (%s) - shablon", e)
-            page, code_src = template(data), "shablon"
-            render(page, raw)
-        music, music_src = for_video(DURATION + 2, data.get("mood") if data.get("mood") in ("energetic", "cinematic", "calm")
+            page, code_src = template(data, dur, hero), "shablon"
+            render(page, raw, dur)
+        if voice:  # personaj ovozi videoga (video ovozdan uzunroq - oxirida jimlik bilan to'ldiriladi)
+            from .skills.video_edit import _run
+            spoken = Path(tmp) / "spoken.mp4"
+            _run(["-i", str(raw), "-i", str(voice), "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "apad",
+                  "-c:a", "aac", "-ar", "48000", "-shortest", str(spoken)])
+            raw = spoken
+        music, music_src = for_video(dur + 2, data.get("mood") if data.get("mood") in ("energetic", "cinematic", "calm")
                                      else "energetic")
         start = outbox.mark()
         video_pro(str(raw), music=music, cut_silence=False, subtitles=False, progress_bar=False)
         made = [f for f in outbox.since(start) if f.suffix == ".mp4"]
     if not made:
         raise RuntimeError("Video chiqmadi")
-    sources = f"g'oya: {idea_src}, kod: {code_src}, musiqa: {music_src}"
-    team_hub.feed("video_montajchi", f"{slot} Reels montaji", f"✅ {made[-1].name} ({DURATION} s, 1080x1920, {sources})")
+    sources = (f"g'oya: {idea_src}, kod: {code_src}, musiqa: {music_src}"
+               + (", personaj gapiradi" if voice else ""))
+    team_hub.feed("video_montajchi", f"{slot} Reels montaji", f"✅ {made[-1].name} ({dur:.0f} s, 1080x1920, {sources})")
     return {"path": str(made[-1]), "idea": data, "sources": sources}
 
 
-def run(slot: str, notify) -> None:
-    """Videoni yasaydi va kanalga (yuborilmasa - navbatga) hamda egasiga yuboradi."""
+def _voice(data: dict, tmp: Path) -> tuple[Path | None, float]:
+    """Personaj matni o'zbekcha ovozda (raqamlar so'z bilan). (mp3, video davomiyligi) - ovozga moslanadi, 15-45 s."""
+    import asyncio
+
+    from . import tts
+    from .skills.video_edit import info
+    text = str(data.get("voice") or "").strip() or ". ".join(
+        f"{s['big']}. {s.get('small', '')}".strip(". ") for s in data["scenes"]) + f". {data.get('cta', '')}"
+    try:
+        audio = asyncio.run(tts.synthesize(text))
+    except Exception as e:
+        log.warning("Personaj ovozi yaratilmadi: %s", e)
+        return None, DURATION
+    path = tmp / "voice.mp3"
+    path.write_bytes(audio)
+    length = info(path)["duration"]
+    return path, max(DURATION, min(45.0, length + 1.5))
+
+
+def run(slot: str, notify, topic: str = "") -> None:
+    """Videoni yasaydi va kanalga (yuborilmasa - navbatga) hamda egasiga yuboradi.
+    topic - egam bergan mavzu: u o'zi kanalga so'ragan - kengash bahosi qanday bo'lsa ham joylanadi (baho hisobotda)."""
     from . import studio_flow, tg_account
     if not _lock.acquire(blocking=False):
         return
     try:
-        res = make(slot, notify)
+        res = make(slot, notify, topic)
     except Exception as e:
         log.exception("Kunlik video yasalmadi")
         notify(f"⚠️ {slot} kunlik video yasalmadi: {str(e)[:300]}")
@@ -250,7 +337,7 @@ def run(slot: str, notify) -> None:
              + "; ".join(s["big"] for s in data["scenes"]) + f". CTA: {data.get('cta', '')}. {DURATION} s animatsiya, musiqa.")
     decision, score = team_hub.review_video(res["path"], about, brain.agents, _ready())
     verdict = f"\n\n🤝 Kengash bahosi: {score:g}/10" if score is not None else ""
-    if score is not None and score < 5:
+    if score is not None and score < 5 and not topic:
         studio_flow.send_files(f"🚫 {slot} kunlik Reels kengashdan o'tmadi ({score:g}/10) - kanalga joylanmadi.\n\n"
                                f"{decision[-2500:]}", [res["path"]])
         return

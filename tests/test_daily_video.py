@@ -71,6 +71,34 @@ class CouncilGateTests(unittest.TestCase):
         self.assertIsNone(score_of("baho berilmadi"))
 
 
+class VoiceAndCharacterTests(unittest.TestCase):
+    def test_numbers_spoken_as_uzbek_words(self):
+        from ali.tts import say_numbers
+        self.assertIn("nol", say_numbers("0 ta xato"))
+        self.assertIn("o'n ikki million bir yuz sakson ming", say_numbers("12.180.000 SOM"))
+        self.assertIn("yigirma foiz", say_numbers("20% chegirma"))
+        self.assertIn("олти бутун беш", say_numbers("Баҳо 6.5"))
+
+    def test_character_appears_in_template_and_saved_from_photo_caption(self):
+        page = daily_video.template({**daily_video.IDEAS[0], "scenes": daily_video.IDEAS[0]["scenes"]}, 20,
+                                    "data:image/jpeg;base64,AAAA")
+        self.assertIn('class="hero" src="data:image/jpeg;base64,AAAA"', page)
+        self.assertIn("@keyframes talk", page)
+        self.assertTrue(daily_video.CHAR_SAVE.search("shu personajni eslab qol"))
+        with tempfile.TemporaryDirectory() as d, patch.object(daily_video, "CHAR_DIR", Path(d) / "ch"):
+            img = Path(d) / "a.png"
+            img.write_bytes(b"png")
+            daily_video.save_character(str(img))
+            self.assertEqual(daily_video.character().name, "personaj.png")
+
+    def test_video_order_makes_video_not_brief(self):
+        from ali import montage, studio_flow
+        text = "Таргет учун битта видео килиб бер лида ва вовлечения нима учун йокилишини оргатадиган видео"
+        self.assertTrue(montage.is_creation(text))
+        self.assertFalse(studio_flow.is_query(text))
+        self.assertTrue(studio_flow.is_query("kreativ reels video uchun brif tuz"))
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

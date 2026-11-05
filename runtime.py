@@ -11,6 +11,7 @@ import logging
 import socket
 import threading
 import time
+from urllib.parse import urlsplit
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -143,6 +144,15 @@ async def miniapp_page():
     return FileResponse(WEB/'miniapp.html',headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})
 
 
+def foreign_origin(request: Request) -> bool:
+    """Boshqa saytdan kelgan so'rov (CSRF himoyasi). Faqat manzil (host) solishtiriladi: Cloudflare tunnel orqali telefon
+    «https://...» dan keladi, server esa o'zini «http://...» deb ko'radi - sxema farqi rad etish sababi emas."""
+    origin = request.headers.get('origin')
+    if not origin:
+        return False
+    return urlsplit(origin).netloc.lower() != (request.headers.get('host') or request.base_url.netloc).lower()
+
+
 # --- Jonli masofaviy boshqaruv (telefondan): faqat Telegram orqali tasdiqlangan ega yoki shu kompyuterning o'zi ---
 def remote_allowed(request: Request) -> bool:
     token = request.cookies.get(COOKIE, "")
@@ -170,7 +180,7 @@ async def remote_frame(request: Request, w: int = 1280, q: int = 60):
 async def remote_input(request: Request):
     if not remote_allowed(request):
         return JSONResponse({'error': 'Faqat Telegram orqali (egasi) kiriladi'}, status_code=403)
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
     from ali import remote_pc
     body = await json_object(request)
@@ -192,7 +202,7 @@ async def tg_login_page(request: Request):
 async def tg_login_step(step: str, request: Request):
     if not remote_allowed(request):
         return JSONResponse({'error': 'Faqat shu kompyuterdan yoki Telegram orqali (egasi)'}, status_code=403)
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
     from ali import tg_login
     fn = {'start': tg_login.start, 'code': tg_login.code, 'password': tg_login.password}.get(step)
@@ -204,7 +214,7 @@ async def tg_login_step(step: str, request: Request):
 
 @app.post('/api/telegram/login')
 async def telegram_login(request: Request):
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/')!=str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'ok':False},status_code=403)
     body=await json_object(request)
     if not auth.telegram_owner(body.get('init_data')):
@@ -321,7 +331,7 @@ async def permissions_get(request: Request):
 @app.post('/api/connections/{provider}')
 async def connection_save(provider: str, request: Request):
     if not is_authed(request.cookies):return JSONResponse({},status_code=401)
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/')!=str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'error':'Boshqa manbadan so‘rov rad etildi'},status_code=403)
     from ali.connections import connect
     body=await json_object(request)
@@ -352,7 +362,7 @@ async def local_access_save(request: Request):
         return JSONResponse({}, status_code=401)
     if not is_local(request):
         return JSONResponse({"error": "Ruxsat faqat shu kompyuterning o'zidan beriladi"}, status_code=403)
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
     body = await json_object(request)
     if not isinstance(body.get("allowed"), bool):
@@ -442,7 +452,7 @@ async def memory_import(request: Request):
     """ChatGPT / Claude / Gemini'dagi saqlangan xotiralarni Ali xotirasiga qo'shadi (egasi nusxalab joylaydi)."""
     if not is_authed(request.cookies):
         return JSONResponse({}, status_code=401)
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
     import hashlib
     import re
@@ -475,7 +485,7 @@ async def ai_app_action(key: str, action: str, request: Request):
         return JSONResponse({}, status_code=401)
     if not is_local(request):
         return JSONResponse({"error": "Ilovalarni faqat shu kompyuterning o'zidan ulash mumkin"}, status_code=403)
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
     from ali import local_ai
     if key == "_coach" and action == "learn":  # hozir: barcha agentlarni Pro AI'lardan o'qitish (fonda)
@@ -549,7 +559,7 @@ async def permissions_preset(name: str, request: Request):
         return JSONResponse({}, status_code=401)
     if not is_local(request):
         return JSONResponse({"error": "Rejimni faqat shu kompyuterdan o'zgartirish mumkin"}, status_code=403)
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
     from ali import permissions
     try:
@@ -563,7 +573,7 @@ async def permissions_preset(name: str, request: Request):
 async def permissions_save(request: Request):
     if not is_authed(request.cookies):
         return JSONResponse({}, status_code=401)
-    if request.headers.get('origin') and request.headers['origin'].rstrip('/') != str(request.base_url).rstrip('/'):
+    if foreign_origin(request):
         return JSONResponse({'error':'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
     from ali import permissions
     body = await json_object(request)

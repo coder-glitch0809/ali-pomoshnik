@@ -1463,6 +1463,13 @@ class TelegramBot(PublicTelegram, Listener):
         caption = update.message.caption or ""
         # Rasm ham o'rganiladi: Pro ilova ko'radi, mos agent bazasiga tavsif va bilim yoziladi
         path = await asyncio.to_thread(ingest.save_upload, "telegram_rasm.jpg", raw)
+        from . import daily_video
+        if daily_video.CHAR_SAVE.search(caption):  # «shu personajni eslab qol» - videolarda shu qahramon gapiradi
+            await asyncio.to_thread(daily_video.save_character, str(path))
+            await update.message.reply_text("🧑‍🎨 Personaj saqlandi. Endi tayyor videolarda (har kuni 11:00, 16:00 va "
+                                            "«video qilib ber» deganingizda) shu qahramon ekranda bo'ladi va matnni ovozda "
+                                            "aytadi.")
+            return
         from . import studio_flow  # kreativ video brifi rasm kutyapti: izohsiz yoki «#B12» izohli rasm - brifga
         if studio_flow.waiting() and (not caption.strip() or studio_flow.TAG.match(caption.strip())):
             full, note = await asyncio.to_thread(studio_flow.add_image, str(path), caption)
