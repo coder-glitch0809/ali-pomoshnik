@@ -36,3 +36,4 @@ firebase-admin>=6.5
 telethon>=1.36
 faster-whisper  # video subtitr: kompyuterda nutq tanish (Gemini limiti tugasa)
 playwright  # Ali'ning Chrome'ini boshqarish (kompyuterdagi Chrome, alohida profil)
+rembg  # video personaji: rasm fonini olib tashlash (birinchi ishga tushishda model yuklanadi)

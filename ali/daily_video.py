@@ -33,7 +33,8 @@ ekranda Planet Print personaji (3D multfilm qahramon) bor va u matnni ovoz chiqa
 Haftalik Instagram audit xulosasi (shunga tayan):
 {audit}
 Oldingi videolar (TAKRORLAMA): {previous}
-FAQAT JSON: {{"title": "...", "hook": "1-sahna - 3-6 so'z, kuchli", "scenes": [{{"big": "3-6 so'z", "small": "qo'shimcha 0-8 so'z"}}],
+FAQAT JSON: {{"title": "...", "hook": "1-sahna - 3-6 so'z, kuchli", "scenes": [{{"big": "3-6 so'z", "small": "qo'shimcha 0-8 so'z",
+"visual": "sahna orqasidagi motion-grafika belgisi - mazmuniga mos, FAQAT shulardan biri: {visuals}"}}],
 "cta": "direktga chaqiruv", "caption": "Instagram matni", "hashtags": "#...", "mood": "energetic|cinematic|calm",
 "why": "nega bu Instagram'da ishlaydi (1 gap)",
 "voice": "personaj OVOZ chiqarib aytadigan matn: 30-40 so'z, sodda o'zbek tilida, foydali maslahat, sahnalar tartibida, oxirida CTA"}}
@@ -106,13 +107,16 @@ CHAR_SAVE = re.compile(r"personaj|персонаж|yuzni\s+eslab|юзни\s+эс
 
 def character() -> Path | None:
     """Egam bergan personaj rasmi (eng oxirgisi) - videolarda shu qahramon gapiradi."""
-    files = sorted((f for f in CHAR_DIR.glob("*") if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")),
+    files = sorted((f for f in CHAR_DIR.glob("*") if f.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp")
+                    and not f.stem.endswith("_cut")),
                    key=lambda f: f.stat().st_mtime) if CHAR_DIR.is_dir() else []
     return files[-1] if files else None
 
 
 def save_character(path: str) -> Path:
     CHAR_DIR.mkdir(parents=True, exist_ok=True)
+    for old in CHAR_DIR.glob("personaj*"):  # yangi qahramon - eski rasm, fonsiz nusxa va og'iz koordinatalari o'chadi
+        old.unlink()
     dest = CHAR_DIR / f"personaj{Path(path).suffix.lower() or '.jpg'}"
     dest.write_bytes(Path(path).read_bytes())
     return dest
@@ -137,7 +141,8 @@ def idea(slot: str, topic: str = "") -> tuple[dict, str]:
     previous = "; ".join(h["title"] for h in st.get("history", [])[-12:]) or "-"
     audit = "\n".join(r["content"][:1500] for r in memory.relevant_knowledge("instagram haftalik audit video", "[kontent]", 2))
     try:
-        got = _ask_json(IDEA.format(agent=_agent("kontent")[:5000], slot=slot, dur=DURATION, audit=audit or "-",
+        from .skills.motion_bg import KEYS
+        got = _ask_json(IDEA.format(agent=_agent("kontent")[:5000], slot=slot, dur=DURATION, audit=audit or "-", visuals=KEYS,
                                     topic=f"Egam bergan mavzu: {topic}" if topic else "",
                                     previous=previous), _ready(), 240)
         scenes = [s for s in got.get("scenes", []) if isinstance(s, dict) and s.get("big")][:5]
@@ -160,10 +165,27 @@ talk .32s ease-in-out .9s infinite alternate}}
 @keyframes talk{{0%{{transform:scale(1) rotate(-.4deg)}}100%{{transform:scale(1.018) rotate(.4deg) translateY(-6px)}}}}"""
 
 
-def template(data: dict, dur: float = DURATION, hero: str = "") -> str:
+TALK_CSS = """.s{top:190px;height:640px}.big{font-size:92px;text-shadow:0 0 18px #ffb300,0 6px 30px #000}
+.small{font-size:48px;margin-top:26px;text-shadow:0 4px 18px #000}
+.hero{transform-origin:50% 100%;animation:heroin .9s cubic-bezier(.2,.8,.2,1) both,sway 3.4s ease-in-out .9s infinite alternate both}
+@keyframes heroin{0%{opacity:0;transform:translateY(400px)}100%{opacity:1;transform:none}}
+@keyframes sway{0%{transform:rotate(-.8deg) translateY(0)}50%{transform:rotate(.3deg) translateY(-8px)}100%{transform:rotate(.9deg) translateY(-2px)}}"""
+
+
+def template(data: dict, dur: float = DURATION, hero: str | dict = "") -> str:
     """Ali'ning o'z animatsiya kodi (AI'siz): har sahna pastdan uchib chiqadi, neon nur, oxirida CTA.
-    hero - personaj rasmi (data URI): pastda turadi va gapirayotgandek tebranadi, matn tepada."""
+    hero - personaj: rasm (data URI - kartochkada tebranadi) yoki talking_head.build() natijasi (fonsiz, og'zi ovozga mos
+    gapiradi, orqasida sahna mavzusidagi motion-grafika)."""
     scenes = [*data["scenes"], {"big": data.get("cta", "Direktga yozing"), "small": "PLANET PRINT"}]
+    if isinstance(hero, dict):
+        from .skills import motion_bg, talking_head
+        mg_html, mg_css = motion_bg.layer(scenes, dur / len(scenes), dur)
+        face = talking_head.html(hero, (1080 - hero["w"]) / 2, 1920 - hero["h"])
+        return _base(scenes, dur, mg_css + TALK_CSS, mg_html + face)
+    return _base(scenes, dur, HERO_CSS.format() if hero else "", f'<img class="hero" src="{hero}">' if hero else "")
+
+
+def _base(scenes: list[dict], dur: float, extra_css: str, extra_html: str) -> str:
     step = dur / len(scenes)
     blocks, css = [], []
     for k, s in enumerate(scenes):
@@ -193,9 +215,9 @@ word-break:break-word}}
 .brand{{position:absolute;top:150px;left:0;right:0;text-align:center;font-size:44px;letter-spacing:12px;color:#ffb300}}
 .bar{{position:absolute;left:0;bottom:0;height:12px;background:#ffb300;animation:bar {dur:.2f}s linear both}}
 {''.join(css)}
-{HERO_CSS.format() if hero else ''}
+{extra_css}
 </style></head><body><div class="beam"></div><div class="beam b2"></div><div class="brand">PLANET PRINT</div>
-{f'<img class="hero" src="{hero}">' if hero else ''}{''.join(blocks)}<div class="bar"></div></body></html>"""
+{extra_html}{''.join(blocks)}<div class="bar"></div></body></html>"""
 
 
 def _offline(page: str) -> bool:
@@ -256,8 +278,13 @@ def _check_text(tab, dur: float, samples: int = 10) -> None:
         raise RuntimeError(f"Animatsiyada {empty}/{samples} lahzada matn yo'q (sahnalar vaqti noto'g'ri)")
 
 
-def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS) -> Path:
-    """HTML animatsiyani kadrma-kadr (har kadrda vaqt aniq o'rnatiladi - sakrashsiz) videoga aylantiradi."""
+FACE = """([t, m, b]) => { document.getAnimations().forEach(a => { a.pause(); a.currentTime = t; });
+  if (window.__face) window.__face(m, b); }"""
+
+
+def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS, face: list | None = None) -> Path:
+    """HTML animatsiyani kadrma-kadr (har kadrda vaqt aniq o'rnatiladi - sakrashsiz) videoga aylantiradi.
+    face - har kadr uchun (og'iz ochilishi, ko'z yumilgan) - personaj ovozga mos gapiradi."""
     from playwright.sync_api import sync_playwright
 
     from .browser import CHROME
@@ -271,7 +298,10 @@ def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS) -> Path:
                 raise RuntimeError("Kodda animatsiya yo'q")
             _check_text(tab, dur)
             for n in range(int(dur * fps)):
-                tab.evaluate(SEEK, n * 1000 / fps)
+                if face:
+                    tab.evaluate(FACE, [n * 1000 / fps, *(face[n] if n < len(face) else (0, False))])
+                else:
+                    tab.evaluate(SEEK, n * 1000 / fps)
                 tab.screenshot(path=str(Path(tmp) / f"f{n:05d}.jpg"), type="jpeg", quality=92)
         finally:
             browser.close()
@@ -290,16 +320,26 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
                   + "\n".join(f"• {s['big']} — {s.get('small', '')}" for s in data["scenes"])
                   + f"\n📣 {data.get('cta', '')}\n💡 {data.get('why', '')}\n(manba: {idea_src})")
     hero_file = character()
-    hero = _data_uri(hero_file) if hero_file else ""
     with tempfile.TemporaryDirectory() as tmp:
-        voice, dur = _voice(data, Path(tmp)) if hero else (None, DURATION)  # personaj bor - u matnni ovozda aytadi
+        voice, dur = _voice(data, Path(tmp)) if hero_file else (None, DURATION)  # personaj bor - u matnni ovozda aytadi
+        hero, face = "", None
+        if hero_file:  # fonsiz qahramon, og'zi ovozga mos ochiladi, ko'z qisadi; orqasida mavzu motion-grafikasi
+            from .skills import talking_head
+            try:
+                hero = talking_head.build(hero_file, 900)
+                if voice and hero["mouths"]:
+                    face = list(zip(talking_head.levels(voice, dur, FPS), talking_head.blinks(dur, FPS)))
+            except Exception as e:
+                log.warning("Personaj jonlantirilmadi (%s) - oddiy rasm", e)
+                hero = _data_uri(hero_file)
         # personajli video - Ali shabloni (matn har lahzada aniq ko'rinadi; AI kodi personaj bilan matnni xiralashtirib
         # qo'yardi), personajsiz - Dasturchi AI kodi (tekshiruv bilan)
-        page, code_src = (template(data, dur, hero), "shablon + personaj") if hero else code(data, topic, dur)
+        page, code_src = (template(data, dur, hero), "shablon + gapiruvchi personaj + motion-grafika"
+                          if face else "shablon + personaj") if hero else code(data, topic, dur)
         team_hub.feed("dasturchi", f"{slot} Reels animatsiya kodi", f"HTML animatsiya: {len(page) // 1024 + 1} KB ({code_src})")
         raw = Path(tmp) / "anim.mp4"
         try:
-            render(page, raw, dur)
+            render(page, raw, dur, face=face)
         except Exception as e:  # AI kodi ishlamadi - Ali shabloni bilan qayta
             if code_src.startswith("shablon"):
                 raise

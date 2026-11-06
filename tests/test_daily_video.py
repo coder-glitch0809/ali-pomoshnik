@@ -99,6 +99,38 @@ class VoiceAndCharacterTests(unittest.TestCase):
         self.assertTrue(studio_flow.is_query("kreativ reels video uchun brif tuz"))
 
 
+class TalkingHeadTests(unittest.TestCase):
+    def test_scene_visual_matches_topic(self):
+        from ali.skills import motion_bg
+        self.assertEqual(motion_bg.pick({"big": "LIDLAR YO'QOLADI"}, []), "chart_down")
+        self.assertEqual(motion_bg.pick({"big": "Noto'g'ri auditoriya"}, []), "warning")
+        self.assertEqual(motion_bg.pick({"big": "x", "visual": "rocket"}, []), "rocket")
+        html, css = motion_bg.layer([{"big": "Narx arzon"}, {"big": "Direktga yozing"}], 5, 10)
+        self.assertIn("SO'M", html)
+        self.assertIn("@keyframes draw", css)
+
+    def test_template_with_talking_face_and_mouth_levels(self):
+        import numpy as np
+        from ali.skills import talking_head
+        face = {"base": "data:image/png;base64,AAAA", "w": 900, "h": 1125, "blink": ("data:b", 1, 2, 3, 4),
+                "mouths": [("data:m", 10, 20, 30, 40)] * 7}
+        page = daily_video.template({**daily_video.IDEAS[0], "scenes": daily_video.IDEAS[0]["scenes"]}, 20, face)
+        self.assertIn("window.__face", page)
+        self.assertEqual(page.count('class="fm"'), 7)
+        self.assertIn('class="grid"', page)
+        tone = np.concatenate([np.zeros(8000), 0.5 * np.sin(np.arange(8000) / 3), np.zeros(8000)])
+        with tempfile.TemporaryDirectory() as d:
+            wav = Path(d) / "v.wav"
+            import wave
+            with wave.open(str(wav), "wb") as w:
+                w.setnchannels(1), w.setsampwidth(2), w.setframerate(16000)
+                w.writeframes((tone * 32767).astype("<i2").tobytes())
+            lv = talking_head.levels(wav, 1.5, 30)
+        self.assertEqual(lv[:10], [0] * 10)  # jimlik - og'iz yopiq
+        self.assertGreater(max(lv[16:30]), 4)  # ovoz - og'iz ochiq
+        self.assertTrue(any(talking_head.blinks(10, 30)))
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {
