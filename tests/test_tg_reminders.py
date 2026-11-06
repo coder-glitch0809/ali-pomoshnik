@@ -57,7 +57,7 @@ class TelegramReminderTests(unittest.TestCase):
             tg_account.set_reminder_source(cid, str(cid), True)
         with patch.object(tg_account, "_run", side_effect=lambda go: asyncio.run(go(client))):
             result = tg_account.recent_chats(reminders_only=True)
-        self.assertEqual(read, [-10, -20])
+        self.assertEqual(read, [-10, -20, 40])  # shaxsiy chat ham - faqat egam belgilagan bo'lsa
         self.assertIn("### -20", result)
         self.assertNotIn("### -30", result)
 

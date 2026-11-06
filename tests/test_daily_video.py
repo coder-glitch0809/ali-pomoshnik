@@ -131,6 +131,43 @@ class TalkingHeadTests(unittest.TestCase):
         self.assertTrue(any(talking_head.blinks(10, 30)))
 
 
+class PresenterTests(unittest.TestCase):
+    def test_gestures_change_and_frames_are_complete(self):
+        from ali.skills import presenter
+        got = presenter.frames(5, 4.0, 20, 30, [3] * 600, [False] * 600)
+        self.assertEqual(len(got), 600)
+        self.assertIn("polyline", got[100]["a"])
+        self.assertNotEqual(got[150]["a"], got[210]["a"])  # qo'llar harakatlanadi
+        self.assertNotEqual(got[10]["h"], got[40]["h"])  # bosh qimirlaydi
+        self.assertNotEqual(got[60]["x"], got[200]["x"])  # sahnalar orasida joy almashadi
+
+    def test_stage_has_diagram_for_each_scene_without_invented_numbers(self):
+        from ali.skills import stage
+        scenes = [{"big": "Lidlar yo'qoladi", "diagram": {"type": "funnel", "title": "Yo'l", "labels": ["A", "B", "C"]}},
+                  {"big": "Direktga yozing"}]
+        back, desk, css = stage.layer(scenes, 5, 10)
+        self.assertEqual(back.count('class="panel"'), 2)
+        self.assertNotIn("%<", back)
+        self.assertIn("PLANET PRINT", desk)
+        self.assertIn("@keyframes pin", css)
+
+
+class WatchListTests(unittest.TestCase):
+    def test_only_chosen_chats_and_people_are_read(self):
+        from ali import tg_account
+        with tempfile.TemporaryDirectory() as d, patch.object(tg_account, "STATE", Path(d) / "c.json"):
+            self.assertEqual(tg_account.reminder_sources(), {})
+            self.assertEqual(tg_account.learn_all_channels(), [])  # hech narsa belgilanmagan - o'qilmaydi
+            self.assertEqual(tg_account.recent_chats(reminders_only=True), "")
+            tg_account.set_reminder_source(-100, "Guruh", True)
+            self.assertTrue(tg_account.allows_sender(-100, 5))  # odam tanlanmagan - hamma
+            self.assertTrue(tg_account.toggle_person(-100, 7, "Ali"))
+            self.assertFalse(tg_account.allows_sender(-100, 5))
+            self.assertTrue(tg_account.allows_sender(-100, 7))
+            tg_account.set_reminder_source(-100, "Guruh", False)
+            self.assertEqual(tg_account.source_people(), {})
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

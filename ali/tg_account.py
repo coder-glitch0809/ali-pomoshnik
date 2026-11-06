@@ -244,7 +244,64 @@ def set_reminder_source(chat_id: int, title: str, allowed: bool) -> None:
     else:
         sources.pop(str(chat_id), None)
     state["_reminder_sources"] = sources
+    if not allowed:  # ro'yxatdan chiqdi - tanlangan odamlari ham o'chadi
+        state.get("_source_people", {}).pop(str(chat_id), None)
     STATE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+
+def source_people() -> dict:
+    """Chat -> {odam id: ism}. Bo'sh bo'lsa - shu chatdagi hamma, aks holda faqat tanlangan odamlar o'qiladi."""
+    state = _state()
+    people = state.get("_source_people", {}) if isinstance(state, dict) else {}
+    return people if isinstance(people, dict) else {}
+
+
+def toggle_person(chat_id: int, sender_id: int, name: str) -> bool:
+    """Odamni chat ro'yxatiga qo'shadi/olib tashlaydi. True - endi tanlangan."""
+    state = _state()
+    if not isinstance(state, dict):
+        state = {}
+    people = state.setdefault("_source_people", {})
+    chosen = people.setdefault(str(chat_id), {})
+    on = str(sender_id) not in chosen
+    if on:
+        chosen[str(sender_id)] = name
+    else:
+        chosen.pop(str(sender_id))
+    STATE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    return on
+
+
+def allows_sender(chat_id: int, sender_id, people: dict | None = None) -> bool:
+    chosen = (source_people() if people is None else people).get(str(chat_id))
+    return not chosen or str(sender_id) in chosen
+
+
+def dialogs(limit: int = 400) -> list[dict]:
+    """Nazoratchi ro'yxati uchun: barcha chatlar (id, nomi, turi: guruh/kanal/shaxsiy)."""
+    async def go(client):
+        out = []
+        async for d in client.iter_dialogs(limit=limit):
+            kind = "shaxsiy" if d.is_user else "guruh" if d.is_group else "kanal"
+            out.append({"id": d.id, "title": d.name or "?", "kind": kind})
+        return out
+    return _run(go)
+
+
+def senders(chat_id: int, limit: int = 300) -> dict:
+    """Guruhda oxirgi xabarlarda yozgan odamlar: {id: ism}."""
+    async def go(client):
+        out = {}
+        async for m in client.iter_messages(chat_id, limit=limit):
+            s = m.sender
+            if s is None or m.out or not m.sender_id:
+                continue
+            name = " ".join(x for x in (getattr(s, "first_name", None), getattr(s, "last_name", None)) if x)
+            out.setdefault(str(m.sender_id), name or getattr(s, "title", None) or "?")
+            if len(out) >= 60:
+                break
+        return out
+    return _run(go, 120)
 
 
 def learn_channel(name: str, limit: int = 100, progress=None) -> dict:
@@ -343,9 +400,12 @@ def download_latest_video(name: str, limit: int = 30, max_mb: int = 200) -> tupl
 
 
 def learn_all_channels(progress=None, limit: int = 100) -> list[dict]:
-    """Barcha kanallardagi yangi post va fayllardan o'rganish (avtopilot)."""
+    """Egam belgilagan kanallardagi yangi post va fayllardan o'rganish (avtopilot). Belgilanmagani o'qilmaydi."""
     results = []
-    for ch in [c for c in channels() if c["kind"] == "kanal"]:
+    allowed = reminder_sources()
+    if not allowed:
+        return results
+    for ch in [c for c in channels() if c["kind"] == "kanal" and str(c["id"]) in allowed]:
         try:
             r = learn_channel(ch["title"], limit, progress)
         except Exception as e:
@@ -356,7 +416,7 @@ def learn_all_channels(progress=None, limit: int = 100) -> list[dict]:
     return results
 
 
-REVIEW_TASK = """Bugun {today}. Quyida egam ({owner}) ruxsat bergan Telegram guruh va kanallari (oxirgi {hours} soat).
+REVIEW_TASK = """Bugun {today}. Quyida egam ({owner}) o'zi belgilagan Telegram guruh, kanal va shaxsiy yozishmalari (oxirgi {hours} soat).
 "Men" - egam. Diqqat bilan o'qib chiq va FAQAT JSON qaytar:
 {{"facts": [{{"key": "qisqa kalit", "value": "egam haqida aniq fakt (ish, loyiha, odamlar, afzallik, manzil...)"}}],
   "plans": [{{"when": "YYYY-MM-DD HH:MM yoki YYYY-MM-DD (vaqt aytilmagan bo'lsa)", "with": "kim bilan", "what": "nima qilish/uchrashish/to'lash"}}],
@@ -377,12 +437,13 @@ def recent_chats(hours: int = 36, max_dialogs: int = 40, per_dialog: int = 80,
     sources = reminder_sources() if reminders_only else {}
     if reminders_only and not sources:
         return ""
+    people = source_people()
 
     async def go(client):
         parts, n = [], 0
         async for d in client.iter_dialogs():
             if reminders_only:
-                if str(d.id) not in sources or not (d.is_group or d.is_channel):
+                if str(d.id) not in sources:
                     continue
             elif not d.is_user or getattr(d.entity, "bot", False):
                 continue
@@ -392,6 +453,8 @@ def recent_chats(hours: int = 36, max_dialogs: int = 40, per_dialog: int = 80,
             async for m in client.iter_messages(d.id, limit=per_dialog, offset_date=None):
                 if m.date < since:
                     break
+                if reminders_only and not m.out and not allows_sender(d.id, getattr(m, "sender_id", None), people):
+                    continue  # guruhda faqat egam tanlagan odamlar
                 if m.text:
                     who = "Men" if m.out else d.name
                     msgs.append(f"[{m.date.astimezone().strftime('%m-%d %H:%M')}] {who}: {m.text[:1500]}")
@@ -413,7 +476,7 @@ def review_chats(hours: int = 36) -> dict:
     from .service import _ask_json
     chats = recent_chats(hours, reminders_only=True)
     if not chats.strip():
-        return {"facts": 0, "reminders": [], "summary": "Yangi yozishma yo'q."}
+        return {"facts": 0, "reminders": [], "summary": ""}
     ready = local_ai.connected() if local_ai.access() is True else []
     data = _ask_json(REVIEW_TASK.format(today=time.strftime("%Y-%m-%d %H:%M"), owner=config.user_name, hours=hours,
                                         chats=chats[:60000]), ready)

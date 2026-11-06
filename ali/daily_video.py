@@ -34,11 +34,13 @@ Haftalik Instagram audit xulosasi (shunga tayan):
 {audit}
 Oldingi videolar (TAKRORLAMA): {previous}
 FAQAT JSON: {{"title": "...", "hook": "1-sahna - 3-6 so'z, kuchli", "scenes": [{{"big": "3-6 so'z", "small": "qo'shimcha 0-8 so'z",
-"visual": "sahna orqasidagi motion-grafika belgisi - mazmuniga mos, FAQAT shulardan biri: {visuals}"}}],
+"visual": "sahna belgisi - mazmuniga mos, FAQAT shulardan biri: {visuals}",
+"backdrop": "sahna foni: street (ko'cha, do'konlar, peshlavha) | night (tungi shahar, chiroq) | dash (raqamli reklama, tahlil)",
+"diagram": {{"type": "FAQAT biri: {diagrams}", "title": "diagramma sarlavhasi 2-5 so'z", "labels": ["2-3 ta yozuv, har biri 1-2 so'z, SONSIZ"]}}}}],
 "cta": "direktga chaqiruv", "caption": "Instagram matni", "hashtags": "#...", "mood": "energetic|cinematic|calm",
 "why": "nega bu Instagram'da ishlaydi (1 gap)",
 "voice": "personaj OVOZ chiqarib aytadigan matn: 30-40 so'z, sodda o'zbek tilida, foydali maslahat, sahnalar tartibida, oxirida CTA"}}
-(scenes: 4-5 ta, hook birinchisi)"""
+(scenes: 4-5 ta, hook birinchisi. Diagrammada to'qima son/foiz YOZMA - faqat g'oyani ko'rsatsin)"""
 
 CODE = """{agent}
 
@@ -140,9 +142,14 @@ def idea(slot: str, topic: str = "") -> tuple[dict, str]:
     st = _state()
     previous = "; ".join(h["title"] for h in st.get("history", [])[-12:]) or "-"
     audit = "\n".join(r["content"][:1500] for r in memory.relevant_knowledge("instagram haftalik audit video", "[kontent]", 2))
+    if topic:  # Kontent-meyker o'z bilimiga ham tayanadi
+        from .service import knowledge_block
+        audit += knowledge_block(topic, "kontent")[:4000]
     try:
         from .skills.motion_bg import KEYS
+        from .skills.stage import KINDS
         got = _ask_json(IDEA.format(agent=_agent("kontent")[:5000], slot=slot, dur=DURATION, audit=audit or "-", visuals=KEYS,
+                                    diagrams=KINDS,
                                     topic=f"Egam bergan mavzu: {topic}" if topic else "",
                                     previous=previous), _ready(), 240)
         scenes = [s for s in got.get("scenes", []) if isinstance(s, dict) and s.get("big")][:5]
@@ -177,6 +184,10 @@ def template(data: dict, dur: float = DURATION, hero: str | dict = "") -> str:
     hero - personaj: rasm (data URI - kartochkada tebranadi) yoki talking_head.build() natijasi (fonsiz, og'zi ovozga mos
     gapiradi, orqasida sahna mavzusidagi motion-grafika)."""
     scenes = [*data["scenes"], {"big": data.get("cta", "Direktga yozing"), "small": "PLANET PRINT"}]
+    if isinstance(hero, dict) and "torso" in hero:  # boshlovchi: bosh, gavda, qo'llar alohida; fon va diagrammalar mavzuga mos
+        from .skills import presenter, stage
+        back, desk, css = stage.layer(scenes, dur / len(scenes), dur)
+        return _base(scenes, dur, css, back + presenter.html(hero) + desk)
     if isinstance(hero, dict):
         from .skills import motion_bg, talking_head
         mg_html, mg_css = motion_bg.layer(scenes, dur / len(scenes), dur)
@@ -279,7 +290,7 @@ def _check_text(tab, dur: float, samples: int = 10) -> None:
 
 
 FACE = """([t, m, b]) => { document.getAnimations().forEach(a => { a.pause(); a.currentTime = t; });
-  if (window.__face) window.__face(m, b); }"""
+  if (window.__rig) window.__rig(m); else if (window.__face) window.__face(m, b); }"""
 
 
 def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS, face: list | None = None) -> Path:
@@ -299,7 +310,9 @@ def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS, face: li
             _check_text(tab, dur)
             for n in range(int(dur * fps)):
                 if face:
-                    tab.evaluate(FACE, [n * 1000 / fps, *(face[n] if n < len(face) else (0, False))])
+                    state = face[n] if n < len(face) else face[-1]
+                    tab.evaluate(FACE, [n * 1000 / fps, state, False] if isinstance(state, dict)
+                                 else [n * 1000 / fps, *state])
                 else:
                     tab.evaluate(SEEK, n * 1000 / fps)
                 tab.screenshot(path=str(Path(tmp) / f"f{n:05d}.jpg"), type="jpeg", quality=92)
@@ -324,17 +337,23 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
         voice, dur = _voice(data, Path(tmp)) if hero_file else (None, DURATION)  # personaj bor - u matnni ovozda aytadi
         hero, face = "", None
         if hero_file:  # fonsiz qahramon, og'zi ovozga mos ochiladi, ko'z qisadi; orqasida mavzu motion-grafikasi
-            from .skills import talking_head
+            from .skills import presenter, talking_head
             try:
-                hero = talking_head.build(hero_file, 900)
-                if voice and hero["mouths"]:
-                    face = list(zip(talking_head.levels(voice, dur, FPS), talking_head.blinks(dur, FPS)))
+                rig = presenter.build(hero_file) if voice else None
+                if rig:
+                    hero = rig
+                    face = presenter.frames(len(data["scenes"]) + 1, dur / (len(data["scenes"]) + 1), dur, FPS,
+                                            talking_head.levels(voice, dur, FPS), talking_head.blinks(dur, FPS))
+                else:
+                    hero = talking_head.build(hero_file, 900)
+                    if voice and hero["mouths"]:
+                        face = list(zip(talking_head.levels(voice, dur, FPS), talking_head.blinks(dur, FPS)))
             except Exception as e:
                 log.warning("Personaj jonlantirilmadi (%s) - oddiy rasm", e)
                 hero = _data_uri(hero_file)
         # personajli video - Ali shabloni (matn har lahzada aniq ko'rinadi; AI kodi personaj bilan matnni xiralashtirib
         # qo'yardi), personajsiz - Dasturchi AI kodi (tekshiruv bilan)
-        page, code_src = (template(data, dur, hero), "shablon + gapiruvchi personaj + motion-grafika"
+        page, code_src = (template(data, dur, hero), "shablon + boshlovchi personaj (qo'llar) + diagrammalar"
                           if face else "shablon + personaj") if hero else code(data, topic, dur)
         team_hub.feed("dasturchi", f"{slot} Reels animatsiya kodi", f"HTML animatsiya: {len(page) // 1024 + 1} KB ({code_src})")
         raw = Path(tmp) / "anim.mp4"

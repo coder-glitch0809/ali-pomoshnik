@@ -50,6 +50,7 @@ COMMANDS = [
     ("kanal", "Kanalni o'qib o'rganish: /kanal NOMI"),
     ("kanallar_organ", "Barcha kanallardan hozir o'rganish"),
     ("bugun", "Yozishmalardan bugungi rejalar va eslatmalar"),
+    ("kuzatuv", "Nazoratchi qaysi guruh, kanal, odamni o'qisin - o'zim belgilayman"),
     ("jadval", "Dars jadvalim"),
     ("dars", "Dars taqdimoti: /dars 5-A [mavzu]"),
     ("instagram", "Instagram profil audit: nimani to'g'rilash kerak"),
@@ -187,6 +188,8 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("nazorat", self.cmd_team_report))
         a.add_handler(CommandHandler("tekshir", self.cmd_check_group))
         a.add_handler(CommandHandler("sinf", self.cmd_class))
+        a.add_handler(CommandHandler("kuzatuv", self.cmd_watch_list))
+        a.add_handler(CallbackQueryHandler(self.on_watch_button, pattern=r"^wt:"))
         a.add_handler(CallbackQueryHandler(self.on_ai_button, pattern=r"^ai:"))
         a.add_handler(CallbackQueryHandler(self.on_button, pattern=r"^cf:"))
         a.add_handler(CallbackQueryHandler(self.on_agent_button, pattern=r"^ag:"))
@@ -1085,6 +1088,88 @@ class TelegramBot(PublicTelegram, Listener):
                 text = f"⚠️ {str(e)[:600]}"
             await msg.reply_text(text[:4000])
         self._bg(run())
+
+    # ---------- /kuzatuv: nazoratchi FAQAT egam belgilagan chat va odamlarni o'qiydi ----------
+    WATCH_TABS = (("guruh", "👥 Guruhlar"), ("kanal", "📢 Kanallar"), ("shaxsiy", "👤 Shaxsiy"))
+    WATCH_PAGE = 8
+
+    def _watch_view(self, items: list[dict], kind: str, page: int):
+        from . import tg_account
+        allowed, people = tg_account.reminder_sources(), tg_account.source_people()
+        rows = [[InlineKeyboardButton(("• " if k == kind else "") + label, callback_data=f"wt:l:{k}:0")
+                 for k, label in self.WATCH_TABS]]
+        same = [i for i in items if i["kind"] == kind]
+        same.sort(key=lambda i: str(i["id"]) not in allowed)  # belgilanganlari tepada
+        for i in same[page * self.WATCH_PAGE:(page + 1) * self.WATCH_PAGE]:
+            on = str(i["id"]) in allowed
+            row = [InlineKeyboardButton(f"{'✅' if on else '⬜'} {i['title'][:34]}", callback_data=f"wt:t:{i['id']}:{kind}:{page}")]
+            if on and kind == "guruh":
+                count = len(people.get(str(i["id"]), {}))
+                row.append(InlineKeyboardButton(f"👤 {count or 'hamma'}", callback_data=f"wt:p:{i['id']}:{page}"))
+            rows.append(row)
+        nav = []
+        if page:
+            nav.append(InlineKeyboardButton("◀️", callback_data=f"wt:l:{kind}:{page - 1}"))
+        if (page + 1) * self.WATCH_PAGE < len(same):
+            nav.append(InlineKeyboardButton("▶️", callback_data=f"wt:l:{kind}:{page + 1}"))
+        if nav:
+            rows.append(nav)
+        names = [v for v in allowed.values()]
+        text = ("🛰 Telegram nazoratchisi FAQAT ✅ belgilanganlarni o'qiydi. Qolgani umuman o'qilmaydi, "
+                "ulardan xabar va eslatma kelmaydi.\n\n"
+                + (f"Hozir belgilangan: {len(names)} ta" if names else "Hozir hech narsa belgilanmagan - hech narsa o'qilmaydi.")
+                + ("\n👤 tugmasi: guruhda faqat tanlangan odamlarning xabarlari o'qiladi." if kind == "guruh" else ""))
+        return text, InlineKeyboardMarkup(rows)
+
+    async def cmd_watch_list(self, update: Update, ctx):
+        """/kuzatuv - nazoratchi qaysi guruh, kanal, shaxsiy chat va odamlarni o'qishini egam belgilaydi."""
+        from . import tg_account
+        if not update.effective_user or update.effective_user.id != self.owner_id or not await self._guard(update):
+            return
+        if not tg_account.configured():
+            await update.message.reply_text("Telegram akkaunt ulanmagan.")
+            return
+        items = await asyncio.to_thread(tg_account.dialogs)
+        self._watch_items = items
+        text, kb = self._watch_view(items, "guruh", 0)
+        await update.message.reply_text(text, reply_markup=kb)
+
+    async def on_watch_button(self, update: Update, ctx):
+        from . import tg_account
+        query = update.callback_query
+        if query.from_user.id != self.owner_id:
+            await self.safe_answer(query, "Ruxsat yo'q")
+            return
+        await self.safe_answer(query)
+        parts = query.data.split(":")
+        items = getattr(self, "_watch_items", None) or await asyncio.to_thread(tg_account.dialogs)
+        self._watch_items = items
+        act = parts[1]
+        if act == "t":  # chatni belgilash / olib tashlash
+            chat, kind, page = int(parts[2]), parts[3], int(parts[4])
+            title = next((i["title"] for i in items if i["id"] == chat), str(chat))
+            tg_account.set_reminder_source(chat, title, str(chat) not in tg_account.reminder_sources())
+        elif act == "l":
+            kind, page = parts[2], int(parts[3])
+        elif act in ("p", "s"):  # guruhdagi odamlar
+            chat, page = int(parts[2]), int(parts[3])
+            names = await asyncio.to_thread(tg_account.senders, chat)
+            if act == "s":
+                tg_account.toggle_person(chat, int(parts[4]), names.get(parts[4]) or tg_account.source_people().get(str(chat), {}).get(parts[4], "?"))
+            chosen = tg_account.source_people().get(str(chat), {})
+            names = {**names, **chosen}
+            rows = [[InlineKeyboardButton(f"{'✅' if sid in chosen else '⬜'} {name[:40]}", callback_data=f"wt:s:{chat}:{page}:{sid}")]
+                    for sid, name in sorted(names.items(), key=lambda x: x[0] not in chosen)[:30]]
+            rows.append([InlineKeyboardButton("⬅️ Orqaga", callback_data=f"wt:l:guruh:{page}")])
+            title = next((i["title"] for i in items if i["id"] == chat), "Guruh")
+            await query.edit_message_text(
+                f"👤 «{title}»: kimning xabarini o'qiy?\nHech kim belgilanmasa - guruhdagi hamma. Belgilansa - faqat o'shalar.",
+                reply_markup=InlineKeyboardMarkup(rows))
+            return
+        else:
+            return
+        text, kb = self._watch_view(items, kind, page)
+        await query.edit_message_text(text, reply_markup=kb)
 
     async def cmd_class(self, update: Update, ctx):
         """/sinf - sinfga oid yangi xabarlar, muammolar va dars jadvali (hozir)."""

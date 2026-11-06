@@ -202,6 +202,9 @@ def start_watch(on_list) -> None:
 
         async def setup(client):
             async def handler(event):
+                # faqat egam /kuzatuv da belgilagan guruh va odamlar
+                if str(event.chat_id) not in tg_account.reminder_sources() or not tg_account.allows_sender(event.chat_id, event.sender_id):
+                    return
                 text = event.raw_text or ""
                 items = parse(text)
                 if not items:

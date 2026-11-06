@@ -109,6 +109,7 @@ def collect_groups(hours: float = 24, only: int | None = None, everything: bool 
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
     team = team_hub.chat_id()
     allowed = tg_account.reminder_sources()
+    people = tg_account.source_people()
     MEDIA.mkdir(parents=True, exist_ok=True)
 
     async def go(client):
@@ -127,6 +128,8 @@ def collect_groups(hours: float = 24, only: int | None = None, everything: bool 
             async for m in client.iter_messages(d.id, limit=per_dialog):
                 if m.date < since:
                     break
+                if only is None and not tg_account.allows_sender(d.id, getattr(m, "sender_id", None), people):
+                    continue  # avtomatik kuzatuvda - faqat egam tanlagan odamlar
                 text = m.text or ""
                 relevant = everything or class_group or is_class(text) or is_schedule(text)
                 if not relevant:
@@ -255,8 +258,11 @@ def providers_fallback(text: str) -> str:
 
 
 def review_bots_and_media(hours: float = 24) -> dict:
-    """Botlardan kelgan ma'lumot va shaxsiy yozishmalarda kelgan rasm/videolar - o'rganiladi."""
+    """Egam belgilagan bot va shaxsiy yozishmalardagi ma'lumot, rasm/videolar - o'rganiladi. Boshqasi o'qilmaydi."""
     from . import ingest, team_hub, tg_account
+    allowed = tg_account.reminder_sources()
+    if not allowed:
+        return {"bots": 0, "media": 0, "learned": []}
     state = _state()
     seen = state.setdefault("seen_private", {})
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -265,7 +271,7 @@ def review_bots_and_media(hours: float = 24) -> dict:
     async def go(client):
         bots, media = [], []
         async for d in client.iter_dialogs():
-            if not d.is_user or d.date is None or d.date < since:
+            if not d.is_user or d.date is None or d.date < since or str(d.id) not in allowed:
                 continue
             is_bot = bool(getattr(d.entity, "bot", False))
             last = seen.get(str(d.id), 0)
