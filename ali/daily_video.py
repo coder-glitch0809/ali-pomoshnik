@@ -135,6 +135,22 @@ def _ready() -> list[str]:
     return local_ai.connected() if local_ai.access() is True else []
 
 
+def _idea_from_knowledge(topic: str) -> dict | None:
+    """AI'siz: mavzu va agentlar bilimidagi gaplardan sahnalar."""
+    from .service import knowledge_answer
+    head = re.split(r"[:.\n]", topic)[0].strip()[:60]
+    parts = [p.strip(" -•") for p in re.split(r"[,;:\n]", topic)[1:] if 8 < len(p.strip()) < 70][:4]
+    if len(parts) < 2:
+        text = knowledge_answer(topic, "kontent") or ""
+        parts = [x.strip(" -•*") for x in re.split(r"(?<=[.!?])\s+|\n", text) if 12 < len(x.strip()) < 70][:4]
+    if len(parts) < 2 or not head:
+        return None
+    scenes = [{"big": head, "small": ""}] + [{"big": p[:44], "small": ""} for p in parts]
+    return {"title": head, "hook": head, "scenes": scenes, "cta": "Batafsil - direktga yozing", "mood": "energetic",
+            "voice": f"{head}. " + ". ".join(parts) + ". Batafsil - direktga yozing.", "caption": f"{head} - Planet Print.",
+            "hashtags": "#planetprint #reklama #target #reels", "why": "mavzu egam tomonidan aniq berilgan"}
+
+
 def idea(slot: str, topic: str = "") -> tuple[dict, str]:
     """Kontent-meyker g'oyasi: (g'oya, manba)."""
     from .memory import memory
@@ -157,6 +173,10 @@ def idea(slot: str, topic: str = "") -> tuple[dict, str]:
             return {**got, "scenes": scenes}, "AI"
     except Exception as e:
         log.info("Kontent g'oyasi AI'siz: %s", e)
+    if topic:  # AI band, lekin mavzu aniq - Kontent-meyker o'z bilimidan yozadi (boshqa mavzuga o'tib ketmaydi)
+        made = _idea_from_knowledge(topic)
+        if made:
+            return made, "bilim"
     used = {h["title"] for h in st.get("history", [])[-len(IDEAS) + 1:]}
     pick = next((i for i in IDEAS if i["title"] not in used), IDEAS[len(st.get("history", [])) % len(IDEAS)])
     return {**pick, "scenes": [{"big": pick["hook"], "small": ""}, *pick["scenes"]],
@@ -205,8 +225,8 @@ def _base(scenes: list[dict], dur: float, extra_css: str, extra_html: str) -> st
         blocks.append(f'<div class="s" style="animation: {anim} {step:.2f}s {k * step:.2f}s both '
                       f'cubic-bezier(.2,.8,.2,1)"><div class="big">{html_lib.escape(s["big"])}</div>'
                       f'<div class="small">{html_lib.escape(s.get("small", ""))}</div></div>')
-    css.append("@keyframes scene{0%{opacity:0;transform:translateY(160px) scale(.9)}12%{opacity:1;transform:none}"
-               "82%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-120px) scale(1.05)}}"
+    css.append("@keyframes scene{0%{opacity:0;transform:translateY(160px) scale(.9)}7%{opacity:1;transform:none}"
+               "93%{opacity:1;transform:none}100%{opacity:0;transform:translateY(-70px) scale(1.03)}}"
                "@keyframes inlast{0%{opacity:0;transform:scale(.6)}25%{opacity:1;transform:scale(1.04)}"
                "35%,100%{opacity:1;transform:scale(1)}}"
                "@keyframes sweep{0%{transform:translateX(-120%) rotate(-25deg)}100%{transform:translateX(220%) rotate(-25deg)}}"

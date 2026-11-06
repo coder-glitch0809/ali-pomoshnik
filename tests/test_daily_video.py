@@ -168,6 +168,67 @@ class WatchListTests(unittest.TestCase):
             self.assertEqual(tg_account.source_people(), {})
 
 
+class MusicMemoryTests(unittest.TestCase):
+    def test_noise_rejected_and_library_preferred(self):
+        from ali.skills import music, music_lib
+        self.assertFalse(music_lib.is_music({"rms": .05, "tonal": 25, "beat": .7, "bpm": 180}))  # ko'cha shovqini
+        self.assertTrue(music_lib.is_music({"rms": .05, "tonal": 170, "beat": .1, "bpm": 120}))
+        with tempfile.TemporaryDirectory() as d, patch.object(music_lib, "LIB", Path(d)), \
+                patch.object(music_lib, "STATE", Path(d) / "t.json"):
+            (Path(d) / "energetic").mkdir()
+            for name, mood in (("a", "energetic"), ("b", "calm")):
+                (Path(d) / f"{name}.m4a").write_bytes(b"x")
+            music_lib._save({"seen": {}, "tracks": {"a": {"file": "a.m4a", "mood": "energetic", "seconds": 30},
+                                                    "b": {"file": "b.m4a", "mood": "calm", "seconds": 30}}})
+            first, src = music.for_video(20, "calm")
+            self.assertTrue(first.endswith("b.m4a"))
+            self.assertIn("egam", src)
+            # ishlatilgani keyin orqaga tushadi - bir xil trek takrorlanmaydi
+            second = music_lib.choose("calm", 20)
+            third = music_lib.choose("calm", 20)
+            self.assertNotEqual(second, third)
+
+
+class PunishmentTests(unittest.TestCase):
+    def _brain(self):
+        from types import SimpleNamespace
+        return SimpleNamespace(agents={"kontent": SimpleNamespace(name="Kontent", icon="✍️")}, registry={})
+
+    def test_idle_agent_task_is_judged_strictly(self):
+        from ali import ecosystem, team_hub
+        with tempfile.TemporaryDirectory() as d, patch.object(ecosystem, "STATE", Path(d) / "e.json"), \
+                patch.object(team_hub, "feed"):
+            ecosystem.punish("kontent", "3 kun ish yo'q")
+            with patch.object(team_hub, "agent_answer", return_value="Salom, qilaman"):
+                lines = ecosystem.work_off(self._brain())
+            self.assertIn("rad etildi", lines[0])  # oddiy gap bilan o'tib ketmaydi
+            self.assertIn("punish", ecosystem._state()["agents"]["kontent"])
+            long_answer = "aniq ish " * 100
+            with patch.object(team_hub, "agent_answer", return_value=long_answer), \
+                    patch("ali.service._ask_json", side_effect=RuntimeError("limit")):
+                lines = ecosystem.work_off(self._brain())
+            self.assertIn("tekshirilmadi", lines[0])  # AI band - qabul ham qilinmaydi
+            with patch.object(team_hub, "agent_answer", return_value=long_answer), \
+                    patch("ali.service._ask_json", return_value={"score": 5, "critique": "suv"}):
+                ecosystem.work_off(self._brain())
+                lines = ecosystem.work_off(self._brain())
+            self.assertIn("o'tmadi", lines[0])
+            self.assertEqual(ecosystem._state()["agents"]["kontent"]["strikes"], 2)
+            with patch.object(team_hub, "agent_answer", return_value=long_answer), \
+                    patch("ali.service._ask_json", return_value={"score": 9, "critique": ""}):
+                lines = ecosystem.work_off(self._brain())
+            self.assertIn("qabul qilindi", lines[0])
+            self.assertNotIn("punish", ecosystem._state()["agents"]["kontent"])
+
+    def test_video_idea_stays_on_topic_without_ai(self):
+        topic = "Lidlar nega arzon lekin sotuv yo'q: lid sifati past, javob kech berilyapti, taklif aniq emas"
+        with patch("ali.service._ask_json", side_effect=RuntimeError("limit")):
+            got, src = daily_video.idea("x", topic)
+        self.assertEqual(src, "bilim")
+        self.assertIn("Lidlar", got["title"])
+        self.assertGreaterEqual(len(got["scenes"]), 3)
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

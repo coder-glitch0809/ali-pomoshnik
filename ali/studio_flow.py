@@ -345,6 +345,9 @@ def auto_edit(video, caption: str, src_id: int, notify, photos: list | None = No
     from . import outbox, tg_account
     from .skills.video_pro import video_pro
     paths = video if isinstance(video, list) else [video]
+    from .skills.music_lib import harvest_later
+    for one in paths:
+        harvest_later(one)  # kanalga tashlangan videoning musiqasi ham xotiraga
     notify(f"🎬 Kanaldagi {'albomni (' + str(len(paths)) + ' ta klip)' if len(paths) > 1 else 'videoni'} oldim - "
            "ko'rib chiqib montaj qilyapman (2-5 daqiqa)…")
     tmpdir = tempfile.TemporaryDirectory()
@@ -460,7 +463,9 @@ def learn(videos: list[str], caption: str, src_id: int | None, notify, on_done=N
     if not on_done:
         notify(f"🎓 Namuna videoni o'rganyapman ({len(videos)} ta) - kesimlar, ritm, effektlar, yozuvlar…")
     reports = []
+    from .skills.music_lib import harvest_later
     for v in videos:
+        harvest_later(v)  # har tashlangan videoning musiqasi xotiraga
         try:
             reports.append(style_text(analyze_style(v, LEARN.sub("", caption).strip())))
         except Exception as e:

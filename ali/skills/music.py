@@ -79,7 +79,11 @@ def generate(duration: float, mood: str = "cinematic", out: Path | None = None) 
 
 
 def for_video(duration: float, mood: str) -> tuple[str, str]:
-    """(trek yo'li, manba): kutubxona bo'lsa - undan, bo'lmasa sintez."""
+    """(trek yo'li, manba): egam videolaridan olingan musiqa -> kutubxona -> sintez."""
+    from . import music_lib
+    own = music_lib.choose(mood, duration)
+    if own:
+        return own, "egam videolaridagi musiqa"
     track = pick(mood)
     if track:
         return track, "kutubxona"

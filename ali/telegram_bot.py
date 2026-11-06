@@ -1435,6 +1435,8 @@ class TelegramBot(PublicTelegram, Listener):
         file = await media.get_file()
         name = getattr(media, "file_name", None) or f"video_{media.file_unique_id}.mp4"
         path = await asyncio.to_thread(ingest.save_upload, name, bytes(await file.download_as_bytearray()))
+        from .skills.music_lib import harvest_later
+        harvest_later(path)  # har tashlangan videoning musiqasi xotiraga
         task = m.caption or ""
         status = await m.reply_text("🎬 Video qabul qilindi. " + ("Topshiriq bo'yicha montaj qilyapman…" if task else
                                     "Professional Reels qilyapman: pauzalar kesiladi, zoom, animatsiyali subtitr, ovoz va rang (topshiriq bo'lsa - videoga izoh yozing)…"))

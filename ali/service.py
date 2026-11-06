@@ -177,6 +177,7 @@ NO_EXCUSE = ("\n\nHech qachon «vositalar ishlamayapti», «tizim tiklanganda qi
              "bunday va'da bajarilmaydi. Kod/funksiya o'zgarishi kerak bo'lsa: «Dasturchiga ayt: ...» deb yozing - Dasturchi "
              "darhol o'zi o'zgartiradi, de. Qolgan hamma narsani hozir bilimingdan to'liq bajar.")
 LOCAL_NOTE = ("\n\nBu suhbat javobi: bilimingdan to'liq javob ber. Fayl kerak bo'lsa, mazmunini matnda to'liq yoz."
+              "\nAgentlaring bilimiga va javoblariga ishon: ular o'z sohasida o'qitilgan, ularni rad etib qayta ishlama."
               + NO_EXCUSE + HIDE_SOURCE)
 
 
