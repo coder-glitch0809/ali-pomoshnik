@@ -258,6 +258,28 @@ class VideoOrderRoutingTests(unittest.TestCase):
             self.assertIsNone(daily_video.character())
 
 
+class StoryVideoTests(unittest.TestCase):
+    def test_layouts_vary_and_scenes_do_not_cover_each_other(self):
+        from ali import story_video
+        scenes = [{"voice": f"gap {k} bu yerda", "big": "x", "layout": "full"} for k in range(6)]
+        story_video.fix_layouts(scenes)
+        lays = [s["layout"] for s in scenes]
+        self.assertTrue(all(a != b for a, b in zip(lays, lays[1:])))  # ketma-ket takror yo'q
+        self.assertTrue(any(x != "full" for x in lays))
+        html, subs = story_video.page({"title": "t", "scenes": scenes}, [0, 2, 4, 6, 8, 10], [2] * 6,
+                                      [(None, "")] * 6, None, lambda s, k: "<div></div>")
+        import re
+        self.assertIsNone(re.search(r"hold [\d.]+s [\d.]+s both", html))  # sahna oldindan ko'rinib, keyingisini yopmaydi
+        self.assertIn("forwards", html)
+        self.assertGreater(len(subs), 6)
+
+    def test_fallback_script_without_ai(self):
+        from ali import story_video
+        got = story_video.fallback("Lid nega yo'q: javob kech, taklif zaif, auditoriya noto'g'ri")
+        self.assertGreaterEqual(len(got["scenes"]), 4)
+        self.assertTrue(all(s.get("image") for s in got["scenes"]))
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

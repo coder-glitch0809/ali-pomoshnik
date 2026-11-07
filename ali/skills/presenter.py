@@ -330,7 +330,7 @@ def html(rig: dict) -> str:
 <defs><linearGradient id="skinc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ecb88f"/><stop offset="1" stop-color="#d4966a"/></linearGradient></defs>
 {DEFS.format(denim=rig['denim'])}<g id="armg"></g></svg>
 <script>window.__rig=function(s){{var p=document.getElementById('pr');
-p.style.transform='translate('+s.x+'px,'+s.ty+'px) rotate('+s.tr+'deg)';
+p.style.transform='translate('+s.x+'px,'+s.ty+'px) rotate('+s.tr+'deg) scale('+(s.sc||1)+')';
 document.getElementById('hd').style.transform='rotate('+s.h+'deg) translateY('+s.n+'px)';
 var e=document.querySelectorAll('.fm');for(var i=0;i<e.length;i++)e[i].style.visibility=(i===s.m-1)?'visible':'hidden';
 var b=document.querySelector('.fb');if(b)b.style.visibility=s.b?'visible':'hidden';

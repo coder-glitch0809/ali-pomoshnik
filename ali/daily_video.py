@@ -346,6 +346,19 @@ def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS, face: li
 
 
 def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
+    """Bitta video: avval hikoya uslubi (har sahnaga gapga mos rasm, personaj joyi almashadi, subtitr, hook);
+    u ishlamasa - eski shablon (animatsiyali matn + diagrammalar)."""
+    from . import story_video
+    try:
+        return story_video.make(slot, notify, topic)
+    except Exception as e:
+        if "Ovoz yaratilmadi" in str(e):
+            raise
+        log.exception("Hikoya videosi chiqmadi - eski shablon")
+    return _make_classic(slot, notify, topic)
+
+
+def _make_classic(slot: str, notify=lambda text: None, topic: str = "") -> dict:
     """Bitta video: g'oya -> kod -> render -> musiqa. {path, idea, sources}."""
     from . import outbox, team_hub
     from .skills.music import for_video
