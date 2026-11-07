@@ -134,13 +134,14 @@ def features(mono: np.ndarray, rate: int = RATE) -> dict:
 
 def is_music(f: dict) -> bool:
     """Shovqin va sukunat emas: musiqada ohang keskin ajralib turadi (o'lchovlarda musiqa 160+, ko'cha shovqini 20-30)."""
-    return f["rms"] >= .012 and f["tonal"] >= 60
+    return f["rms"] >= .012 and f["tonal"] >= 100
 
 
 def mood_of(f: dict) -> str:
-    if f["rms"] >= .06 or (f["beat"] >= .25 and f["bpm"] >= 100):
+    """Tempo bo'yicha: tez - energetic, o'rtacha - cinematic, sekin va past - calm."""
+    if f["bpm"] >= 105:
         return "energetic"
-    return "calm" if f["rms"] < .03 else "cinematic"
+    return "calm" if f["bpm"] < 80 or f["rms"] < .03 else "cinematic"
 
 
 def _sign(mono: np.ndarray) -> list[float]:

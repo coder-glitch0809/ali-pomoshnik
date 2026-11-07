@@ -110,6 +110,52 @@ def build(image: Path) -> dict | None:
     }
 
 
+def _svg(body: str, w: int, h: int) -> str:
+    doc = f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">{body}</svg>'
+    return "data:image/svg+xml;base64," + base64.b64encode(doc.encode("utf-8")).decode()
+
+
+def vector_rig() -> dict:
+    """Ali o'zi chizgan personaj (Planet Print boshlovchisi): haqiqiy odam rasmi ishlatilmaydi. Qatlamlari foto rig bilan bir xil."""
+    w, h = round((1024 + PAD) * SCALE), round(1280 * SCALE)
+    cx = round(NECK_X * SCALE)
+    torso = (f'''<defs><linearGradient id="hd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b4a8f"/><stop offset="1" stop-color="#14224a"/></linearGradient>
+<linearGradient id="nk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9774a"/><stop offset=".5" stop-color="#d99a6c"/></linearGradient></defs>
+<rect x="{cx - 62}" y="440" width="124" height="190" rx="40" fill="url(#nk)"/>
+<path d="M{cx - 330} 922C{cx - 345} 730 {cx - 300} 640 {cx - 95} 575C{cx - 40} 625 {cx + 40} 625 {cx + 95} 575C{cx + 300} 640 {cx + 345} 730 {cx + 330} 922Z" fill="url(#hd)"/>
+<path d="M{cx - 108} 566C{cx - 70} 660 {cx + 70} 660 {cx + 108} 566C{cx + 140} 590 {cx + 120} 690 {cx} 716C{cx - 120} 690 {cx - 140} 590 {cx - 108} 566Z" fill="#203a78"/>
+<path d="M{cx - 34} 700V810M{cx + 34} 700V800" stroke="#ffb300" stroke-width="9" stroke-linecap="round"/>
+<circle cx="{cx - 34}" cy="818" r="10" fill="#ffb300"/><circle cx="{cx + 34}" cy="808" r="10" fill="#ffb300"/>''')
+    head = (f'''<defs><radialGradient id="fc" cx=".42" cy=".36" r=".75"><stop offset="0" stop-color="#f5c49a"/><stop offset=".75" stop-color="#e3a578"/><stop offset="1" stop-color="#c98757"/></radialGradient>
+<radialGradient id="ir" cx=".5" cy=".42" r=".6"><stop offset="0" stop-color="#7a4a24"/><stop offset="1" stop-color="#2d1a0d"/></radialGradient>
+<linearGradient id="hr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#46362d"/><stop offset="1" stop-color="#1f1612"/></linearGradient></defs>
+<ellipse cx="{cx - 168}" cy="318" rx="30" ry="44" fill="#d59463"/><ellipse cx="{cx + 168}" cy="318" rx="30" ry="44" fill="#d59463"/>
+<path d="M{cx - 160} 240C{cx - 170} 400 {cx - 110} 500 {cx} 510C{cx + 110} 500 {cx + 170} 400 {cx + 160} 240C{cx + 150} 110 {cx - 150} 110 {cx - 160} 240Z" fill="url(#fc)"/>
+<path d="M{cx - 172} 270C{cx - 196} 130 {cx - 90} 62 {cx + 10} 70C{cx + 130} 60 {cx + 200} 150 {cx + 172} 270C{cx + 158} 216 {cx + 130} 190 {cx + 88} 188C{cx + 20} 206 {cx - 70} 200 {cx - 112} 180C{cx - 140} 196 {cx - 160} 226 {cx - 172} 270Z" fill="url(#hr)"/>
+<path d="M{cx - 96} 262Q{cx - 66} 244 {cx - 34} 262M{cx + 34} 262Q{cx + 66} 244 {cx + 96} 262" fill="none" stroke="#2a1c16" stroke-width="13" stroke-linecap="round"/>
+<ellipse cx="{cx - 66}" cy="306" rx="33" ry="30" fill="#fff"/><ellipse cx="{cx + 66}" cy="306" rx="33" ry="30" fill="#fff"/>
+<circle cx="{cx - 62}" cy="308" r="20" fill="url(#ir)"/><circle cx="{cx + 62}" cy="308" r="20" fill="url(#ir)"/>
+<circle cx="{cx - 62}" cy="308" r="9" fill="#0d0705"/><circle cx="{cx + 62}" cy="308" r="9" fill="#0d0705"/>
+<circle cx="{cx - 55}" cy="300" r="6" fill="#fff"/><circle cx="{cx + 69}" cy="300" r="6" fill="#fff"/>
+<path d="M{cx - 14} 372Q{cx} 390 {cx + 14} 372" fill="none" stroke="#b97648" stroke-width="7" stroke-linecap="round"/>
+<ellipse cx="{cx - 112}" cy="378" rx="28" ry="17" fill="#e8795a" opacity=".28"/><ellipse cx="{cx + 112}" cy="378" rx="28" ry="17" fill="#e8795a" opacity=".28"/>
+<path d="M{cx - 46} 424Q{cx} 456 {cx + 46} 424" fill="none" stroke="#8a4a2c" stroke-width="8" stroke-linecap="round"/>''')
+    mouths = []
+    for k in range(1, len(th.LEVELS)):
+        rx, ry = 42 + k * 1.6, 5 + k * 4.2
+        my = 430 + k * 1.2
+        teeth = f'<clipPath id="m{k}"><ellipse cx="{cx}" cy="{my}" rx="{rx}" ry="{ry}"/></clipPath><rect x="{cx - rx}" y="{my - ry}" width="{2 * rx}" height="{min(ry * .55, 15):.1f}" fill="#fff8ee" clip-path="url(#m{k})"/>'
+        tongue = f'<ellipse cx="{cx}" cy="{my + ry * .75}" rx="{rx * .62}" ry="{ry * .42}" fill="#d9605d" clip-path="url(#m{k})"/>' if k > 2 else ""
+        mouths.append((_svg(f'<ellipse cx="{cx}" cy="{my}" rx="{rx + 3}" ry="{ry + 3}" fill="#8a4a2c"/><ellipse cx="{cx}" cy="{my}" rx="{rx}" ry="{ry}" fill="#4a1414"/>{teeth}{tongue}', w, h), 0, 0, w, h))
+    blink = _svg(f'<ellipse cx="{cx - 66}" cy="306" rx="36" ry="33" fill="#eab084"/><ellipse cx="{cx + 66}" cy="306" rx="36" ry="33" fill="#eab084"/>'
+                 f'<path d="M{cx - 98} 310Q{cx - 66} 330 {cx - 34} 310M{cx + 34} 310Q{cx + 66} 330 {cx + 98} 310" fill="none" stroke="#2a1c16" stroke-width="7" stroke-linecap="round"/>', w, h)
+    tex = Image.fromarray(np.clip(np.random.default_rng(7).normal(0, 7, (128, 128, 3)) + np.array([38, 62, 122]), 0, 255).astype(np.uint8))
+    buf = io.BytesIO()
+    tex.save(buf, "JPEG", quality=85)
+    return {"w": w, "h": h, "torso": _svg(torso, w, h), "head": _svg(head, w, h), "mouths": mouths, "blink": (blink, 0, 0, w, h),
+            "denim": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}
+
+
 DEFS = """<defs>
 <pattern id="denim" patternUnits="userSpaceOnUse" width="128" height="128"><image href="{denim}" width="128" height="128"/></pattern>
 <filter id="skin" filterUnits="userSpaceOnUse" x="-200" y="-200" width="1480" height="2320"><feGaussianBlur in="SourceAlpha" stdDeviation="7" result="b"/>
@@ -281,7 +327,7 @@ def html(rig: dict) -> str:
 <img src="{rig['torso']}" {base}>
 <div id="hd" {base.replace('style="', f'style="transform-origin:{px}px {py}px;')}><img src="{rig['head']}" {base}>{mouths}{blink}</div></div>
 <svg id="arms" width="1080" height="1920" style="position:absolute;left:0;top:0;overflow:visible">
-<defs><linearGradient id="skinc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d99a6c"/><stop offset="1" stop-color="#b97648"/></linearGradient></defs>
+<defs><linearGradient id="skinc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ecb88f"/><stop offset="1" stop-color="#d4966a"/></linearGradient></defs>
 {DEFS.format(denim=rig['denim'])}<g id="armg"></g></svg>
 <script>window.__rig=function(s){{var p=document.getElementById('pr');
 p.style.transform='translate('+s.x+'px,'+s.ty+'px) rotate('+s.tr+'deg)';

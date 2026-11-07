@@ -175,7 +175,9 @@ GEMINI_ROUTE_MODEL = "gemini-flash-lite-latest"  # dispetcher uchun eng tez mode
 
 NO_EXCUSE = ("\n\nHech qachon «vositalar ishlamayapti», «tizim tiklanganda qilaman», «eslab qoldim, keyin bajaramiz» dema - "
              "bunday va'da bajarilmaydi. Kod/funksiya o'zgarishi kerak bo'lsa: «Dasturchiga ayt: ...» deb yozing - Dasturchi "
-             "darhol o'zi o'zgartiradi, de. Qolgan hamma narsani hozir bilimingdan to'liq bajar.")
+             "darhol o'zi o'zgartiradi, de. Qolgan hamma narsani hozir bilimingdan to'liq bajar. "
+             "Vosita haqiqatan bajarmagan ishni «boshlandi», «generatorga berildi», «yig'ilyapti», «tayyorladim» deb YOZMA - "
+             "bu yolg'on; video, fayl yoki post sen yozgan matndan paydo bo'lmaydi.")
 LOCAL_NOTE = ("\n\nBu suhbat javobi: bilimingdan to'liq javob ber. Fayl kerak bo'lsa, mazmunini matnda to'liq yoz."
               "\nAgentlaring bilimiga va javoblariga ishon: ular o'z sohasida o'qitilgan, ularni rad etib qayta ishlama."
               + NO_EXCUSE + HIDE_SOURCE)
@@ -502,15 +504,10 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
                     recalled = f"⚠️ Brif tuzilmadi: {e}"
             # Video yaratish (video berilmagan): «targetolog haqida reels qilib ber» - Video montajchi noldan yasaydi
             from . import local_ai, montage
-            if not recalled and owner and not images and montage.is_creation(text):
-                # «video qilib ber» - jamoa tayyor video yasaydi (kontent -> animatsiya kodi -> personaj gapiradi ->
-                # musiqa -> kengash) va kanalga tashlaydi; fonda, 3-8 daqiqa
+            if not recalled and owner and not images:
+                # video buyurtmasi / holati - agent gapirib qolmaydi, haqiqiy navbatga tushadi
                 from . import daily_video
-                threading.Thread(target=daily_video.run, args=("Buyurtma", hub.notify, text), daemon=True,
-                                 name="video-order").start()
-                recalled = ("🎬 Qabul qildim - tayyor video yasayapman: Kontent-meyker matn yozadi, Dasturchi animatsiya "
-                            "kodini, personaj ovozda gapiradi, Montajchi musiqa qo'shadi, kengash baholaydi. 3-8 daqiqada "
-                            "@planetprint_reels kanaliga tashlayman va sizga yuboraman.")
+                recalled = daily_video.handle_text(text, hub.notify) or recalled
             elif not recalled and owner and not images and montage.is_query(text):
                 creating = montage.is_creation(text)
                 try:

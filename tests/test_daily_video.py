@@ -20,8 +20,9 @@ class DailyVideoTests(unittest.TestCase):
             daily_video.tick(print, datetime(2026, 11, 5, 11, 0, 30))
             daily_video.tick(print, datetime(2026, 11, 5, 11, 5))  # qayta yoqilgandek - takrorlanmaydi
             self.assertEqual(started, ["11:00"])
-            daily_video.tick(print, datetime(2026, 11, 6, 20, 0))  # kompyuter kun bo'yi o'chiq edi - eskisi o'tkaziladi
-            self.assertEqual(started, ["11:00"])
+            # kompyuter uxlagan: 10 soatdan eskisi (11:00) o'tkaziladi, 16:00 uyg'ongach yasaladi
+            daily_video.tick(print, datetime(2026, 11, 6, 23, 30))
+            self.assertEqual(started, ["11:00", "16:00"])
 
     def test_template_without_ai_has_all_scenes_and_cta(self):
         data = {**daily_video.IDEAS[1], "scenes": daily_video.IDEAS[1]["scenes"]}
@@ -227,6 +228,34 @@ class PunishmentTests(unittest.TestCase):
         self.assertEqual(src, "bilim")
         self.assertIn("Lidlar", got["title"])
         self.assertGreaterEqual(len(got["scenes"]), 3)
+
+
+class VideoOrderRoutingTests(unittest.TestCase):
+    def test_orders_reach_the_queue_not_the_agent(self):
+        started = []
+        with patch.object(daily_video, "run", side_effect=lambda slot, notify, topic: started.append(slot)), \
+                patch.object(daily_video.threading, "Thread") as th:
+            th.side_effect = lambda target, **kw: unittest.mock.MagicMock(start=target)
+            note = daily_video.handle_text("Жазони отаб срази 3та видеони килиб каналга ташлаб кой", print)
+        self.assertIn("3 ta video", note)
+        self.assertEqual(len(started), 3)
+        self.assertEqual(daily_video._jobs["active"], 0)
+
+    def test_status_and_other_text(self):
+        self.assertIn("video", daily_video.handle_text("Видео келмабти нега", print).lower())
+        self.assertEqual(daily_video.handle_text("Salom, bugun ishlar qanday", print), "")
+        self.assertEqual(daily_video.order_count("5 ta video qil"), 5)
+        self.assertEqual(daily_video.order_count("video qil"), 1)
+
+    def test_character_without_photo_is_drawn(self):
+        from ali.skills import presenter
+        rig = presenter.vector_rig()
+        self.assertEqual(len(rig["mouths"]), 7)
+        page = daily_video.template({**daily_video.IDEAS[0], "scenes": daily_video.IDEAS[0]["scenes"]}, 20, rig)
+        self.assertIn("image/svg+xml", page)
+        self.assertIn("__rig", page)
+        with tempfile.TemporaryDirectory() as d, patch.object(daily_video, "CHAR_DIR", Path(d)):
+            self.assertIsNone(daily_video.character())
 
 
 class ChatImportTests(unittest.TestCase):

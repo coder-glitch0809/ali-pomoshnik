@@ -1242,6 +1242,13 @@ class TelegramBot(PublicTelegram, Listener):
             if key != "ali":
                 team_hub.post("ali", f"👁 Nazorat: kanaldagi video montajga berildi - «{text[:200]}»", brain.agents)
             return True
+        from . import daily_video  # «video qil», «video qani» - qaysi mavzuda bo'lsa ham haqiqiy navbat va haqiqiy holat
+        note = daily_video.handle_text(text, hub.notify)
+        if note:
+            await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
+            await self.mark(msg, "👍")
+            team_hub.touch("video_montajchi")
+            return True
         if agent == "dasturchi" and not self_upgrade.is_request(text):  # Dasturchi mavzusiga boshqa agentning ishi yozilsa
             from .service import route
             other = await asyncio.to_thread(route, text, self._ready_apps())

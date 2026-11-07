@@ -20,7 +20,7 @@ from .config import config
 log = logging.getLogger("ali.daily_video")
 
 TIMES = ("11:00", "16:00")
-LATE = 3 * 3600  # vaqtidan 3 soatdan ko'p o'tib ketgan bo'lsa (kompyuter o'chiq edi) - o'tkazib yuboriladi
+LATE = 10 * 3600  # kompyuter uxlab qolgan bo'lsa uyg'ongach yasaydi; 10 soatdan ko'p o'tgan bo'lsa - o'tkazib yuboriladi
 STATE = config.data_dir / "daily_video.json"
 DURATION, FPS = 15, 30
 _lock = threading.Lock()
@@ -354,23 +354,23 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
                   + f"\n📣 {data.get('cta', '')}\n💡 {data.get('why', '')}\n(manba: {idea_src})")
     hero_file = character()
     with tempfile.TemporaryDirectory() as tmp:
-        voice, dur = _voice(data, Path(tmp)) if hero_file else (None, DURATION)  # personaj bor - u matnni ovozda aytadi
+        voice, dur = _voice(data, Path(tmp))  # personaj doim matnni ovozda aytadi
         hero, face = "", None
-        if hero_file:  # fonsiz qahramon, og'zi ovozga mos ochiladi, ko'z qisadi; orqasida mavzu motion-grafikasi
+        if True:  # egam rasm bermagan bo'lsa - Ali o'zi chizgan personaj; og'zi ovozga mos, qo'llari bilan ko'rsatadi
             from .skills import presenter, talking_head
             try:
-                rig = presenter.build(hero_file) if voice else None
+                rig = (presenter.build(hero_file) if hero_file else None) or presenter.vector_rig()
                 if rig:
                     hero = rig
                     face = presenter.frames(len(data["scenes"]) + 1, dur / (len(data["scenes"]) + 1), dur, FPS,
-                                            talking_head.levels(voice, dur, FPS), talking_head.blinks(dur, FPS))
+                                            talking_head.levels(voice, dur, FPS) if voice else [], talking_head.blinks(dur, FPS))
                 else:
                     hero = talking_head.build(hero_file, 900)
                     if voice and hero["mouths"]:
                         face = list(zip(talking_head.levels(voice, dur, FPS), talking_head.blinks(dur, FPS)))
             except Exception as e:
-                log.warning("Personaj jonlantirilmadi (%s) - oddiy rasm", e)
-                hero = _data_uri(hero_file)
+                log.warning("Personaj jonlantirilmadi (%s) - personajsiz", e)
+                hero = _data_uri(hero_file) if hero_file else ""
         # personajli video - Ali shabloni (matn har lahzada aniq ko'rinadi; AI kodi personaj bilan matnni xiralashtirib
         # qo'yardi), personajsiz - Dasturchi AI kodi (tekshiruv bilan)
         page, code_src = (template(data, dur, hero), "shablon + boshlovchi personaj (qo'llar) + diagrammalar"
@@ -424,16 +424,78 @@ def _voice(data: dict, tmp: Path) -> tuple[Path | None, float]:
     return path, max(DURATION, min(45.0, length + 1.5))
 
 
+# ---------- buyurtma: «video qil» qaysi chatda, qaysi agentga yozilsa ham - haqiqiy navbatga tushadi ----------
+_ORDER = re.compile(r"(video|видео|reels|рилс|ролик)\S*.{0,60}?(qil|қил|кил|tayyorla|тайёрла|таёрла|yasa|ясаб|ясаш|yarat|ярат)|"
+                    r"(qil|қил|кил|tayyorla|тайёрла|таёрла|yasa|ясаб)\S*.{0,30}?(video|видео|reels|рилс|ролик)", re.I | re.S)
+_ASK = re.compile(r"\b(nega|нега|qachon|қачон|nimaga|нимага|qani|қани)\b|\?\s*$", re.I)
+_LATEST = re.compile(r"(video|видео)\S*.{0,30}(jonat|жонат|йубор|юбор|yubor|tashla|ташла)", re.I | re.S)
+_WHERE = re.compile(r"(video|видео)\S*.{0,30}(kelma|келма|qani|қани|yo.?q|йўқ|йок|tayyor|таёр|тайёр)|"
+                    r"(qani|қани|nega|нега).{0,30}(video|видео)", re.I | re.S)
+_COUNT = re.compile(r"(\d{1,2})\s*(?:-?\s*(?:ta|та))?\s*\S{0,8}\s*(?:video|видео|reels|рилс)", re.I)
+_CHANNEL = re.compile(r"kanal|канал", re.I)
+_jobs = {"active": 0, "last_error": ""}
+
+
+def order_count(text: str) -> int:
+    m = _COUNT.search(text or "")
+    return max(1, min(5, int(m.group(1)))) if m else 1
+
+
+def status_text() -> str:
+    """Haqiqiy holat (agent taxmini emas)."""
+    hist = _state().get("history", [])
+    parts = [f"🎬 Hozir navbatda: {_jobs['active']} ta video." if _jobs["active"] else "🎬 Hozir video yasalmayapti."]
+    if hist:
+        parts.append(f"Oxirgi tayyor video: «{hist[-1].get('title', '')}» ({hist[-1].get('at', '')}).")
+    if _jobs["last_error"]:
+        parts.append(f"Oxirgi xato: {_jobs['last_error'][:300]}")
+    return "\n".join(parts)
+
+
+def latest_video() -> str:
+    from . import outbox
+    files = sorted(outbox.DIR.glob("pro_montaj_reels_*.mp4"), key=lambda f: f.stat().st_mtime) if outbox.DIR.is_dir() else []
+    return str(files[-1]) if files else ""
+
+
+def handle_text(text: str, notify) -> str:
+    """Egam matni video buyurtmasi, holat so'rovi yoki oxirgi videoni so'rash bo'lsa - shu yerda bajariladi (javob matni).
+    Boshqa gap - bo'sh satr (agent javob beraveradi)."""
+    text = text or ""
+    if _WHERE.search(text) and (_ASK.search(text) or not _ORDER.search(text)):
+        return status_text()
+    if _ORDER.search(text) and not _ASK.search(text):
+        n = order_count(text)
+        _jobs["active"] += n
+
+        def work():
+            for k in range(n):
+                run("Buyurtma" if n == 1 else f"Buyurtma {k + 1}/{n}", notify, text)
+                _jobs["active"] = max(0, _jobs["active"] - 1)
+        threading.Thread(target=work, daemon=True, name="video-order").start()
+        return (f"🎬 Buyurtma navbatga tushdi: {n} ta video. Har biri tayyor bo'lganda shu yerga va kanalga keladi "
+                f"(bittasi ~8-12 daqiqa). Holatini bilish uchun: «video qani».")
+    if _LATEST.search(text):
+        from . import studio_flow
+        path = latest_video()
+        if not path:
+            return "⚠️ Hali tayyor video yo'q."
+        studio_flow.send_files(f"🎬 Oxirgi tayyor video: {Path(path).name}", [path])
+        return "📤 Oxirgi tayyor videoni yuboryapman."
+    return ""
+
+
 def run(slot: str, notify, topic: str = "") -> None:
     """Videoni yasaydi va kanalga (yuborilmasa - navbatga) hamda egasiga yuboradi.
     topic - egam bergan mavzu: u o'zi kanalga so'ragan - kengash bahosi qanday bo'lsa ham joylanadi (baho hisobotda)."""
     from . import studio_flow, tg_account
-    if not _lock.acquire(blocking=False):
-        return
+    _lock.acquire()  # navbat: band bo'lsa kutadi - buyurtma yo'qolib ketmaydi
     try:
         res = make(slot, notify, topic)
+        _jobs["last_error"] = ""
     except Exception as e:
         log.exception("Kunlik video yasalmadi")
+        _jobs["last_error"] = str(e)[:400]
         notify(f"⚠️ {slot} kunlik video yasalmadi: {str(e)[:300]}")
         return
     finally:
