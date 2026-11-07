@@ -12,6 +12,7 @@ import logging
 import re
 import tempfile
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -222,7 +223,8 @@ def _base(scenes: list[dict], dur: float, extra_css: str, extra_html: str) -> st
     for k, s in enumerate(scenes):
         last = k == len(scenes) - 1
         anim = "inlast" if last else "scene"
-        blocks.append(f'<div class="s" style="animation: {anim} {step:.2f}s {k * step:.2f}s both '
+        lead = .2 if k else 0  # keyingi sahna oldingisi tugamasdan kiradi
+        blocks.append(f'<div class="s" style="animation: {anim} {step + lead:.2f}s {k * step - lead:.2f}s both '
                       f'cubic-bezier(.2,.8,.2,1)"><div class="big">{html_lib.escape(s["big"])}</div>'
                       f'<div class="small">{html_lib.escape(s.get("small", ""))}</div></div>')
     css.append("@keyframes scene{0%{opacity:0;transform:translateY(160px) scale(.9)}7%{opacity:1;transform:none}"
@@ -413,11 +415,16 @@ def _voice(data: dict, tmp: Path) -> tuple[Path | None, float]:
     from .skills.video_edit import info
     text = str(data.get("voice") or "").strip() or ". ".join(
         f"{s['big']}. {s.get('small', '')}".strip(". ") for s in data["scenes"]) + f". {data.get('cta', '')}"
-    try:
-        audio = asyncio.run(tts.synthesize(text))
-    except Exception as e:
-        log.warning("Personaj ovozi yaratilmadi: %s", e)
-        return None, DURATION
+    audio = None
+    for attempt in range(4):  # internet bir lahza uzilsa - ovozsiz video chiqmasin
+        try:
+            audio = asyncio.run(tts.synthesize(text))
+            break
+        except Exception as e:
+            log.warning("Personaj ovozi yaratilmadi (%s-urinish): %s", attempt + 1, e)
+            time.sleep(20 * (attempt + 1))
+    if not audio:
+        raise RuntimeError("Personaj ovozi yaratilmadi (internet?) - ovozsiz video chiqarilmadi")
     path = tmp / "voice.mp3"
     path.write_bytes(audio)
     length = info(path)["duration"]

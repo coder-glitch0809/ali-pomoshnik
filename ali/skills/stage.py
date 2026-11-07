@@ -176,14 +176,15 @@ def layer(scenes: list[dict], step: float, dur: float) -> tuple[str, str, str]:
         icon = "chat" if last and "visual" not in sc else motion_bg.pick(sc, used)
         used.append(icon)
         length = dur - start if last else step
+        lead = .3 if k else 0  # fon va panel oldingisi tugamasdan kiradi
         back.append(_backdrop(sc.get("backdrop") if sc.get("backdrop") in ("street", "night", "dash") else backdrop_of(icon),
-                              f"{'bdlast' if last else 'bdin'} {length:.2f}s {start:.2f}s both"))
+                              f"{'bdlast' if last else 'bdin'} {length + lead:.2f}s {start - lead:.2f}s both"))
         d = sc.get("diagram") if isinstance(sc.get("diagram"), dict) else {}
         kind = d.get("type") if d.get("type") in LABELS else BY_ICON.get(icon, "steps")
         labels = d.get("labels") if isinstance(d.get("labels"), list) else LABELS[kind]
         title = str(d.get("title") or TITLES.get(kind, ""))[:44]
         left = 40 if k % 2 == 0 else 540
-        anim = f"pin {length:.2f}s {start:.2f}s both" if not last else f"slidein .6s {start:.2f}s both"
+        anim = f"pin {length + lead:.2f}s {start - lead:.2f}s both" if not last else f"slidein .6s {start - lead:.2f}s both"
         panels.append(f'<div class="panel" style="left:{left}px;animation:{anim}"><div class="ptitle">{_esc(title)}</div>'
                       f'<svg viewBox="0 0 440 330"><defs><linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd54f"/>'
                       f'<stop offset="1" stop-color="#ff8f00"/></linearGradient></defs>{_diagram(kind, labels, start)}</svg>'
