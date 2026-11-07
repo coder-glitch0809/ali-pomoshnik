@@ -201,6 +201,11 @@ VOICE_HINT = ("Ali jamoasi. Sevara kontent-meyker, Oybek va Otabek video montajc
               "Dasturchiga ayt, video qil, ssenariy, montaj, kanalga joyla, Planet Print, target, reklama, pilon, lightbox.")
 
 
+def _fix_words() -> str:
+    from .. import voice_fixes
+    return voice_fixes.hint()
+
+
 def _whisper_text(audio: Path) -> str:
     """Ovozli xabar -> matn (kompyuterda, internetsiz). Jamoa ismlari va so'zlari bilan aniqroq."""
     global _voice_model
@@ -216,7 +221,8 @@ def _whisper_text(audio: Path) -> str:
                          capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
     samples = np.frombuffer(raw, np.int16).astype(np.float32) / 32768.0
     segments, _ = _voice_model.transcribe(samples, language="uz", vad_filter=True, beam_size=5,
-                                          condition_on_previous_text=False, initial_prompt=VOICE_HINT)
+                                          condition_on_previous_text=False,
+                                          initial_prompt=(VOICE_HINT + " " + _fix_words()).strip()[:900])
     return " ".join(g.text.strip() for g in segments if g.no_speech_prob < 0.6).strip()
 
 

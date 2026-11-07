@@ -305,6 +305,43 @@ class TeamFlowTests(unittest.TestCase):
         self.assertEqual(data["mood"], "calm")
 
 
+class VoiceFixAndCouncilTests(unittest.TestCase):
+    def test_voice_corrections_are_learned_and_applied(self):
+        from ali import voice_fixes
+        with tempfile.TemporaryDirectory() as d, patch.object(voice_fixes, "FILE", Path(d) / "v.json"):
+            pairs = voice_fixes.learn("Sevar es senari yasun, aybeik mantash kılsun",
+                                      "Sevara ssenariy yozsin, Oybek montaj qilsin")
+            self.assertIn(("aybeik", "Oybek"), [(a.lower(), b) for a, b in pairs])
+            self.assertEqual(voice_fixes.apply("aybeik bugun keladi"), "Oybek bugun keladi")
+            self.assertIn("Oybek", voice_fixes.hint())
+
+    def test_all_agents_take_part_in_council(self):
+        from types import SimpleNamespace
+        from ali import team_hub
+        agents = {k: SimpleNamespace(key=k, name=k, icon="•") for k in ("kontent", "dasturchi", "huquqshunos", "18-agent")}
+        asked = []
+        with patch.object(team_hub, "post"), patch.object(team_hub, "touch"):
+            team_hub.council("Yangi xizmat narxi qancha bo'lsin?", agents,
+                             ask=lambda key, text: asked.append(key) or "fikrim bor")
+        self.assertEqual(sorted(k for k in asked if k), ["dasturchi", "huquqshunos", "kontent"])
+
+
+class RemoteStreamTests(unittest.TestCase):
+    def test_stream_sends_length_prefixed_frames(self):
+        import struct
+        from fastapi.testclient import TestClient
+        import runtime
+        frames = iter([b"\xff\xd8one", b"\xff\xd8one", b"\xff\xd8two"])
+        with patch.object(runtime, "remote_allowed", return_value=True), \
+                patch("ali.remote_pc.frame", side_effect=lambda w, q: next(frames)), \
+                patch("starlette.requests.Request.is_disconnected", side_effect=[False, False, False, True]):
+            body = TestClient(runtime.app).get("/api/remote/stream?fps=20").content
+        n = struct.unpack(">I", body[:4])[0]
+        self.assertEqual(body[4:4 + n], b"\xff\xd8one")
+        self.assertIn(b"two", body)
+        self.assertEqual(body.count(b"one"), 1)  # o'zgarmagan kadr qayta yuborilmaydi
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

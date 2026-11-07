@@ -8,6 +8,7 @@
 import asyncio
 import html
 import logging
+import re
 import socket
 import threading
 import time
@@ -16,7 +17,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from ali import agents, auth, autopilot, plugins, providers, scheduler, tts
@@ -100,6 +101,8 @@ async def lifespan(_app):
 
 app = FastAPI(title="Ali", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=WEB), name="static")
+from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402 - JS/CSS/HTML siqiladi: tunnel orqali 3-4 baravar kam
+app.add_middleware(GZipMiddleware, minimum_size=800)
 
 
 @app.middleware("http")
@@ -108,9 +111,25 @@ async def fresh_assets(request: Request, call_next):
     bo'lsa 304 - tez). Aks holda yangilanishdan keyin localhost va boshqa manzillarda sayt har xil ko'rinadi."""
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/static/") or path in ("/", "/miniapp", "/login"):
+    if path.startswith("/static/") and request.url.query.startswith("v="):
+        # sahifa fayllarni versiya (o'zgargan vaqti) bilan so'raydi - telefon ularni qayta so'ramaydi, yangilansa versiya o'zgaradi
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith("/static/") or path in ("/", "/miniapp", "/login"):
         response.headers["Cache-Control"] = "no-cache"
     return response
+
+
+_STATIC = re.compile(r'(src|href)="/static/([^"?#]+)"')
+
+
+def versioned(name: str) -> HTMLResponse:
+    """HTML ichidagi /static/... havolalariga ?v=<o'zgargan vaqti> qo'shiladi."""
+    text = (WEB / name).read_text(encoding="utf-8")
+
+    def ver(m):
+        f = WEB / m.group(2)
+        return f'{m.group(1)}="/static/{m.group(2)}?v={int(f.stat().st_mtime)}"' if f.is_file() else m.group(0)
+    return HTMLResponse(_STATIC.sub(ver, text), headers={"Cache-Control": "no-cache"})
 
 from ali.mobile_api import router as mobile_router  # noqa: E402 - telefon ilovasi API'si
 app.include_router(mobile_router)
@@ -125,7 +144,7 @@ async def health():
 async def index(request: Request):
     if not is_authed(request.cookies):
         return RedirectResponse("/login")
-    return FileResponse(WEB / "index.html")
+    return versioned("index.html")
 
 
 @app.get("/privacy")
@@ -174,6 +193,39 @@ async def remote_frame(request: Request, w: int = 1280, q: int = 60):
     except Exception as e:
         return JSONResponse({'error': f'Ekran olinmadi: {e}'}, status_code=500)
     return Response(data, media_type='image/jpeg', headers={'Cache-Control': 'no-store'})
+
+
+@app.get('/api/remote/stream')
+async def remote_stream(request: Request, w: int = 960, q: int = 45, fps: int = 12):
+    """Uzluksiz ekran oqimi: har kadrni alohida so'rash shart emas (tunnel kechikishi har kadrga qo'shilmaydi).
+    Format: [4 bayt uzunlik][JPEG]...; ekran o'zgarmasa kadr yuborilmaydi (har 2 s da 0 uzunlikli «tirikman» belgisi)."""
+    if not remote_allowed(request):
+        return JSONResponse({'error': 'Faqat Telegram orqali (egasi) kiriladi'}, status_code=403)
+    import hashlib
+    import struct
+    from ali import remote_pc
+    gap = 1 / max(2, min(int(fps), 20))
+
+    async def frames():
+        last, quiet = b"", 0.0
+        while not await request.is_disconnected():
+            t = asyncio.get_running_loop().time()
+            try:
+                data = await asyncio.to_thread(remote_pc.frame, w, q)
+            except Exception:
+                await asyncio.sleep(1)
+                continue
+            sign = hashlib.md5(data).digest()
+            if sign != last:
+                last, quiet = sign, t
+                yield struct.pack(">I", len(data)) + data
+            elif t - quiet > 2:
+                quiet = t
+                yield struct.pack(">I", 0)
+            await asyncio.sleep(max(0.0, gap - (asyncio.get_running_loop().time() - t)))
+    # text/event-stream - Cloudflare tunnel bunday javobni bufferlamaydi, kadrlar darhol yetib boradi
+    return StreamingResponse(frames(), media_type='text/event-stream',
+                             headers={'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no'})
 
 
 @app.post('/api/remote/input')

@@ -574,7 +574,25 @@ class TelegramBot(PublicTelegram, Listener):
         await update.message.reply_text(f"Standart ovozga qaytildi ({config.tts_voice}). Namunalar saqlanib qoldi.")
 
     # ---------- xabarlar ----------
+    async def voice_correction(self, update: Update, ctx) -> bool:
+        """Egam botning «🎙 ...» xabariga javob qilib to'g'ri matnni yozdi: farqni eslab qoladi va to'g'ri matnni bajaradi."""
+        from . import team_hub, voice_fixes
+        msg = update.message
+        ref = getattr(msg, "reply_to_message", None) if msg else None
+        if not (ref and ref.from_user and ref.from_user.is_bot and (ref.text or "").startswith("🎙")
+                and update.effective_user and update.effective_user.id == self.owner_id and msg.text):
+            return False
+        pairs = voice_fixes.learn(ref.text[1:].strip(), msg.text)
+        await msg.reply_text(("✅ Eslab qoldim, endi to'g'ri yozaman: " + ", ".join(f"«{a}» → «{b}»" for a, b in pairs))
+                             if pairs else "✅ Tushundim, to'g'ri matn bo'yicha bajaraman.")
+        if update.effective_chat and update.effective_chat.id == team_hub.chat_id():
+            await self.team_text(update, ctx, msg.text)
+        else:
+            await self.process(update, ctx, msg.text)
+        return True
+
     async def on_text(self, update: Update, ctx):
+        if await self.voice_correction(update, ctx): return  # ovoz noto'g'ri tanilgan - egam to'g'riladi
         if await self.team_text(update, ctx): return  # «Ali jamoasi» guruhidagi mavzular
         if not self.is_private(update):
             # PR media guruhi yoki boshqa guruhlardan faqat egasini belgilab yoki egasining xabariga javob yozgandagina xabar olinadi

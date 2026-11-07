@@ -89,7 +89,48 @@
       if (spent < 60) await new Promise(s => setTimeout(s, 60 - spent));
     }
   }
-  function loop() { for (let k = 0; k < 3; k++) worker(); }
+  function show(blob) {
+    const url = URL.createObjectURL(blob);
+    img.src = url; if (lastUrl) URL.revokeObjectURL(lastUrl); lastUrl = url;
+    msg.style.display = 'none'; dot.classList.add('live'); frames++;
+  }
+  // Uzluksiz oqim: kompyuter kadrlarni o'zi yuboradi (har kadrga alohida so'rov yo'q) - tunnel orqali ham tez
+  async function stream() {
+    let got = 0;
+    const started = performance.now();
+    try {
+      const r = await fetch(`/api/remote/stream?w=${hd ? 1600 : 960}&q=${hd ? 70 : 45}&fps=12`, { cache: 'no-store' });
+      if (r.status === 403) { if (!triedLogin) { triedLogin = true; if (await login()) return stream(); } return false; }
+      if (!r.ok || !r.body) return false;
+      const reader = r.body.getReader(); window._rd = reader;
+      let buf = new Uint8Array(0);
+      const watchdog = setTimeout(() => { if (!got) reader.cancel(); }, 6000);
+      while (running) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const merged = new Uint8Array(buf.length + value.length); merged.set(buf); merged.set(value, buf.length); buf = merged;
+        while (buf.length >= 4) {
+          const n = ((buf[0] << 24) | (buf[1] << 16) | (buf[2] << 8) | buf[3]) >>> 0;
+          if (buf.length < 4 + n) break;
+          if (n) { show(new Blob([buf.slice(4, 4 + n)], { type: 'image/jpeg' })); got++; }
+          buf = buf.slice(4 + n);
+        }
+      }
+      clearTimeout(watchdog);
+      reader.cancel().catch(() => {});
+    } catch { }
+    return got > 0 || performance.now() - started > 15000;
+  }
+  async function loop() {
+    while (running) {
+      const ok = await stream();
+      if (!running) return;
+      if (!ok) { for (let k = 0; k < 3; k++) worker(); return; }  // oqim ishlamadi - kadrma-kadr
+      if (hdChanged) { hdChanged = false; continue; }
+      await new Promise(s => setTimeout(s, 800));  // oqim uzildi - qayta ulanadi
+    }
+  }
+  let hdChanged = false;
   setInterval(() => { fpsEl.textContent = frames + ' kadr/s'; frames = 0; }, 1000);
   document.addEventListener('visibilitychange', () => { if (document.hidden) running = false; else if (!running) { running = true; loop(); } });
 
@@ -130,7 +171,7 @@
 
   document.getElementById('mode').onclick = (e) => { mode = (mode + 1) % MODES.length; e.target.textContent = MODES[mode][1]; e.target.classList.toggle('on', mode !== 0); view.style.touchAction = MODES[mode][0] === 'drag' ? 'none' : 'pan-x pan-y'; };
   document.querySelector('[data-zoom]').onclick = (e) => { zoom = zoom >= 3 ? 1 : zoom + 1; img.style.width = (zoom * 100) + '%'; e.target.textContent = `🔍 ${zoom}x`; };
-  document.getElementById('quality').onclick = (e) => { hd = !hd; e.target.classList.toggle('on', hd); say(hd ? 'Yuqori sifat' : 'Tez rejim'); };
+  document.getElementById('quality').onclick = (e) => { hd = !hd; hdChanged = true; if (window._rd) window._rd.cancel().catch(() => {}); e.target.classList.toggle('on', hd); say(hd ? 'Yuqori sifat' : 'Tez rejim'); };
   document.querySelectorAll('[data-scroll]').forEach(b => b.onclick = () => send({ type: 'scroll', dy: +b.dataset.scroll }));
   document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => { send({ type: 'key', keys: b.dataset.key }); say(b.textContent); });
   document.getElementById('typeForm').onsubmit = (e) => { e.preventDefault(); const t = document.getElementById('text'); if (t.value) { send({ type: 'type', text: t.value }); say('⌨️ Yozildi'); t.value = ''; } };

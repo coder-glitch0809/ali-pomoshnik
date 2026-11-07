@@ -248,13 +248,14 @@ def can_transcribe() -> bool:
 def transcribe(audio: bytes, filename: str = "audio.webm") -> str:
     """Ovozni matnga aylantiradi (brauzer tanimasa va Telegram ovozli xabarlari uchun): Gemini, u ishlamasa (limit,
     internet) - kompyuterning o'zidagi Whisper (bepul, internetsiz)."""
+    from . import voice_fixes
     try:
         text = _gemini_transcribe(audio, filename) if config.gemini_api_key else ""
         if text:
-            return text
+            return voice_fixes.apply(text)
     except Exception as e:
         log.info("Gemini ovozni tanimadi (%s) - Whisper", str(e)[:150])
-    return local_transcribe(audio, filename)
+    return voice_fixes.apply(local_transcribe(audio, filename))
 
 
 def local_transcribe(audio: bytes, filename: str = "audio.ogg") -> str:
@@ -268,6 +269,11 @@ def local_transcribe(audio: bytes, filename: str = "audio.ogg") -> str:
         return _whisper_text(path)
 
 
+def _voice_words() -> str:
+    from . import voice_fixes
+    return voice_fixes.hint() or "-"
+
+
 def _gemini_transcribe(audio: bytes, filename: str) -> str:
     from google.genai import types
 
@@ -277,7 +283,8 @@ def _gemini_transcribe(audio: bytes, filename: str) -> str:
         [
             types.Part.from_bytes(data=audio, mime_type=mime),
             ("Bu audioni so'zma-so'z matnga yoz (asosan o'zbek tilida, ba'zan rus so'zlari bilan). Raqamlarni raqam bilan yoz "
-             "(«nol» - 0, «yuz ming» - 100 000). Faqat matnni qaytar, boshqa hech narsa yozma."),
+             "(«nol» - 0, «yuz ming» - 100 000). Faqat matnni qaytar, boshqa hech narsa yozma. "
+             "Jamoa ismlari: Sevara, Otabek, Oybek, Jasur, Ulug'bek, Ali. Egam ko'p aytadigan so'zlar: " + _voice_words()),
         ],
     )
     return (response.text or "").strip()

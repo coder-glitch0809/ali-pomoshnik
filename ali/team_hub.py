@@ -421,26 +421,31 @@ def council(question: str, agents: dict, members: list[str] | None = None, ready
             ask=None) -> str:
     """Agentlar navbat bilan fikr bildiradi (har biri oldingilarni ko'radi), Ali qaror chiqaradi.
     Hammasi «Maslahat kengashi» mavzusiga yoziladi; qaror Ali mavzusiga ham. Qaror matnini qaytaradi."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     ask = ask or (lambda key, text: agent_answer(key, text, ready_apps))
-    members = [k for k in (members or pick_members(question, agents)) if k in agents]
-    post("maslahat", f"🤝 Yangi masala: {question[:1500]}\n\nKengash: " + ", ".join(label(k, agents) for k in members),
-         agents)
+    # egam: muhokamada HAMMA agentlar qatnashsin (18+ agent bundan mustasno); bir vaqtda - kutish uzaymasin
+    members = [k for k in (members or [k for k in agents if k != "18-agent"]) if k in agents]
+    post("maslahat", f"🤝 Yangi masala: {question[:1500]}\n\nKengash ({len(members)} agent): "
+         + ", ".join(label(k, agents) for k in members), agents)
     opinions = []
-    for key in members:
-        previous = "\n\n".join(opinions) or "(hali hech kim gapirmadi - birinchi bo'lib sen)"
-        try:
-            reply = ask(key, COUNCIL_TASK.format(owner=config.user_name, question=question, previous=previous,
-                                                 me=label(key, agents)))
-        except Exception as e:
-            log.warning("Maslahatda %s javob bermadi: %s", key, e)
-            reply = ""
-        if not reply.strip():
-            skipped(key)
-            post("maslahat", f"🔇 {label(key, agents)} maslahatda qatnashmadi.", agents)
-            continue
-        touch(key, "maslahat")
-        opinions.append(f"{label(key, agents)}: {reply.strip()}")
-        post("maslahat", f"{label(key, agents)}:\n{reply.strip()}", agents)
+
+    def one(key):
+        return key, ask(key, COUNCIL_TASK.format(owner=config.user_name, question=question, me=label(key, agents),
+                                                 previous="(hamma bir vaqtda fikr bildiryapti - o'z sohangdan ayt)"))
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for job in as_completed([pool.submit(one, k) for k in members]):
+            try:
+                key, reply = job.result()
+            except Exception as e:
+                log.warning("Maslahatda agent javob bermadi: %s", e)
+                continue
+            if not (reply or "").strip():
+                skipped(key)
+                post("maslahat", f"🔇 {label(key, agents)} maslahatda qatnashmadi.", agents)
+                continue
+            touch(key, "maslahat")
+            opinions.append(f"{label(key, agents)}: {reply.strip()}")
+            post("maslahat", f"{label(key, agents)}:\n{reply.strip()}", agents)
     if not opinions:
         return "Maslahat bo'lmadi: hech bir agent javob bermadi (AI ulanishini tekshiring)."
     decision = ask(None, SUMMARY_TASK.format(ali=config.assistant_name, question=question,
