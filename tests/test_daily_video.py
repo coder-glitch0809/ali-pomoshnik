@@ -280,6 +280,31 @@ class StoryVideoTests(unittest.TestCase):
         self.assertTrue(all(s.get("image") for s in got["scenes"]))
 
 
+class TeamFlowTests(unittest.TestCase):
+    def test_voice_falls_back_to_local_whisper(self):
+        from ali import providers
+        with patch("ali.providers._gemini_transcribe", side_effect=RuntimeError("429")),                 patch("ali.providers.local_transcribe", return_value="dasturchiga ayt tugma qo'sh") as local,                 patch.object(providers.config, "gemini_api_key", "x"):
+            self.assertEqual(providers.transcribe(b"ogg", "voice.ogg"), "dasturchiga ayt tugma qo'sh")
+        local.assert_called_once()
+
+    def test_oybek_is_montajchi_and_plan_is_applied(self):
+        from types import SimpleNamespace
+        from ali import story_video, team_hub
+        agents = {"video_montajchi": SimpleNamespace(key="video_montajchi", name="Video montajchi", icon="🎬"),
+                  "kontent": SimpleNamespace(key="kontent", name="Kontent", icon="✍️")}
+        self.assertEqual(team_hub.addressed("Oybek, Sevaraning ssenariysini ol", agents), "video_montajchi")
+        data = {"scenes": [{"voice": "a", "layout": "full"}, {"voice": "b", "layout": "full"}]}
+        plan = {"scenes": [{"image": "wide establishing shot of a dark street with shops", "layout": "host_left",
+                            "move": "pan_left", "transition": "zoom"}, {"layout": "full", "move": "zoom_in"}],
+                "mood": "calm", "notes": "subtitr katta"}
+        with patch("ali.service._ask_json", return_value=plan):
+            notes, src = story_video.montage_plan(data, [])
+        self.assertEqual(src, "AI")
+        self.assertEqual(data["scenes"][0]["move"], "kb_left")
+        self.assertEqual(data["scenes"][0]["transition"], "t_zoom")
+        self.assertEqual(data["mood"], "calm")
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

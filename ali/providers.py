@@ -246,9 +246,29 @@ def can_transcribe() -> bool:
 
 
 def transcribe(audio: bytes, filename: str = "audio.webm") -> str:
-    """Ovozni matnga aylantiradi (brauzer tanimasa va Telegram ovozli xabarlari uchun) - Gemini orqali."""
-    if not config.gemini_api_key:
-        raise RuntimeError("Ovozni tanish uchun GEMINI_API_KEY kerak")
+    """Ovozni matnga aylantiradi (brauzer tanimasa va Telegram ovozli xabarlari uchun): Gemini, u ishlamasa (limit,
+    internet) - kompyuterning o'zidagi Whisper (bepul, internetsiz)."""
+    try:
+        text = _gemini_transcribe(audio, filename) if config.gemini_api_key else ""
+        if text:
+            return text
+    except Exception as e:
+        log.info("Gemini ovozni tanimadi (%s) - Whisper", str(e)[:150])
+    return local_transcribe(audio, filename)
+
+
+def local_transcribe(audio: bytes, filename: str = "audio.ogg") -> str:
+    import tempfile
+    from pathlib import Path
+
+    from .skills.video_edit import _whisper_text
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / ("voice." + (filename.rsplit(".", 1)[-1] or "ogg"))
+        path.write_bytes(audio)
+        return _whisper_text(path)
+
+
+def _gemini_transcribe(audio: bytes, filename: str) -> str:
     from google.genai import types
 
     mime = MIME.get(filename.rsplit(".", 1)[-1].lower(), "audio/ogg")

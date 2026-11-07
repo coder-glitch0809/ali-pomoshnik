@@ -1200,7 +1200,7 @@ class TelegramBot(PublicTelegram, Listener):
         self.check_group_bg(update, ch["title"])
         return True
 
-    async def team_text(self, update: Update, ctx) -> bool:
+    async def team_text(self, update: Update, ctx, spoken: str | None = None) -> bool:
         """«Ali jamoasi» guruhidagi xabar: agent mavzusi - o'sha agent javob beradi, Maslahat - kengash,
         Telegram nazorati - guruh tekshirish, 5-D sinf - sinf tekshiruvi, Ali/umumiy - Ali javob beradi."""
         from . import team_hub
@@ -1211,7 +1211,7 @@ class TelegramBot(PublicTelegram, Listener):
         if not msg or not update.effective_user or update.effective_user.id != self.owner_id:
             return True  # guruhda faqat egasi buyruq beradi
         await self.mark(msg, "👀")  # «ko'rdim» - Ali xabarni oldi (botlar Telegram'da ikki ptichka qo'ya olmaydi)
-        text = msg.text or ""
+        text = spoken if spoken is not None else (msg.text or "")  # ovozli xabar - tanilgan matni
         thread = msg.message_thread_id if getattr(msg, "is_topic_message", False) else None
         key = team_hub.topic_key(thread)
         from .service import brain
@@ -1249,11 +1249,10 @@ class TelegramBot(PublicTelegram, Listener):
             await self.mark(msg, "👍")
             team_hub.touch("video_montajchi")
             return True
-        if agent == "dasturchi" and not self_upgrade.is_request(text):  # Dasturchi mavzusiga boshqa agentning ishi yozilsa
-            from .service import route
-            other = await asyncio.to_thread(route, text, self._ready_apps())
-            agent = other if other and other != "dasturchi" else agent
-        if agent == "dasturchi" or self_upgrade.is_request(text):  # Dasturchi gapirib qolmaydi - kodni o'zi o'zgartiradi
+        # Dasturchi mavzusiga yozilgan har topshiriq - Dasturchining o'ziga (boshqa agentga burilmaydi); faqat savol
+        # («...?», buyruqsiz) bo'lsa - Dasturchi o'zi javob beradi
+        question = text.rstrip().endswith("?") and not self_upgrade.is_request(text)
+        if (key == "dasturchi" and not question) or (agent == "dasturchi" and not question) or self_upgrade.is_request(text):
             team_hub.touch("dasturchi")
             if key != "ali":
                 team_hub.post("ali", f"👁 Nazorat: {team_hub.label('dasturchi', brain.agents)} ga kod topshirig'i - "
@@ -1507,6 +1506,27 @@ class TelegramBot(PublicTelegram, Listener):
         await self.process(update, ctx, f"{question}\n\n[Fayl: {doc.file_name}]\n{text[:12000]}")
 
     async def on_voice(self, update: Update, ctx):
+        from . import team_hub
+        chat, user = update.effective_chat, update.effective_user
+        if chat and user and chat.id == team_hub.chat_id() and user.id == self.owner_id:  # «Ali jamoasi» guruhida ovozli buyruq
+            media = update.message.voice or update.message.audio
+            await self.mark(update.message, "👀")
+            file = await media.get_file()
+            data = bytes(await file.download_as_bytearray())
+            ext = (file.file_path or "voice.ogg").rsplit(".", 1)[-1].lower()
+            try:
+                text = await asyncio.to_thread(providers.transcribe, data, f"voice.{ext if ext in ('ogg', 'oga', 'mp3', 'm4a', 'wav') else 'ogg'}")
+            except Exception as e:
+                await update.message.reply_text(f"⚠️ Ovozni tanib bo'lmadi: {str(e)[:300]}")
+                await self.mark(update.message, "🤔")
+                return
+            if not text:
+                await update.message.reply_text("Ovozdan gap ajrata olmadim - qaytadan ayting.")
+                await self.mark(update.message, "🤔")
+                return
+            await update.message.reply_text(f"🎙 <i>{html.escape(text)}</i>", parse_mode=ParseMode.HTML)
+            await self.team_text(update, ctx, text)
+            return
         if self.is_private(update) and update.effective_user.id!=self.owner_id:
             await update.message.reply_text('Hozircha savolingizni matn qilib yuboring. Ovozli xizmat administrator uchun yoqilgan.',reply_markup=self.keyboard())
             return

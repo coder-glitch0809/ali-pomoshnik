@@ -148,7 +148,7 @@ _CYR = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэ�
                 ["a", "b", "v", "g", "d", "e", "yo", "j", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r", "s", "t", "u",
                  "f", "x", "ts", "ch", "sh", "sh", "", "i", "", "e", "yu", "ya", "o", "q", "g", "h"]))
 EXTRA = {"kontent": ("kontent meyker", "kontent maker", "kontentchi", "kontent"), "dasturchi": ("programmist", "dasturchi"),
-         "video_montajchi": ("montajchi", "montaj"), "telegram_nazoratchi": ("nazoratchi",), "dizayner": ("dizayner", "dizaynir"),
+         "video_montajchi": ("montajchi", "montaj", "oybek", "ойбек"), "telegram_nazoratchi": ("nazoratchi",), "dizayner": ("dizayner", "dizaynir"),
          "yangiliklar": ("kutubxonachi",), "ingliz_tili": ("ingliz",), "rus_tili": ("rus tili",)}
 
 

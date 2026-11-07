@@ -195,6 +195,31 @@ WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")  # kompyuterda: tiny/base/sm
 _whisper = None
 
 
+_voice_model = None
+VOICE_MODEL = os.getenv("WHISPER_VOICE_MODEL", "medium")  # ovozli buyruqlar uchun aniqroq model
+VOICE_HINT = ("Ali jamoasi. Sevara kontent-meyker, Oybek va Otabek video montajchi, Jasur dasturchi, Ulug'bek nazoratchi. "
+              "Dasturchiga ayt, video qil, ssenariy, montaj, kanalga joyla, Planet Print, target, reklama, pilon, lightbox.")
+
+
+def _whisper_text(audio: Path) -> str:
+    """Ovozli xabar -> matn (kompyuterda, internetsiz). Jamoa ismlari va so'zlari bilan aniqroq."""
+    global _voice_model
+    from faster_whisper import WhisperModel
+    if _voice_model is None:
+        try:
+            _voice_model = WhisperModel(VOICE_MODEL, device="cpu", compute_type="int8")
+        except Exception as e:  # yuklab bo'lmadi - kichik model
+            log.warning("Whisper %s yuklanmadi (%s) - %s", VOICE_MODEL, e, WHISPER_MODEL)
+            _voice_model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
+    import numpy as np
+    raw = subprocess.run([ffmpeg(), "-hide_banner", "-i", str(audio), "-f", "s16le", "-ac", "1", "-ar", "16000", "-"],
+                         capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
+    samples = np.frombuffer(raw, np.int16).astype(np.float32) / 32768.0
+    segments, _ = _voice_model.transcribe(samples, language="uz", vad_filter=True, beam_size=5,
+                                          condition_on_previous_text=False, initial_prompt=VOICE_HINT)
+    return " ".join(g.text.strip() for g in segments if g.no_speech_prob < 0.6).strip()
+
+
 def _whisper_srt(audio: Path) -> str:
     """Kompyuterning o'zida (internetsiz, bepul) nutq -> SRT: faster-whisper. Gemini limiti tugasa ishlatiladi."""
     global _whisper

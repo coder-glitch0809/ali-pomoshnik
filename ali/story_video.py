@@ -48,6 +48,54 @@ FAQAT JSON: {{"title": "...", "hook": "...", "scenes": [{{"voice": "...", "big":
 "cta": "...", "caption": "Instagram matni", "hashtags": "#...", "mood": "energetic|cinematic|calm", "why": "1 gap"}}"""
 
 
+PLAN = """{agent}
+
+Sen Video montajchisan. Kontent-meyker (Sevara) Reels ssenariysini berdi. Uni ko'rib chiq va MONTAJ REJASINI tuz - keyin
+Dasturchi aynan shu reja bo'yicha animatsiya qiladi. Sevaraning gaplarini (voice) o'zgartirma.
+Har sahna uchun:
+- "image": rasm tavsifi (INGLIZCHA) - gapga aniq mos, KADR TURI bilan: wide establishing shot / close-up of object /
+  over-the-shoulder / top-down / medium shot. Ketma-ket sahnalarda kadr turi va joy almashsin, hamma joyda bir odamning
+  yuzi bo'lmasin (buyum, joy, ko'cha, telefon ekrani ham bo'lsin).
+- "layout": full | host_left | host_right | host_center | host_corner (personaj joyi almashsin, ba'zan ko'rinmasin).
+- "move": zoom_in | zoom_out | pan_left | pan_right | tilt_up (kamera harakati).
+- "transition": fade | slide | zoom | up (oldingi sahnadan o'tish; urg'uli joyda zoom, hikoya davomida slide).
+Ssenariy: {script}
+FAQAT JSON: {{"scenes": [{{"image": "...", "layout": "...", "move": "...", "transition": "..."}}], "mood": "energetic|cinematic|calm",
+"notes": "Dasturchiga 1-2 gap: nimaga e'tibor bersin"}}"""
+
+MOVE_OF = {"zoom_in": "kb_in", "zoom_out": "kb_out", "pan_left": "kb_left", "pan_right": "kb_right", "tilt_up": "kb_up"}
+TRANS_OF = {"fade": "t_fade", "slide": "t_slide", "zoom": "t_zoom", "up": "t_up"}
+
+
+def montage_plan(data: dict, ready: list[str]) -> tuple[str, str]:
+    """Video montajchi ssenariyni ko'rib chiqadi: kadr turi, personaj joyi, kamera harakati, o'tishlar. (izoh, manba)."""
+    import json as _json
+
+    from .daily_video import _agent
+    from .service import _ask_json
+    brief = [{"voice": s["voice"], "image": s.get("image", ""), "layout": s.get("layout", "")} for s in data["scenes"]]
+    try:
+        got = _ask_json(PLAN.format(agent=_agent("video_montajchi")[:3500], script=_json.dumps(brief, ensure_ascii=False)),
+                        ready, 240)
+        plan = [p for p in got.get("scenes", []) if isinstance(p, dict)]
+    except Exception as e:
+        log.info("Montaj rejasi AI'siz: %s", e)
+        got, plan = {}, []
+    for s, p in zip(data["scenes"], plan):
+        if len(str(p.get("image", ""))) > 20:
+            s["image"] = str(p["image"])[:600]
+        if p.get("layout") in LAYOUTS:
+            s["layout"] = p["layout"]
+        if p.get("move") in MOVE_OF:
+            s["move"] = MOVE_OF[p["move"]]
+        if p.get("transition") in TRANS_OF:
+            s["transition"] = TRANS_OF[p["transition"]]
+    if got.get("mood") in ("energetic", "cinematic", "calm"):
+        data["mood"] = got["mood"]
+    fix_layouts(data["scenes"])
+    return str(got.get("notes", ""))[:400], ("AI" if plan else "o'z qoidasi")
+
+
 def script(topic: str, previous: str, ready: list[str]) -> tuple[dict, str]:
     """Kontent-meyker ssenariysi: (ssenariy, manba). AI band bo'lsa - mavzu va bilimdan sodda ssenariy."""
     from .daily_video import _agent
@@ -258,8 +306,9 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
     parts, subs = [], []
     for k, s in enumerate(data["scenes"]):
         st, ln = starts[k], lengths[k]
-        trans = "t_fade" if k == 0 else TRANS[(k + rnd.randint(0, 3)) % len(TRANS)]
-        move = MOVES[(k * 2 + rnd.randint(0, 4)) % len(MOVES)]
+        # Montajchi rejasi bo'lsa - o'sha, bo'lmasa o'zgaruvchan
+        trans = "t_fade" if k == 0 else (s.get("transition") if s.get("transition") in TRANS else TRANS[(k + rnd.randint(0, 3)) % len(TRANS)])
+        move = s.get("move") if s.get("move") in MOVES else MOVES[(k * 2 + rnd.randint(0, 4)) % len(MOVES)]
         pic = pics[k][0]
         if pic:
             import base64
@@ -410,11 +459,18 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
     from .skills.video_pro import video_pro
     st = daily_video._state()
     previous = "; ".join(h["title"] for h in st.get("history", [])[-12:])
-    data, src = script(topic, previous, daily_video._ready())
+    ready = daily_video._ready()
+    data, src = script(topic, previous, ready)
     scenes = data["scenes"]
+    sevara, otabek, jasur = (team_hub.name_of(k) for k in ("kontent", "video_montajchi", "dasturchi"))
     team_hub.feed("kontent", f"{slot} Reels ssenariysi", f"🎬 {data.get('title', '')}\n"
-                  + "\n".join(f"{k + 1}. [{s['layout']}] {s['voice']}  🖼 {s.get('image', '')[:90]}" for k, s in enumerate(scenes))
-                  + f"\n(manba: {src})")
+                  + "\n".join(f"{k + 1}. {s['voice']}" for k, s in enumerate(scenes))
+                  + f"\n(manba: {src})\n\n➡️ {otabek}, ssenariy tayyor - montaj rejasini tuz.")
+    notes, plan_src = montage_plan(data, ready)  # Otabek Sevaraning ssenariysi bilan ishlaydi
+    team_hub.feed("video_montajchi", f"{slot} Montaj rejasi ({sevara}ning ssenariysi asosida)",
+                  "\n".join(f"{k + 1}. [{s['layout']}, {s.get('move', '-')}, {s.get('transition', '-')}] 🖼 {s.get('image', '')[:110]}"
+                             for k, s in enumerate(scenes)) + f"\n(manba: {plan_src})\n\n➡️ {jasur}, shu reja bo'yicha animatsiya qil."
+                  + (f" {notes}" if notes else ""))
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         voice, lengths = voices(scenes, tmp)
@@ -432,8 +488,9 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
         mouth = talking_head.levels(voice, dur, FPS)
         frames = host_frames(scenes, starts, lengths, FPS, mouth, talking_head.blinks(dur, FPS))
         html, subs = page(data, starts, lengths, pics, rig, drawn)
-        team_hub.feed("dasturchi", f"{slot} Reels sahifasi", f"{len(scenes)} sahna, {dur:.0f} s, rasm: {got}/{len(scenes)} "
-                      f"({', '.join(art) or 'chizilgan fon'})")
+        team_hub.feed("dasturchi", f"{slot} Animatsiya ({otabek}ning montaj rejasi bo'yicha)",
+                      f"{len(scenes)} sahna, {dur:.0f} s: rejadagi kamera harakatlari va o'tishlar, personaj joylari, "
+                      f"so'zma-so'z subtitr. Rasmlar: {got}/{len(scenes)} ({', '.join(art) or 'chizilgan fon'}).")
         raw = tmp / "anim.mp4"
         render(html, raw, dur, frames, subs)
         spoken = tmp / "spoken.mp4"
