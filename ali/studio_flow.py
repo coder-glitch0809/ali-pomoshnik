@@ -363,12 +363,7 @@ def auto_edit(video, caption: str, src_id: int, notify, photos: list | None = No
     start = outbox.mark()
     try:
         r = plan.get("render") if isinstance(plan.get("render"), dict) else {}
-        if not music:  # paketda trek yo'q - kutubxonadan yoki sintez (mualliflik huquqi muammosiz)
-            from .skills.music import for_video, mood_of
-            from .skills.video_edit import info
-            mood = "cinematic" if str(r.get("grade")) == "cinematic" else mood_of(caption)
-            music, src = for_video(info(Path(video))["duration"] + 2, mood)
-            notify(f"🎵 Musiqa: {mood} ({src})")
+        music = ""  # fon musiqasi qo'yilmaydi (paketdagi trek ham ishlatilmaydi) - faqat ovoz
         result = video_pro(video, hook=plan.get("hook", ""), cta=plan.get("cta", ""), music=music,
                            cut_silence=bool(plan.get("cut_silence", len(paths) == 1)),
                            subtitles=bool(r.get("subtitles", True)), progress_bar=bool(r.get("progress_bar", True)),

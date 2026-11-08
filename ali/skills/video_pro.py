@@ -12,6 +12,8 @@ from pathlib import Path
 from . import skill
 from .video_edit import FPS, H, W, _done, _fit, _out, _run, _src, _srt, info
 
+BG_MUSIC = False  # videolarda fon musiqasi yo'q (egam qoidasi); True qilinsa musiqa yana qo'shiladi
+
 ACCENT = "&H0000E5FF"  # aytilayotgan so'z rangi (ASS BGR: sariq)
 _TS = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)")
 _EMOJI = re.compile("[\U00010000-\U0010FFFF☀-➿️‍]")
@@ -158,6 +160,8 @@ def video_pro(path: str = "oxirgi", hook: str = "", cta: str = "", music: str = 
               subtitles: bool = True, progress_bar: bool = True, grade: str = "natural", fade: bool = False,
               fps: int = FPS, uhd: bool = False) -> str:
     src, out, notes = _src(path), _out("pro montaj reels"), []
+    if music and not BG_MUSIC:  # egam qoidasi: videolarda fon musiqasi bo'lmaydi - faqat ovoz (diktor)
+        music = ""
     i = info(src)
     # faqat aniq 9:16 bo'lsa to'ldirib kesiladi; boshqa nisbat (3:4, kvadrat, gorizontal) - kesilmaydi, xira fon bilan
     vertical = i["width"] and abs(i["height"] / i["width"] - 16 / 9) < 0.03

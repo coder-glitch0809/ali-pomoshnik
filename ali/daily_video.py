@@ -30,7 +30,7 @@ IDEA = """{agent}
 
 Sen Kontent-meykersan. Planet Print (tashqi reklama: pilon, lightbox, hajmli harflar, banner, vizitka; Beshariq) uchun
 bugungi {slot} Reels'ining g'oyasini tuz. {topic} Video - animatsiyali matn va grafika (motion design), {dur}-30 soniya (videoda aniq soniyani yozma);
-ekranda Planet Print personaji (3D multfilm qahramon) bor va u matnni ovoz chiqarib aytadi, ostida musiqa. Tomoshabin 1-2 soniyada to'xtashi, oxirigacha ko'rishi va direktga yozishi kerak.
+ekranda Planet Print personaji (3D multfilm qahramon) bor va u matnni ovoz chiqarib aytadi (fon musiqasi yo'q). Tomoshabin 1-2 soniyada to'xtashi, oxirigacha ko'rishi va direktga yozishi kerak.
 Haftalik Instagram audit xulosasi (shunga tayan):
 {audit}
 Oldingi videolar (TAKRORLAMA): {previous}
@@ -407,8 +407,7 @@ def _make_classic(slot: str, notify=lambda text: None, topic: str = "") -> dict:
             _run(["-i", str(raw), "-i", str(voice), "-map", "0:v", "-map", "1:a", "-c:v", "copy",
                   "-af", f"apad=whole_dur={dur:.2f}", "-t", f"{dur:.2f}", "-c:a", "aac", "-ar", "48000", str(spoken)])
             raw = spoken
-        music, music_src = for_video(dur + 2, data.get("mood") if data.get("mood") in ("energetic", "cinematic", "calm")
-                                     else "energetic")
+        music, music_src = "", "yo'q (faqat ovoz)"  # fon musiqasi qo'yilmaydi
         start = outbox.mark()
         video_pro(str(raw), music=music, cut_silence=False, subtitles=False, progress_bar=False)
         made = [f for f in outbox.since(start) if f.suffix == ".mp4"]
@@ -526,7 +525,7 @@ def run(slot: str, notify, topic: str = "") -> None:
     from . import team_hub
     from .service import brain
     about = (f"«{data.get('title', '')}». Hook: {data.get('hook', '')}. Sahnalar: "
-             + "; ".join(s["big"] for s in data["scenes"]) + f". CTA: {data.get('cta', '')}. {DURATION} s animatsiya, musiqa.")
+             + "; ".join(s["big"] for s in data["scenes"]) + f". CTA: {data.get('cta', '')}. {DURATION} s animatsiya, faqat ovoz.")
     decision, score = team_hub.review_video(res["path"], about, brain.agents, _ready())
     verdict = f"\n\n🤝 Kengash bahosi: {score:g}/10" if score is not None else ""
     if score is not None and score < 5 and not topic:

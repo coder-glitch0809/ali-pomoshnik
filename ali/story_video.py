@@ -496,8 +496,7 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
         spoken = tmp / "spoken.mp4"
         _run(["-i", str(raw), "-i", str(voice), "-map", "0:v", "-map", "1:a", "-c:v", "copy",
               "-af", f"apad=whole_dur={dur:.2f}", "-t", f"{dur:.2f}", "-c:a", "aac", "-ar", "48000", str(spoken)])
-        mood = data.get("mood") if data.get("mood") in ("energetic", "cinematic", "calm") else "energetic"
-        music, music_src = for_video(dur + 2, mood)
+        music, music_src = "", "yo'q (faqat ovoz)"  # fon musiqasi qo'yilmaydi
         start = outbox.mark()
         video_pro(str(spoken), music=music, cut_silence=False, subtitles=False, progress_bar=False)
         made = [f for f in outbox.since(start) if f.suffix == ".mp4"]

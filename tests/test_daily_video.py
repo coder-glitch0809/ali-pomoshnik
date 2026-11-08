@@ -190,6 +190,12 @@ class MusicMemoryTests(unittest.TestCase):
             self.assertNotEqual(second, third)
 
 
+class NoBackgroundMusicTests(unittest.TestCase):
+    def test_video_pro_fon_musiqasi_o_chirilgan(self):
+        from ali.skills import video_pro as vp
+        self.assertFalse(vp.BG_MUSIC)  # egam qoidasi: videolarda faqat ovoz, musiqa yo'q
+
+
 class PunishmentTests(unittest.TestCase):
     def _brain(self):
         from types import SimpleNamespace
