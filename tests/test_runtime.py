@@ -1044,6 +1044,36 @@ class RuntimeTests(unittest.TestCase):
             self.assertIn("8 sahifali", text)
         self.assertTrue(brandbook._lum("#14202B") < 110 <= brandbook._lum("#F28C28"))
 
+    def test_design_files_pdf_and_brand_3d(self):
+        import tempfile
+        from ali import outbox
+        from ali.skills import REGISTRY, design_files
+        for name in ("make_pdf", "images_to_pdf", "design_brand_3d"):
+            self.assertIn(name, REGISTRY)
+        with tempfile.TemporaryDirectory() as d, patch.object(outbox, "DIR", Path(d)):
+            start = outbox.mark()
+            text = design_files.make_pdf("Brend taklifi", [
+                {"heading": "Konsept", "paragraphs": ["Matn " * 80], "bullets": ["bir", "ikki"],
+                 "table": [["Rang", "HEX"], ["Okean", "#0B3C5D"]]}], subtitle="RAVON", color="#0B3C5D")
+            pdfs = [p for p in outbox.since(start) if p.suffix == ".pdf"]
+            self.assertEqual(len(pdfs), 1, text)
+            from pypdf import PdfReader
+            self.assertGreaterEqual(len(PdfReader(pdfs[0]).pages), 2)  # muqova + mazmun
+            made = design_files.design_brand_3d("RAVON\nTRAVEL", depth_mm=40, plate=True)
+            files = {p.suffix: p for p in outbox.since(start) if p.stem.startswith("RAVON")}
+            self.assertEqual(sorted(files), [".dxf", ".mtl", ".obj", ".png"], made)
+            obj = files[".obj"].read_text()
+            self.assertIn("usemtl plate", obj)
+            self.assertGreater(obj.count("\nf "), 500)
+            import ezdxf
+            msp = ezdxf.readfile(files[".dxf"]).modelspace()
+            self.assertEqual(len(msp.query("MESH")), 1)
+            self.assertGreaterEqual(len(msp.query("LWPOLYLINE")), 10)  # harf konturlari (teshiklar bilan)
+            merged = design_files.images_to_pdf([str(files[".png"]), str(pdfs[0])], "Hammasi")
+            self.assertIn("2 fayl", merged)
+        self.assertIn("topilmadi", design_files.images_to_pdf(["/yo'q/fayl.png"]))
+        self.assertIn("Harflar", design_files.design_brand_3d("   "))
+
     def test_interior_render_and_cdr_tools(self):
         import tempfile
         from ali import outbox

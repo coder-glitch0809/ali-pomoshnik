@@ -137,7 +137,7 @@ def hint(text: str, team: dict) -> str:
         lines.append(f"Dizayn so'rovi (reja/3D, interer, do'kon joylashuvi, reklama/hajmli harflar, logotip, brendbuk yoki video): "
                      f"ask_agent bilan '{DESIGNER}' (🎨 Dizayner) agentiga to'liq topshir. Foydalanuvchi rasm yuborgan bo'lsa, "
                      "rasmlarni batafsil tasvirlab (o'lchamlar, devorlar, derazalar, uslub, ranglar) topshiriqqa qo'sh. "
-                     "Agent design_floor_plan / design_signage / make_brandbook / make_promo_video va Photoshop, CorelDRAW, AutoCAD, 3ds Max vositalari bilan haqiqiy fayllar yaratsin.")
+                     "Agent design_floor_plan / design_signage / make_brandbook / make_pdf / design_brand_3d / make_promo_video va Photoshop, CorelDRAW, AutoCAD, 3ds Max vositalari bilan haqiqiy fayllar (PDF, SVG, CDR, DXF, OBJ) yaratsin - matn bilan cheklanmasin.")
         lines.append("Fayllar javob bilan birga foydalanuvchiga AVTOMATIK yuboriladi: havola to'qima, qisqa ayt nima tayyorlandi.")
         return "\n".join(lines) + "\n\n"
     if "pptx" in kinds and DESIGNER in team:
