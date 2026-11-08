@@ -365,3 +365,34 @@ def restart_later(delay: float = 3.0) -> None:
                          creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
         os._exit(0)
     threading.Thread(target=go, daemon=True).start()
+
+
+def run_background(task: str, notify, confirm=None) -> str:
+    """Veb/mini-app'dan buyruq: matn qaytarmasdan Dasturchi ishni fonda o'zi bajaradi, natijani notify bilan aytadi.
+    "auto" ruxsatda testlar o'tsa o'zi qo'llaydi; "ask" bo'lsa confirm(name, args) -> bool bilan so'raydi."""
+    task = extract_task(task)
+    if len(task) < 10:
+        return "Nimani o'zgartiray? Vazifani batafsilroq yozing."
+    if _lock.locked():
+        return "Hozir boshqa kuchaytirish ketyapti - tugashini kuting."
+
+    def work() -> None:
+        try:
+            res = run(task, lambda note: None)
+            if not res["ok"]:
+                notify(f"❌ Testlar o'tmadi - o'zgarish bekor qilindi, Ali avvalgidek ishlayapti.\n🧪 {res['tests']}")
+                return
+            if not auto_apply() and not (confirm and confirm("ali_kuchaytirish", {"vazifa": task[:200], "testlar": res["tests"]})):
+                discard(res["id"])
+                notify("Tasdiqlanmadi - o'zgarish qo'llanmadi.")
+                return
+            pushed = apply(res["id"])
+            notify(f"🚀 Dasturchi bajardi va qo'lladi ({pushed}). Testlar: {res['tests']}.\n\n{res['report'][-1500:]}\n\n"
+                   "5 soniyada qayta ishga tushaman…")
+            restart_later(5)
+        except Exception as e:
+            log.exception("Fonda kuchaytirish xatosi")
+            notify(f"⚠️ Dasturchi vazifani bajara olmadi: {str(e)[:600]}")
+
+    threading.Thread(target=work, daemon=True, name="ali-upgrade-bg").start()
+    return "👨‍💻 Dasturchi ishga tushdi - o'zi bajaradi va tugagach xabar beraman (10-40 daqiqa)."

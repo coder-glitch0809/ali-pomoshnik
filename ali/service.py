@@ -542,8 +542,8 @@ async def run_ask(text: str, images: list[dict] | None = None, deep: bool = Fals
             # O'zini kuchaytirish tasdiq tugmalari bilan Telegram'da ishlaydi
             from . import self_upgrade
             if not recalled and owner and source != "telegram" and self_upgrade.is_request(text):
-                recalled = ("👨‍💻 O'zimni kuchaytirishni Telegram'da bajaraman (u yerda tasdiq tugmasi bor):\n"
-                            f"/kuchaytir {self_upgrade.extract_task(text)[:300]}")
+                recalled = await asyncio.to_thread(self_upgrade.run_background, text, hub.notify,
+                                                   lambda name, args: hub.confirm(name, args, timeout=600))
             # Instagram audit: "instagramimni tahlil qil" - postlarni ko'rib, aniq tavsiyalar
             from . import instagram_audit
             if not recalled and owner and not images and instagram_audit.is_query(text) and "reja" not in text.lower():

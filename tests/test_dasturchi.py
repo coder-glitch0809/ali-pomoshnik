@@ -8,6 +8,17 @@ import test_runtime  # noqa: F401 - vaqtinchalik ALI_STATE_DIR va test sozlamala
 from ali import self_upgrade as su
 
 
+class BackgroundTests(unittest.TestCase):
+    def test_short_task_asks_details_and_long_task_starts_thread(self):
+        with patch.object(su, "run") as run:
+            self.assertIn("batafsil", su.run_background("tuzat", lambda t: None))
+            run.assert_not_called()
+        with patch.object(su.threading, "Thread") as th:
+            msg = su.run_background("dasturchiga ayt: ob-havo buyrug'iga prognoz qo'sh", lambda t: None)
+            th.return_value.start.assert_called_once()
+            self.assertIn("ishga tushdi", msg)
+
+
 class DasturchiTests(unittest.TestCase):
     def test_owner_orders_to_dasturchi_start_upgrade(self):
         self.assertTrue(su.is_request("Али дастурчига айт pr media гурухидан менга нарса ташламасин, шуни тогирласин"))
