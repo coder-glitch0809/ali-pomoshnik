@@ -113,6 +113,23 @@ def corel_open(path: str) -> str:
 
 
 @skill(
+    description="Tayyor .svg (logotip, reklama) yoki .pdf (brendbuk) faylni CorelDRAW'da ochib, tahrirlanadigan .cdr "
+                "qilib saqlaydi va foydalanuvchiga yuboradi. make_brandbook / design_signage dan keyin ishlating.",
+    params={"path": {"type": "string", "description": "Manba fayl (.svg, .pdf, .ai, .png) to'liq yo'li"}},
+)
+def corel_to_cdr(path: str) -> str:
+    file = Path(path).expanduser()
+    if not file.is_file():
+        return f"Fayl topilmadi: {path}"
+    cdr = outbox.new_path(file.stem, "cdr")
+    run_ps(_app() + f"$doc = $app.OpenDocument({ps_str(file)})\n{_save('$doc', cdr, 'cdr')}$doc.Close()\n", timeout=300)
+    if not cdr.exists():
+        raise RuntimeError("CorelDRAW .cdr saqlamadi")
+    outbox.register(cdr)
+    return f"CDR tayyor (CorelDRAW'da tahrirlanadi): {cdr.name}"
+
+
+@skill(
     description="CorelDRAW'dagi ochiq (faol) hujjatni faylga eksport qiladi va foydalanuvchiga yuboradi.",
     params={"format": {"type": "string", "enum": ["png", "jpg", "pdf", "cdr"], "description": "Fayl turi"}},
 )

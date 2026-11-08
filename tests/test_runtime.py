@@ -1044,6 +1044,26 @@ class RuntimeTests(unittest.TestCase):
             self.assertIn("8 sahifali", text)
         self.assertTrue(brandbook._lum("#14202B") < 110 <= brandbook._lum("#F28C28"))
 
+    def test_interior_render_and_cdr_tools(self):
+        import tempfile
+        from ali import outbox
+        from ali.skills import REGISTRY, design_interior
+        with tempfile.TemporaryDirectory() as d, patch.object(outbox, "DIR", Path(d)):
+            start = outbox.mark()
+            text = design_interior.design_interior_render(
+                "Ofis", brand="RAVON", wall_text="Safar boshlandi", window_text="OCHIQ",
+                furniture=[{"kind": "counter", "x": .3, "color": "#0B3C5D"}, {"kind": "shelf", "x": .8}, {"kind": "bad"}])
+            names = sorted(p.name for p in outbox.since(start))
+            self.assertEqual(len(names), 2, text)
+            self.assertTrue(any("tun" in n for n in names) and any("kun" in n for n in names))
+            self.assertIn("counter", text)
+            self.assertNotIn("bad", text)
+        dizayner = agents._parse("dizayner", (Path(__file__).resolve().parents[1] / "agents" / "dizayner.md").read_text(encoding="utf-8"))
+        self.assertIn("design_interior_render", dizayner.tools)
+        self.assertIn("corel_to_cdr", dizayner.tools)
+        import ali.plugins.coreldraw  # noqa: F401
+        self.assertIn("corel_to_cdr", REGISTRY)
+
     def test_coach_agent_and_improve_skills_are_registered(self):
         from ali.skills import REGISTRY
         coach = agents._parse("murabbiy", (Path(__file__).resolve().parents[1] / "agents" / "murabbiy.md").read_text(encoding="utf-8"))
