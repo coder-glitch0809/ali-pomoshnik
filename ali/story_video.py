@@ -148,9 +148,22 @@ def fix_layouts(scenes: list[dict]) -> None:
 
 
 # ---------- rasmlar ----------
-def _pollinations(prompt: str, seed: int) -> bytes:
+POLL_MODELS = ("flux", "turbo")  # bepul Pollinations: avval sifatli flux, band bo'lsa tezkor turbo
+NEGATIVE = "blurry, low quality, distorted face, extra fingers, deformed hands, text, watermark, logo"
+_poll_lock = threading.Lock()  # bepul xizmat bir vaqtda bitta so'rov qabul qiladi
+
+
+def refine(prompt: str) -> str:
+    """Rasm tavsifini tozalaydi va sifat so'zlarini qo'shadi (tavsif bo'sh yoki juda uzun bo'lmasin)."""
+    p = re.sub(r"\s+", " ", prompt or "").strip().strip(".")
+    p = p[:500] or "Uzbek small business street"
+    return f"{p}. Sharp focus, professional composition, high detail. {STYLE}"
+
+
+def _pollinations(prompt: str, seed: int, model: str = "flux", size: tuple = (1080, 1920)) -> bytes:
     url = ("https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt[:900])
-           + f"?width=1080&height=1920&nologo=true&model=flux&seed={seed}")
+           + f"?width={size[0]}&height={size[1]}&nologo=true&model={model}&seed={seed}"
+           + "&negative=" + urllib.parse.quote(NEGATIVE))
     req = urllib.request.Request(url, headers={"User-Agent": "AliAssistant/1.0"})
     with urllib.request.urlopen(req, timeout=150) as r:
         data = r.read()
@@ -159,24 +172,38 @@ def _pollinations(prompt: str, seed: int) -> bytes:
     return data
 
 
-def _fit(data: bytes) -> bytes:
-    """1080x1920 ga to'ldirib kesadi (pastdagi xizmat belgisi kesiladi)."""
+def good(data: bytes) -> bool:
+    """Yaroqli rasmmi: ochiladi, yetarlicha katta va bir tekis bo'sh (oq/qora/kulrang) kadr emas."""
+    try:
+        from PIL import Image, ImageStat
+        im = Image.open(io.BytesIO(data)).convert("L")
+        if min(im.size) < 256:
+            return False
+        return max(ImageStat.Stat(im.resize((64, 64))).stddev) > 6
+    except Exception:
+        return False
+
+
+def _fit(data: bytes, crop_mark: bool = False) -> bytes:
+    """1080x1920 ga to'ldirib kesadi. crop_mark - faqat bepul xizmat rasmlarida pastdagi belgi kesiladi."""
     from PIL import Image
     im = Image.open(io.BytesIO(data)).convert("RGB")
     w, h = im.size
-    im = im.crop((0, 0, w, int(h * .93)))  # bepul xizmat belgisi pastki o'ngda
-    w, h = im.size
+    if crop_mark:
+        im = im.crop((0, 0, w, int(h * .93)))  # bepul xizmat belgisi pastki o'ngda
+        w, h = im.size
     scale = max(1080 / w, 1920 / h)
     im = im.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
     left, top = (im.width - 1080) // 2, (im.height - 1920) // 2
     buf = io.BytesIO()
-    im.crop((left, top, left + 1080, top + 1920)).save(buf, "JPEG", quality=88)
+    im.crop((left, top, left + 1080, top + 1920)).save(buf, "JPEG", quality=92)
     return buf.getvalue()
 
 
 def image(prompt: str, seed: int = 7) -> tuple[Path | None, str]:
-    """Sahna rasmi (kesh bilan): (fayl, manba). Hech biri ishlamasa (None, '')."""
-    full = f"{prompt.strip()}. {STYLE}"
+    """Sahna rasmi (kesh bilan): (fayl, manba). Hech biri ishlamasa (None, '').
+    Tartib: Gemini/ChatGPT -> Pollinations (flux, turbo; kichikroq o'lcham bilan ham) - yaroqsiz rasm keyingisiga o'tkazadi."""
+    full = refine(prompt)
     ART.mkdir(parents=True, exist_ok=True)
     path = ART / (hashlib.sha1(f"{full}|{seed}".encode()).hexdigest()[:16] + ".jpg")
     if path.exists():
@@ -189,34 +216,41 @@ def image(prompt: str, seed: int = 7) -> tuple[Path | None, str]:
         pass
     for name, fn in sources:
         try:
-            path.write_bytes(_fit(fn(full + " Vertical 9:16.")))
+            data = fn(full + " Vertical 9:16.")
+            if not good(data):
+                raise RuntimeError("rasm yaroqsiz (bo'sh yoki juda kichik)")
+            path.write_bytes(_fit(data))
             return path, name
         except Exception as e:
             log.info("Rasm %s: %s", name, str(e)[:120])
-    for attempt in range(5):
+    tries = [(m, sz) for sz in ((1080, 1920), (768, 1344)) for m in POLL_MODELS]
+    for attempt, (model, size) in enumerate(tries):
         try:
-            path.write_bytes(_fit(_pollinations(full, seed)))
+            with _poll_lock:
+                data = _pollinations(full, seed + attempt, model, size)
+            if not good(data):
+                raise RuntimeError("rasm yaroqsiz")
+            path.write_bytes(_fit(data, crop_mark=True))
             return path, "Pollinations"
         except Exception as e:  # 402/429 - navbat band, biroz kutadi
-            log.info("Pollinations (%s): %s", attempt + 1, e)
-            time.sleep(6 * (attempt + 1))
+            log.info("Pollinations %s (%s): %s", model, attempt + 1, e)
+            time.sleep(4 * (attempt + 1))
     return None, ""
 
 
 def images(scenes: list[dict], seed: int) -> list[tuple[Path | None, str]]:
-    """Hamma sahna rasmlari parallel (3 tadan)."""
+    """Hamma sahna rasmlari parallel (3 tadan): API rasmlari birga, bepul Pollinations navbat bilan."""
     out: list = [None] * len(scenes)
-    sem = threading.Semaphore(1)  # bepul xizmat bir vaqtda bitta so'rov qabul qiladi
+    sem = threading.Semaphore(3)
 
     def one(k):
         with sem:
-            out[k] = image(str(scenes[k].get("image") or scenes[k].get("big") or "Uzbek small business street"), seed + k)
-            time.sleep(1.5)
+            out[k] = image(str(scenes[k].get("image") or scenes[k].get("big") or "Uzbek small business street"), seed + k * 11)
     threads = [threading.Thread(target=one, args=(k,), daemon=True) for k in range(len(scenes))]
     for t in threads:
         t.start()
     for t in threads:
-        t.join(400)
+        t.join(600)
     return [o or (None, "") for o in out]
 
 

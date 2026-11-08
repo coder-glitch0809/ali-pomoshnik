@@ -103,5 +103,34 @@ class StudioDeliveryTests(unittest.TestCase):
                 self.assertEqual(post.call_count, 2)  # matn + video
 
 
+class StoryImageTests(unittest.TestCase):
+    def test_good_rejects_blank_and_fit_makes_vertical(self):
+        import io
+        from PIL import Image
+        from ali import story_video as sv
+        blank, busy = io.BytesIO(), io.BytesIO()
+        Image.new("RGB", (512, 512), "white").save(blank, "PNG")
+        im = Image.new("RGB", (512, 512), "white")
+        for x in range(0, 512, 32):
+            for y in range(0, 512, 32):
+                im.paste((10, 10, 10), (x, y, x + 16, y + 16))
+        im.save(busy, "PNG")
+        self.assertFalse(sv.good(blank.getvalue()))
+        self.assertTrue(sv.good(busy.getvalue()))
+        self.assertEqual(Image.open(io.BytesIO(sv._fit(busy.getvalue()))).size, (1080, 1920))
+        self.assertIn("Sharp focus", sv.refine("  a shop owner. "))
+
+    def test_blank_api_image_is_rejected(self):
+        import io
+        from PIL import Image
+        from ali import story_video as sv
+        blank = io.BytesIO()
+        Image.new("RGB", (600, 900), "white").save(blank, "PNG")
+        with tempfile.TemporaryDirectory() as d, patch.object(sv, "ART", Path(d)), \
+                patch("ali.providers.image_sources", return_value=[("Sinov", lambda p: blank.getvalue())]), \
+                patch.object(sv, "_pollinations", side_effect=RuntimeError("band")), patch.object(sv.time, "sleep"):
+            self.assertEqual(sv.image("shop", 1), (None, ""))
+
+
 if __name__ == "__main__":
     unittest.main()

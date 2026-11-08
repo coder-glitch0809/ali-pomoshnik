@@ -1246,6 +1246,8 @@ class TelegramBot(PublicTelegram, Listener):
         if not agent:  # Ali/umumiy mavzuda «Sevara, ...», «Kontent meyker ...», «Dasturchiga ayt ...» - to'g'ridan-to'g'ri agentga
             agent = team_hub.addressed(text, brain.agents)
         from . import self_upgrade, studio_flow
+        # Dasturchi mavzusi / kod topshirig'i - «video» so'zi bo'lsa ham video navbatiga ketmaydi
+        coder_task = key == "dasturchi" or agent == "dasturchi" or self_upgrade.is_request(text)
         if studio_flow.LINK.search(text):  # jamoa guruhidagi har bir video havolasi - namuna: uslubi o'rganiladi
             note = await asyncio.to_thread(studio_flow.learn_link, text, hub.notify, self._reply_later(msg))
             await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
@@ -1253,7 +1255,7 @@ class TelegramBot(PublicTelegram, Listener):
                 await self.mark(msg, "🤔")
             team_hub.touch("video_montajchi", "organish")
             return True
-        if studio_flow.is_edit_request(text):  # «kanaldagi videoni ko'r, montaj qil» - qaysi mavzuda bo'lsa ham montajchi
+        if not coder_task and studio_flow.is_edit_request(text):  # «kanaldagi videoni ko'r, montaj qil» - qaysi mavzuda bo'lsa ham montajchi
             note = await asyncio.to_thread(studio_flow.edit_latest, hub.notify)
             await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
             team_hub.touch("video_montajchi")
@@ -1261,7 +1263,7 @@ class TelegramBot(PublicTelegram, Listener):
                 team_hub.post("ali", f"👁 Nazorat: kanaldagi video montajga berildi - «{text[:200]}»", brain.agents)
             return True
         from . import daily_video  # «video qil», «video qani» - qaysi mavzuda bo'lsa ham haqiqiy navbat va haqiqiy holat
-        note = daily_video.handle_text(text, hub.notify)
+        note = "" if coder_task else daily_video.handle_text(text, hub.notify)
         if note:
             await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
             await self.mark(msg, "👍")
