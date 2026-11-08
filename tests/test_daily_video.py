@@ -348,6 +348,23 @@ class RemoteStreamTests(unittest.TestCase):
         self.assertEqual(body.count(b"one"), 1)  # o'zgarmagan kadr qayta yuborilmaydi
 
 
+class AgentActTests(unittest.TestCase):
+    def test_agent_runs_its_own_tool_without_api(self):
+        from types import SimpleNamespace
+        from ali import service
+        from ali.skills import Skill
+        made = []
+        tool = Skill(name="make_pdf", description="PDF yasaydi", params={"title": {"type": "string"}}, required=["title"],
+                     func=lambda title: made.append(title) or "PDF tayyor. Fayl javob bilan birga yuboriladi.")
+        agent = SimpleNamespace(key="dizayner", name="Dizayner", icon="🎨", tools=["make_pdf", "web_search"])
+        answers = iter([{"tool": "make_pdf"}, {"title": "RAVON TRAVEL"}])
+        with patch.dict(service.brain.registry, {"make_pdf": tool}),                 patch.object(service, "agent_system", return_value="sen dizayner"),                 patch.object(service, "_ask_json", side_effect=lambda *a, **k: next(answers)):
+            out = service.agent_act("RAVON TRAVEL brendbukini PDF qilib ber", agent, [])
+        self.assertEqual(made, ["RAVON TRAVEL"])
+        self.assertEqual(out, "PDF tayyor.")
+        self.assertIsNone(service.agent_act("salom, ishlar qalay", agent, []))  # oddiy gap - vosita yo'q
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

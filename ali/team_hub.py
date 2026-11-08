@@ -337,11 +337,14 @@ def watch_report(agents: dict, now: float | None = None) -> str:
 
 
 # ---------- agent javobi ----------
-def agent_answer(key: str | None, text: str, ready_apps: list[str] | None = None) -> str:
-    """Agent (yoki Ali) o'z ko'rsatmasi va bilimlari bilan javob beradi. AI band bo'lsa - o'z bilimidan."""
+def agent_answer(key: str | None, text: str, ready_apps: list[str] | None = None, act: bool = False) -> str:
+    """Agent (yoki Ali) o'z ko'rsatmasi va bilimlari bilan javob beradi. AI band bo'lsa - o'z bilimidan.
+    act=True (egamning topshirig'i) - avval o'z vositasi bilan haqiqiy fayl/natija qilishga urinadi."""
     from . import local_ai, providers
-    from .service import NO_EXCUSE, agent_system, brain, knowledge_answer, knowledge_block
+    from .service import NO_EXCUSE, agent_act, agent_system, brain, knowledge_answer, knowledge_block
     a = brain.agents.get(key) if key else None
+    if act and a and (done := agent_act(text, a, ready_apps or [])):
+        return done
     system = (agent_system(a) if a else brain.system) + knowledge_block(text, key) + NO_EXCUSE
     if a:
         system += (f"\n\nSening isming: {name_of(a.key)}. Ali jamoasining Telegram guruhida ishlayapsan: "

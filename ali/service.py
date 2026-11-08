@@ -310,6 +310,56 @@ def _ask_json(prompt: str, ready: list[str], timeout: int | None = None) -> dict
     return json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
 
 
+# ---------- agent vositasini o'zi ishlatadi (Claude API'siz ham): PDF, brendbuk, logotip, rasm, fayl ----------
+DO_WORDS = re.compile(r"(qil|қил|кил|yasa|ясаб|ясаш|ясад|tayyorla|тайёрла|таёрла|chiz|чиз|yarat|ярат|tuz\b|туз\b|ishla\b|"
+                      r"ишла\b|сделай|создай|нарисуй|pdf|пдф|fayl|файл|logotip|логотип|brendbuk|брендбук|maket|макет)", re.I)
+
+
+def agent_act(text: str, a, ready: list[str]) -> str | None:
+    """Agent so'rovga mos o'z vositasini tanlaydi, AI argumentlarni (JSON) beradi, Ali vositani o'zi ishga tushiradi.
+    Fayl natijalari outbox orqali egasiga avtomatik boradi. Mos vosita bo'lmasa yoki xato bo'lsa - None."""
+    if a is None or not DO_WORDS.search(text or ""):
+        return None
+    tools = [brain.registry[t] for t in a.tools if t in brain.registry and not brain.registry[t].dangerous
+             and t not in ("web_search", "search_knowledge", "save_knowledge", "search_memory", "remember_fact", "get_datetime")]
+    if not tools:
+        return None
+    menu = "\n".join(f"- {t.name}: {t.description[:220]}" for t in tools)
+    try:
+        pick = _ask_json(f"{agent_system(a)[:3000]}\n\nSo'rov:\n{text[:3000]}\n\nO'z vositalaringdan qaysi biri bu so'rovni "
+                         f"HAQIQIY FAYL/NATIJA qilib bajaradi? Vositalar:\n{menu}\n\nFAQAT JSON: {{\"tool\": \"nomi\" yoki null}}"
+                         " (oddiy savol, maslahat yoki matn kerak bo'lsa - null)", ready, 180)
+    except Exception as e:
+        log.info("Vosita tanlanmadi (%s): %s", a.key, e)
+        return None
+    skill = brain.registry.get(str(pick.get("tool") or ""))
+    if skill is None or skill not in tools:
+        return None
+    schema = json.dumps(skill.to_tool()["input_schema"], ensure_ascii=False)
+    prompt = (f"{agent_system(a)[:3000]}\n\nVAZIFA: so'rov bo'yicha {skill.name} vositasi uchun TO'LIQ, aniq va professional "
+              f"argumentlar tayyorla (so'rovdagi hamma ma'lumotni ishlat: nom, matn, ranglar, bo'limlar).\n"
+              f"Vosita tavsifi: {skill.description}\nArgumentlar JSON sxemasi: {schema}\n"
+              f"FAQAT sxemaga mos bitta JSON obyekt qaytar.\n\nSo'rov:\n{text[:6000]}")
+    for attempt in range(2):
+        try:
+            args = _ask_json(prompt, ready, 300)
+        except Exception as e:
+            log.warning("Vosita argumentlari olinmadi (%s): %s", skill.name, e)
+            continue
+        args = {k: v for k, v in args.items() if k in skill.params}
+        if error := skill.validate(args):
+            prompt += f"\n\nOldingi javobda xato: {error}. Sxemaga aniq mos JSON qaytar."
+            continue
+        try:
+            result = skill.func(**args)
+        except Exception as e:
+            log.exception("Vosita xatosi: %s", skill.name)
+            return f"⚠️ {skill.name} ishlamadi: {str(e)[:300]}"
+        log.info("Agent %s vositani o'zi ishlatdi: %s", a.key, skill.name)
+        return (str(result).split(" Fayl javob")[0].strip() if result else "") or "✅ Tayyor."
+    return None
+
+
 async def office_reply(text: str, kind: str, a, ready: list[str]) -> str | None:
     """API kalitisiz Office fayl: AI to'liq mazmunni vosita argumentlari (JSON) qilib beradi, Ali faylni o'zi yasaydi.
     Fayl javob bilan birga avtomatik yuboriladi (outbox)."""
@@ -359,6 +409,10 @@ async def team_reply(text: str, emit: Callable[[str, object], None] | None, read
     kinds = [] if direct else router.office_kinds(text)
     if kinds and (done := await office_reply(text, kinds[0], a, ready)):
         if a and emit:
+            emit("tool_end", {"name": "ask_agent", "output": done[:500], "error": False})
+        return done
+    if a and not direct and (done := await asyncio.to_thread(agent_act, text, a, ready)):  # PDF, brendbuk, logotip...
+        if emit:
             emit("tool_end", {"name": "ask_agent", "output": done[:500], "error": False})
         return done
     history, source, reply = _plain_history(), "", ""

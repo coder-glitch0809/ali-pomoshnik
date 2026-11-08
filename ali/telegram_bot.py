@@ -1283,8 +1283,10 @@ class TelegramBot(PublicTelegram, Listener):
         async def run():
             try:
                 await self.app.bot.send_chat_action(chat.id, "typing", message_thread_id=thread)
+                from . import outbox
+                start = outbox.mark()
                 if agent:
-                    out = await asyncio.to_thread(team_hub.agent_answer, agent, text, self._ready_apps())
+                    out = await asyncio.to_thread(team_hub.agent_answer, agent, text, self._ready_apps(), True)
                     team_hub.touch(agent)
                     out = f"{team_hub.label(agent, brain.agents)}:\n{out}" if agent != key else out
                     if key != "ali":  # Ali hammasini kuzatadi: kimga nima berildi va javob berdimi
@@ -1295,8 +1297,14 @@ class TelegramBot(PublicTelegram, Listener):
                     out = await team_reply(text, None, self._ready_apps())
             except Exception as e:
                 out = f"⚠️ {str(e)[:500]}"
-            for start in range(0, len(out or "…"), 4000):
-                await msg.reply_text((out or "Javob yo'q.")[start:start + 4000])
+            for pos in range(0, len(out or "…"), 4000):
+                await msg.reply_text((out or "Javob yo'q.")[pos:pos + 4000])
+            try:  # agent yasagan fayllar (PDF, logotip, maket) - shu mavzuga
+                for f in outbox.since(start):
+                    with open(f, "rb") as fh:
+                        await msg.reply_document(fh, filename=f.name)
+            except Exception as e:
+                log.warning("Agent fayli guruhga yuborilmadi: %s", e)
             await self.mark(msg, "👍" if out else "🤔")  # bajarildi
         self._bg(run())
         return True
