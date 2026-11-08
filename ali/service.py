@@ -295,7 +295,8 @@ def save_remembered(reply: str) -> str:
     return REMEMBER_RE.sub("", reply).rstrip()
 
 
-OFFICE_TOOLS = {"pptx": "make_presentation", "docx": "make_word", "xlsx": "make_excel"}
+OFFICE_TOOLS = {"pptx": "make_presentation", "docx": "make_word", "xlsx": "make_excel",
+                "brandbook": "make_brandbook", "pdf": "make_pdf"}
 
 
 def _ask_json(prompt: str, ready: list[str], timeout: int | None = None) -> dict:
@@ -357,6 +358,8 @@ async def team_reply(text: str, emit: Callable[[str, object], None] | None, read
     # Fayl so'ralgan (taqdimot, Word, Excel) - API kalitisiz ham haqiqiy fayl yasaladi
     from . import router
     kinds = [] if direct else router.office_kinds(text)
+    if not kinds and not direct and (dk := router.design_file_kind(text)):
+        kinds = [dk]  # brendbuk / PDF: matn emas, haqiqiy fayl (make_brandbook / make_pdf)
     if kinds and (done := await office_reply(text, kinds[0], a, ready)):
         if a and emit:
             emit("tool_end", {"name": "ask_agent", "output": done[:500], "error": False})
