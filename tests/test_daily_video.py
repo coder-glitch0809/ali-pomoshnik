@@ -365,6 +365,19 @@ class AgentActTests(unittest.TestCase):
         self.assertIsNone(service.agent_act("salom, ishlar qalay", agent, []))  # oddiy gap - vosita yo'q
 
 
+class OwnKnowledgeTests(unittest.TestCase):
+    def test_when_ai_is_out_agents_answer_from_knowledge_without_waiting(self):
+        from ali import ai_status, team_hub
+        calls = []
+        with patch.object(ai_status, "PAUSE", 600),                 patch("ali.providers.chat", side_effect=lambda *a, **k: calls.append(1) or (_ for _ in ()).throw(RuntimeError("429"))),                 patch("ali.service.knowledge_answer", return_value="📚 o'z bilimidan"):
+            ai_status.up()
+            self.assertEqual(team_hub.agent_answer("kontent", "hook qanday?", []), "📚 o'z bilimidan")
+            self.assertTrue(ai_status.is_down())
+            self.assertEqual(team_hub.agent_answer("kontent", "yana savol", []), "📚 o'z bilimidan")
+            self.assertEqual(len(calls), 1)  # ikkinchi safar AI kutilmadi
+            ai_status.up()
+
+
 class ChatImportTests(unittest.TestCase):
     def test_parses_chatgpt_and_claude_exports(self):
         gpt = [{"title": "Pilon narxi", "mapping": {

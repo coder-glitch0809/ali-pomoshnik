@@ -276,15 +276,25 @@ def knowledge_answer(text: str, key: str | None, a=None, limit: int = 8) -> str:
             if hit:
                 seen.add(norm)
                 scored.append((hit, -n, part, r["topic"]))
+    for n, (fk, fv) in enumerate(memory.all_facts().items()):  # egam haqida eslab qolingan faktlar
+        line = f"{fk}: {fv}"
+        hit = len(words & stems(line))
+        if hit >= 1 and len(line) < 400:
+            scored.append((hit + 1, -100 - n, line, "[xotira] Eslab qolingan faktlar"))
+    if a is not None and getattr(a, "prompt", ""):  # agentning o'z ko'rsatmasi (miyasi) - qoidalar va ish tartibi
+        for part in re.split(r"\n+", a.prompt):
+            part = part.strip(" -•*#")
+            hit = len(words & stems(part))
+            if hit >= 2 and 30 < len(part) < 400:
+                scored.append((hit, -200, part, f"[{a.key}] O'z ko'rsatmasi"))
     if not block and not scored:
         return ""
     best = sorted(scored, reverse=True)[:limit - (3 if block else 0)]
     topics = list(dict.fromkeys(([block_topic] if block_topic else []) + [t for *_, t in best]))[:3]
     who = f"{a.icon} {a.name}" if a else config.assistant_name
     body = (block + ("\n\n" if block and best else "")) + "\n".join(f"• {p}" for _, _, p, _ in best)
-    return (f"⚙️ AI xizmatlari hozir band (limit). {who} o'z bilimlaridan javob beradi:\n\n{body}"
-            + "\n\n📚 Manba: " + "; ".join(t.split("] ", 1)[-1][:60] for t in topics)
-            + "\n(AI qaytgach to'liqroq javob uchun qayta so'rang.)")
+    return (f"📚 {who} - o'z bilimlaridan (AI'lar hozir band):\n\n{body}"
+            + "\n\nManba: " + "; ".join(t.split("] ", 1)[-1][:60] for t in topics))
 
 
 def save_remembered(reply: str) -> str:
@@ -300,13 +310,20 @@ OFFICE_TOOLS = {"pptx": "make_presentation", "docx": "make_word", "xlsx": "make_
 
 def _ask_json(prompt: str, ready: list[str], timeout: int | None = None) -> dict:
     """Pro ilova (bo'lmasa API) dan JSON javob. timeout - uzun ishlar (masalan kontent reja) uchun ko'proq vaqt."""
-    from . import local_ai, providers
+    from . import ai_status, local_ai, providers
+    if ai_status.is_down():  # limit tugagan - chaqiruvchi o'z bilimidagi zaxira yo'lga darhol o'tadi
+        raise RuntimeError(ai_status.note())
     raw = ""
     if ready:
         got = local_ai.ask_pro(prompt, timeout or local_ai.TIMEOUT)
         raw = got[1] if got else ""
     if not raw:
-        raw = providers.chat("Faqat so'ralgan JSON'ni qaytar.", [], prompt, 8000, True)[1]
+        try:
+            raw = providers.chat("Faqat so'ralgan JSON'ni qaytar.", [], prompt, 8000, True)[1]
+        except RuntimeError:
+            ai_status.down("JSON so'rovi")
+            raise
+    ai_status.up()
     return json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
 
 
@@ -416,19 +433,25 @@ async def team_reply(text: str, emit: Callable[[str, object], None] | None, read
             emit("tool_end", {"name": "ask_agent", "output": done[:500], "error": False})
         return done
     history, source, reply = _plain_history(), "", ""
+    from . import ai_status
     try:
-        if direct == "bedrock":
+        if ai_status.is_down() and not direct:  # limit tugagan: AI'larni kutmaydi, quyida o'z bilimidan javob
+            pass
+        elif direct == "bedrock":
             source, reply = "Bedrock", await asyncio.to_thread(providers.bedrock_chat, system, history, text, 4000)
         elif ready and (not direct or direct in ready):
             got = await asyncio.to_thread(local_ai.ask_pro, local_ai._prompt(system, history, text), local_ai.TIMEOUT,
                                           direct if direct in ready else None, images)
             if got:
                 source, reply = got
-        if not reply and not direct:
+        if not reply and not direct and not ai_status.is_down():
             try:
                 source, reply = await asyncio.to_thread(providers.chat, system, history, text, 4000)
             except RuntimeError as e:
                 log.warning("API zaxiralari ham javob bermadi: %s", e)
+                ai_status.down("chat")
+        if reply:
+            ai_status.up()
     finally:
         if a and emit:
             emit("tool_end", {"name": "ask_agent", "output": (reply or "Javob yo'q")[:500], "error": not reply,

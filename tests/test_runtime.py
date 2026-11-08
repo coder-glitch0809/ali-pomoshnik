@@ -14,6 +14,8 @@ os.environ.update(ALI_STATE_DIR=state.name, ANTHROPIC_API_KEY="", TELEGRAM_BOT_T
 
 from fastapi.testclient import TestClient
 from ali import agents, auth
+from ali import ai_status  # noqa: E402
+ai_status.PAUSE = 0  # testlarda «AI band» holati bir testdan boshqasiga o'tmasin
 from ali.brain import Brain
 from ali.config import config
 from ali.service import brain

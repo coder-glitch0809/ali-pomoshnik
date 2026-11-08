@@ -20,7 +20,7 @@ class OfflineTests(unittest.TestCase):
         self.assertIn("o'z bilimlaridan", out)
         self.assertIn("Kechasi mijozlaringiz", out)      # mavzusi mos - butun bo'lim
         self.assertIn("uch soniyada", out)               # boshqa bilimdan mos to'liq gap
-        self.assertNotIn("Qisqa.", out.split("📚")[0].splitlines()[-1])
+        self.assertNotIn("Qisqa.", out.split("Manba:")[0].strip().splitlines()[-1])
 
     def test_team_reply_falls_back_to_knowledge_when_all_ai_fail(self):
         with patch.object(service, "route", return_value=None), \

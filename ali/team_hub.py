@@ -349,15 +349,21 @@ def agent_answer(key: str | None, text: str, ready_apps: list[str] | None = None
     if a:
         system += (f"\n\nSening isming: {name_of(a.key)}. Ali jamoasining Telegram guruhida ishlayapsan: "
                    "qisqa, aniq va amaliy yoz.")
+    from . import ai_status
     reply = ""
-    if ready_apps:
-        got = local_ai.ask_pro(local_ai._prompt(system, [], text), local_ai.TIMEOUT)
-        reply = got[1] if got else ""
-    if not reply:
-        try:
-            reply = providers.chat(system, [], text, 2500)[1]
-        except Exception as e:
-            log.info("Agent javobi olinmadi (%s): %s", key, e)
+    if not ai_status.is_down():  # limit tugagan bo'lsa AI'larni kutib o'tirmaydi - darhol o'z bilimidan
+        if ready_apps:
+            got = local_ai.ask_pro(local_ai._prompt(system, [], text), local_ai.TIMEOUT)
+            reply = got[1] if got else ""
+        if not reply:
+            try:
+                reply = providers.chat(system, [], text, 2500)[1]
+            except Exception as e:
+                log.info("Agent javobi olinmadi (%s): %s", key, e)
+        if reply:
+            ai_status.up()
+        else:
+            ai_status.down(f"agent {key}")
     if not reply:
         reply = knowledge_answer(text, key, a)
     return (reply or "").strip()
