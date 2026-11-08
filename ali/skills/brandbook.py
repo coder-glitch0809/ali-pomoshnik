@@ -13,7 +13,12 @@ from .. import outbox
 from . import skill
 
 W, H = 1754, 1240  # A4 albom, 150 dpi
-LOGO_STYLES = ["monogram", "circle", "wordmark"]
+LOGO_STYLES = ["monogram", "circle", "wordmark", "route_r"]
+
+# "route_r": R harfi, oyog'i yo'lga aylanadi, yo'l uchida quyosh nuqtasi (turizm). 100x100 birlikli katak.
+_R_SVG = ("M20 92V12H46A21 21 0 0 1 46 54H20", "M42 54C58 60 54 76 66 80S86 78 88 62")
+_R_STROKE, _R_DOT = 12, (88, 62, 9)  # chiziq qalinligi; quyosh nuqtasi (x, y, radius)
+_ACCENT = {"color": ""}  # route_r quyosh nuqtasi rangi (aksent); make_brandbook har chaqiruvda qo'yadi
 
 TEXT = {
     "uz": {
@@ -95,9 +100,13 @@ def _cmyk(h: str) -> str:
     return " / ".join(str(round(v * 100)) for v in (c, m, y, k))
 
 
-def _light(h: str) -> bool:
+def _lum(h: str) -> float:
     r, g, b = _rgb(h)
-    return 0.299 * r + 0.587 * g + 0.114 * b > 160
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def _light(h: str) -> bool:
+    return _lum(h) > 160
 
 
 def _mix(h: str, other: str, k: float) -> str:
@@ -131,11 +140,61 @@ def _paragraph(draw, xy, text, font, width, fill, gap=1.45) -> int:
 
 
 # ------------------------------------------------------------------ logotip
+def _route_points() -> list[list[tuple[float, float]]]:
+    """route_r belgisining chiziqlari (100x100 katakda), zich nuqtalar ketma-ketligi sifatida."""
+    import math
+
+    def line(a, b):
+        n = max(1, int(math.dist(a, b) * 2))
+        return [(a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n) for i in range(n + 1)]
+
+    def bezier(p0, p1, p2, p3):
+        return [tuple((1 - t) ** 3 * a + 3 * (1 - t) ** 2 * t * b + 3 * (1 - t) * t * t * c + t ** 3 * e
+                      for a, b, c, e in zip(p0, p1, p2, p3)) for t in (i / 120 for i in range(121))]
+
+    arc = [(46 + 21 * math.cos(math.radians(a)), 33 + 21 * math.sin(math.radians(a))) for a in range(-90, 91)]
+    stem = line((20, 92), (20, 12)) + line((20, 12), (46, 12)) + arc + line((46, 54), (20, 54))
+    leg = bezier((42, 54), (58, 60), (54, 76), (66, 80)) + bezier((66, 80), (78, 84), (86, 78), (88, 62))
+    return [stem, leg]
+
+
+def _route_mark(size: int, stroke: str, accent: str):
+    """R-yo'l belgisi: size x size shaffof RGBA (4x kattalashtirib chizib, silliq qilinadi)."""
+    from PIL import Image, ImageDraw
+    ss = 4
+    big = size * ss
+    k = big / 100
+    im = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    r = _R_STROKE / 2 * k
+    for poly in _route_points():
+        for px, py in poly:
+            d.ellipse([px * k - r, py * k - r, px * k + r, py * k + r], fill=stroke)
+    cx, cy, cr = _R_DOT
+    d.ellipse([(cx - cr) * k, (cy - cr) * k, (cx + cr) * k, (cy + cr) * k], fill=accent)
+    return im.resize((size, size), Image.LANCZOS)
+
+
+def _put(img, tile, x: int, y: int) -> None:
+    if img.mode == "RGBA":
+        img.alpha_composite(tile, (x, y))
+    else:
+        img.paste(tile, (x, y), tile)
+
+
 def _draw_logo(img, x: int, y: int, height: int, name: str, style: str, mark_color: str, text_color: str,
-               mark_text: str = "#FFFFFF", logo_img=None) -> tuple[int, int]:
-    """Logotipni (belgi + nom) chizadi, (eni, bo'yi) qaytaradi. logo_img - foydalanuvchining tayyor logotipi."""
+               mark_text: str = "#FFFFFF", logo_img=None, accent: str | None = None) -> tuple[int, int]:
+    """Logotipni (belgi + nom) chizadi, (eni, bo'yi) qaytaradi. logo_img - foydalanuvchining tayyor logotipi.
+    accent - faqat route_r uchun quyosh nuqtasi rangi (None - umumiy aksent, "" - belgi rangi, monoxrom)."""
     from PIL import ImageDraw
     d = ImageDraw.Draw(img)
+    if style == "route_r" and logo_img is None:
+        dot = _ACCENT["color"] if accent is None else accent
+        _put(img, _route_mark(height, mark_color, dot or mark_color), x, y)
+        f = _font(int(height * .5), True)
+        gap = int(height * .2)
+        d.text((x + height + gap, y + height / 2), name, font=f, fill=text_color, anchor="lm")
+        return height + gap + int(d.textlength(name, font=f)), height
     if logo_img is not None:
         logo = logo_img.copy()
         logo.thumbnail((height * 4, height))
@@ -157,19 +216,26 @@ def _draw_logo(img, x: int, y: int, height: int, name: str, style: str, mark_col
     return mark_w + int(d.textlength(name, font=f)), height
 
 
-def _logo_svg(name: str, style: str, primary: str, text_color: str, heading: str) -> str:
+def _logo_svg(name: str, style: str, primary: str, text_color: str, heading: str, accent: str = "") -> str:
     h = 120
     est = int(len(name) * h * .5 * .62)
     mark = ""
     tx = 0
-    if style != "wordmark":
+    if style == "route_r":
+        cx, cy, cr = _R_DOT
+        paths = "".join(f'<path d="{p}"/>' for p in _R_SVG)
+        mark = (f'<g transform="scale({h / 100})" fill="none" stroke="{primary}" stroke-width="{_R_STROKE}" '
+                f'stroke-linecap="round" stroke-linejoin="round">{paths}'
+                f'<circle cx="{cx}" cy="{cy}" r="{cr}" fill="{accent or primary}" stroke="none"/></g>')
+        tx = int(h * 1.2)
+    elif style != "wordmark":
         shape = (f'<circle cx="{h / 2}" cy="{h / 2}" r="{h / 2}" fill="{primary}"/>' if style == "circle" else
                  f'<rect width="{h}" height="{h}" rx="{int(h * .24)}" fill="{primary}"/>')
         mark = (f'{shape}<text x="{h / 2}" y="{h / 2}" dy=".35em" text-anchor="middle" font-size="{int(h * .44)}" '
                 f'font-weight="700" fill="#FFFFFF">{_esc(_initials(name))}</text>')
         tx = int(h * 1.28)
     size = int(h * (.5 if style != "wordmark" else .78))
-    width = tx + (est if style != "wordmark" else int(len(name) * size * .62)) + 20
+    width = tx + (est if style not in ("wordmark", "route_r") else int(len(name) * size * (.62 if style == "wordmark" else .78))) + 20
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {h}" width="{width}" height="{h}" '
             f'font-family="{_esc(heading)}, Montserrat, Arial, sans-serif">{mark}'
             f'<text x="{tx}" y="{h / 2}" dy=".35em" font-size="{size}" font-weight="700" fill="{text_color}">{_esc(name)}</text>'
@@ -218,7 +284,9 @@ class Book:
                    "description": "Palitra: [{name, hex, role}] - birinchisi asosiy rang. 3-6 ta rang"},
         "heading_font": {"type": "string", "description": "Sarlavha shrifti nomi (masalan Montserrat)"},
         "body_font": {"type": "string", "description": "Matn shrifti nomi (masalan Inter)"},
-        "logo_style": {"type": "string", "enum": LOGO_STYLES, "description": "Logotip turi: monogram (standart), circle, wordmark"},
+        "logo_style": {"type": "string", "enum": LOGO_STYLES,
+                       "description": "Logotip turi: monogram (standart), circle, wordmark; route_r - R harfi, oyog'i yo'lga "
+                                      "aylanib uchida quyosh nuqtasi (turizm/sayohat uchun)"},
         "logo_path": {"type": "string", "description": "Tayyor logotip fayli (PNG) bo'lsa - uning yo'li (ixtiyoriy)"},
         "language": {"type": "string", "enum": ["uz", "ru"], "description": "Brendbuk tili (standart uz)"},
     },
@@ -248,9 +316,14 @@ def make_brandbook(brand_name: str, tagline: str = "", mission: str = "", values
         palette += [{"name": "Dark", "hex": _mix(primary, "#000000", .78), "role": t["text_role"]},
                     {"name": "Light", "hex": _mix(primary, "#FFFFFF", .92), "role": t["bg_role"]}][:3 - len(palette)]
     palette = palette[:6]
-    dark = next((c["hex"] for c in palette if not _light(c["hex"]) and c["hex"] != primary), _mix(primary, "#000000", .78))
+    # matn rangi - eng to'q (asosiydan boshqa) rang; to'q rang bo'lmasa asosiydan hosil qilinadi
+    darkest = min((c["hex"] for c in palette if c["hex"] != primary), key=_lum, default="")
+    dark = darkest if darkest and _lum(darkest) < 110 else _mix(primary, "#000000", .78)
     light = next((c["hex"] for c in palette if _light(c["hex"])), _mix(primary, "#FFFFFF", .92))
     on_primary = "#111111" if _light(primary) else "#FFFFFF"
+    # aksent (route_r quyosh nuqtasi): asosiy, to'q va och ranglardan boshqa birinchi rang
+    accent = next((c["hex"] for c in palette if c["hex"] not in (primary, dark, light)), primary)
+    _ACCENT["color"] = accent
 
     logo_img = None
     if logo_path:
@@ -301,13 +374,18 @@ def make_brandbook(brand_name: str, tagline: str = "", mission: str = "", values
 
     # 3. Logotip versiyalari
     img, d = book.page(t["logo"])
-    cells = [(t["main"], "#FFFFFF", primary, dark, "#FFFFFF"), (t["dark"], dark, primary, "#FFFFFF", "#FFFFFF"),
+    route = style == "route_r" and logo_img is None
+    cells = [(t["main"], "#FFFFFF", primary, dark, "#FFFFFF"),
+             (t["dark"], dark, "#FFFFFF" if route else primary, "#FFFFFF", "#FFFFFF"),
              (t["mono"], "#FFFFFF", "#111111", "#111111", "#FFFFFF"), (t["mark"], primary, on_primary, on_primary, primary)]
     cw, ch = (W - 220 - 40) // 2, (H - 360 - 40) // 2
     for i, (label, bg, mark, text_c, mark_t) in enumerate(cells):
         x, y = 110 + (i % 2) * (cw + 40), 210 + (i // 2) * (ch + 40)
         d.rounded_rectangle([x, y, x + cw, y + ch], radius=24, fill=bg, outline=_mix(dark, "#FFFFFF", .85), width=2)
-        if i == 3 and style != "wordmark" and logo_img is None:
+        if i == 3 and route:  # faqat belgi: R-yo'l
+            s = int(ch * .55)
+            _put(img, _route_mark(s, on_primary, accent), x + cw // 2 - s // 2, y + ch // 2 - s // 2 - 20)
+        elif i == 3 and style != "wordmark" and logo_img is None:
             s = int(ch * .5)
             mx, my = x + cw // 2 - s // 2, y + ch // 2 - s // 2 - 20
             (d.ellipse if style == "circle" else lambda b, fill: d.rounded_rectangle(b, radius=int(s * .24), fill=fill))(
@@ -315,7 +393,8 @@ def make_brandbook(brand_name: str, tagline: str = "", mission: str = "", values
             d.text((mx + s / 2, my + s / 2), _initials(name), font=_font(int(s * .44), True), fill=mark_t, anchor="mm")
         else:
             layer = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
-            lw, lh = _draw_logo(layer, 0, 0, int(ch * .3), name, style, mark, text_c, mark_t, logo_img)
+            lw, lh = _draw_logo(layer, 0, 0, int(ch * .3), name, style, mark, text_c, mark_t, logo_img,
+                                accent="" if i == 2 else None)
             scale = min(1, (cw - 120) / max(1, lw))
             if scale < 1:
                 layer = layer.resize((int(cw * scale), int(ch * scale)))
@@ -355,7 +434,8 @@ def make_brandbook(brand_name: str, tagline: str = "", mission: str = "", values
             img.paste(busy, (x, 760), mask)
         lay = Image.new("RGBA", (900, 200), (0, 0, 0, 0))
         mark = "#E11D48" if i == 2 else primary
-        lw2, lh2 = _draw_logo(lay, 0, 0, 60, name, style, mark, "#E11D48" if i == 2 else dark, "#FFFFFF", logo_img)
+        lw2, lh2 = _draw_logo(lay, 0, 0, 60, name, style, mark, "#E11D48" if i == 2 else dark, "#FFFFFF", logo_img,
+                              accent=mark if i == 2 else None)
         lay = lay.crop((0, 0, lw2, lh2))
         if i == 0:
             lay = lay.resize((int(lw2 * 1.35), int(lh2 * .6)))
@@ -463,11 +543,12 @@ def make_brandbook(brand_name: str, tagline: str = "", mission: str = "", values
     made = [pdf]
     if logo_img is None:
         svg = pdf.with_name(pdf.stem + "_logo.svg")
-        svg.write_text(_logo_svg(name, style, primary, dark, heading_font), encoding="utf-8")
+        svg.write_text(_logo_svg(name, style, primary, dark, heading_font, accent), encoding="utf-8")
         made.append(svg)
         for suffix, mark, text_c in (("_logo.png", primary, dark), ("_logo_oq.png", "#FFFFFF", "#FFFFFF")):
             lay = Image.new("RGBA", (3000, 400), (0, 0, 0, 0))
-            lw, lh = _draw_logo(lay, 40, 40, 320, name, style, mark, text_c, primary if mark == "#FFFFFF" else "#FFFFFF")
+            lw, lh = _draw_logo(lay, 40, 40, 320, name, style, mark, text_c, primary if mark == "#FFFFFF" else "#FFFFFF",
+                                accent=None if mark == primary else "")
             path = pdf.with_name(pdf.stem + suffix)
             lay.crop((0, 0, lw + 80, lh + 80)).save(path)
             made.append(path)

@@ -27,6 +27,8 @@ BRENDBUK va BRENDING:
 - make_brandbook: 8 sahifali PDF brendbuk (muqova, missiya va qadriyatlar, auditoriya, ovoz ohangi, logotip versiyalari,
   xavfsiz zona va minimal o'lcham, taqiqlar, palitra HEX/RGB/CMYK, tipografiya, vizitka/post/peshlavha maketlari)
   + logotip .svg va shaffof .png. Tayyor logotip bo'lsa - logo_path.
+  logo_style: monogram / circle / wordmark; "route_r" - R harfi, oyog'i yo'lga aylanadi, uchida quyosh nuqtasi
+  (turizm, sayohat). route_r da aksent (2-rang) quyosh nuqtasi bo'ladi.
 - Ish tartibi: brend nomi, soha, auditoriya, raqobatchilar va kayfiyatni aniqla (yetishmasa qisqa so'ra yoki
   mantiqiy taxmin qil va buni ayt) -> 2-3 konsept (nom ma'nosi, metafora, rang psixologiyasi) -> eng kuchlisi bilan
   make_brandbook (3-5 rang: asosiy, aksent, to'q matn, och fon; shrift juftligi Google Fonts'dan) -> kerak bo'lsa

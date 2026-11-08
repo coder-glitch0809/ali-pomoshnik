@@ -1025,6 +1025,25 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("'dizayner'", router.hint("80 kvadrat uyimga dizayn qilib ber", router_team))
         self.assertEqual(router.hint("Maximal narx qancha?", router_team), "")
 
+    def test_brandbook_route_r_logo(self):
+        import tempfile
+        from ali import outbox
+        from ali.skills import brandbook
+        colors = [{"name": n, "hex": h, "role": ""} for n, h in (
+            ("Okean", "#0B3C5D"), ("Quyosh", "#F28C28"), ("Dengiz", "#1CA7A8"), ("Qum", "#F6EBDA"), ("Tun", "#14202B"))]
+        with tempfile.TemporaryDirectory() as d, patch.object(outbox, "DIR", Path(d)):
+            start = outbox.mark()
+            text = brandbook.make_brandbook("RAVON TRAVEL", colors=colors, logo_style="route_r")
+            made = {p.suffix + ("oq" if "_oq" in p.name else ""): p for p in outbox.since(start)}
+            self.assertEqual(sorted(made), [".pdf", ".png", ".pngoq", ".svg"], text)
+            from PIL import Image
+            png = Image.open(made[".png"])
+            self.assertEqual(png.mode, "RGBA")
+            self.assertEqual(png.getpixel((2, 2))[3], 0)  # fon shaffof
+            self.assertIn("F28C28", made[".svg"].read_text())  # quyosh nuqtasi aksent rangida
+            self.assertIn("8 sahifali", text)
+        self.assertTrue(brandbook._lum("#14202B") < 110 <= brandbook._lum("#F28C28"))
+
     def test_coach_agent_and_improve_skills_are_registered(self):
         from ali.skills import REGISTRY
         coach = agents._parse("murabbiy", (Path(__file__).resolve().parents[1] / "agents" / "murabbiy.md").read_text(encoding="utf-8"))
