@@ -70,6 +70,24 @@ DESIGN_WORDS = ("dizayn", "дизайн", "интерьер", "interer", "инт
                 "объемн", "объёмн", "hajmli harf", "ҳажмли", "вывеск", "lightbox", "лайтбокс", "banner", "баннер",
                 "logotip", "логотип", "brend", "бренд", "brand", "фирменн", "vizitka", "визитк", "promo", "промо", "ролик", "ta'mir", "таъмир", "ремонт", "kvadrat", "квадрат",
                 "планировк", "do'kon joy", "dokon joy", "жойлаштир", "joylashtir", "uy rejasi", "уй режаси")
+DESIGN_WORDS += ("брэнд", "brendbuk", "брендбук", "pdf", "пдф")
+# API'siz (zaxira) yo'lda dizayn fayllari: brendbuk va oddiy PDF
+BRANDBOOK_WORDS = ("brendbuk", "брендбук", "брэндбук", "brandbook", "brand book", "brand-book", "брендинг", "брэндинг",
+                   "branding", "brending")
+PDF_WORDS = ("pdf", "пдф")
+_PDF_ACTION = _ACTION + ("yasa", "яса", "qil", "кил", "қил", "ber", "бер", "ташла", "tashla")
+
+
+def design_file_kind(text: str) -> str | None:
+    """'brandbook' | 'pdf' | None - brendbuk yoki PDF fayl so'ralganmi (Claude vositalari ishlamaganda ham fayl yasash uchun)."""
+    low = text.lower()
+    has_pdf = any(re.search(r"(?<![a-zа-яё0-9])" + w + r"(?![a-zа-яё])", low) for w in PDF_WORDS)
+    acting = any(a in low for a in _PDF_ACTION)
+    if any(w in low for w in BRANDBOOK_WORDS) and (has_pdf or acting):
+        return "brandbook"
+    return "pdf" if has_pdf and acting else None
+
+
 LESSON_WORDS = ("урок", "тема", "класс", "dars", "дарс", "mavzu", "мавзу", "sinf", "синф", "ученик", "o'quvchi",
                 "ўқувчи", "укувчи", "lesson")
 KIND_NAMES = {"pptx": "PowerPoint taqdimot (make_presentation)", "xlsx": "Excel jadval (make_excel)",
@@ -100,7 +118,7 @@ def office_kinds(text: str) -> list[str]:
 
 def is_design(text: str) -> bool:
     low = text.lower()
-    short = {"3d", "3д", "3ds", "max", "макс", "promo", "промо"}  # qisqa so'zlar faqat alohida so'z bo'lsa
+    short = {"3d", "3д", "3ds", "max", "макс", "promo", "промо", "pdf", "пдф"}  # qisqa so'zlar faqat alohida so'z bo'lsa
     return any(re.search(r"(?<![a-zа-яё0-9])" + re.escape(w) + (r"(?![a-zа-яё])" if w in short else ""), low)
                for w in DESIGN_WORDS)
 

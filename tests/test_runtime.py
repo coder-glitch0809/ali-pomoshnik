@@ -1046,6 +1046,17 @@ class RuntimeTests(unittest.TestCase):
             self.assertIn("8 sahifali", text)
         self.assertTrue(brandbook._lum("#14202B") < 110 <= brandbook._lum("#F28C28"))
 
+    def test_design_file_kind_routing(self):
+        """Brendbuk/PDF so'rovi API'siz yo'lda ham fayl bo'lib chiqadi, oddiy savol esa fayl emas."""
+        from ali import router
+        k = router.design_file_kind
+        self.assertEqual(k("RAVON TRAVEL uchun brendbuk PDF qilib ber"), "brandbook")
+        self.assertEqual(k("Брендинг килиш учун пдф файл яратиб бер"), "brandbook")
+        self.assertEqual(k("brend taklifini pdf qilib ber"), "pdf")
+        self.assertIsNone(k("brendbuk nima o'zi?"))
+        self.assertIsNone(k("salom, ishlaring qalay"))
+        self.assertTrue(router.is_design("shuni pdf qil"))
+
     def test_design_files_pdf_and_brand_3d(self):
         import tempfile
         from ali import outbox
