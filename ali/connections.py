@@ -13,7 +13,7 @@ PROVIDERS = {
     'telegram': dict(name='Telegram bot', url='https://t.me/BotFather', link='BotFather orqali sozlash',
         steps=['BotFather’da /mybots ni oching va Ali botini tanlang.', 'API Token bo‘limidan bot tokenini oling va pastga kiriting.', 'Saqlagach Ali serverini qayta ishga tushiring.'], field='telegram_token', env='TELEGRAM_BOT_TOKEN'),
     'instagram': dict(name='Instagram', url='https://developers.facebook.com/apps/', link='Meta Developers’da ilova ochish',
-        steps=['Instagram akkauntingizni Professional (Business yoki Creator) qiling: Instagram → Sozlamalar → Akkaunt turi.', 'Meta Developers’da ilova yarating → “Instagram” mahsulotini qo‘shing → “API setup with Instagram login”.', 'Ruxsatlar: instagram_business_basic, content_publish, manage_comments, manage_insights, manage_messages — barchasini belgilang (to‘liq boshqaruv: joylash, analitika, izohlar, Direct).', '“Generate access token” → akkauntingiz bilan kiring → tokenni (IGAA… bilan boshlanadi) pastga kiriting. Ali akkauntni o‘zi topadi va eslab qoladi.'], field='ig_access_token', env='IG_ACCESS_TOKEN'),
+        steps=['Har ikkala Instagram profilni Professional (Business yoki Creator) qiling va Meta hisobingiz boshqaradigan Facebook sahifalarga ulang.', 'Ikkala profilni bitta ulanishda ko‘rish uchun Meta Developers’da Facebook Login/Graph API tokenini oling; Instagram Login tokeni odatda faqat bitta profilni topadi.', 'Token uchun instagram_basic, instagram_content_publish, instagram_manage_comments, instagram_manage_insights, pages_show_list va pages_read_engagement ruxsatlarini bering. Meta hisobingiz ikkala sahifaga ham kira olishini tekshiring.', 'Tokenni kiriting. Ali token orqali ko‘ra oladigan barcha professional profillarni topib saqlaydi; post va tahlil so‘rovlarida @username bilan profilni aniq tanlang.'], field='ig_access_token', env='IG_ACCESS_TOKEN'),
     'github': dict(name='GitHub', url='https://github.com/settings/personal-access-tokens/new', link='GitHub orqali davom etish',
         steps=['GitHub hisobingizga kiring va Ali uchun fine-grained token yarating.', 'Faqat kerakli repozitoriylarni tanlang. O‘qish uchun Contents: Read-only; tahrirlash kerak bo‘lsa Read and write ruxsatini bering.', 'Tokenni nusxalab pastga kiriting. Ali ulanishni tekshirib saqlaydi.'], field='github_token', env='GITHUB_TOKEN'),
     'vercel': dict(name='Vercel', url='https://vercel.com/account/settings/tokens', link='Vercel orqali davom etish',
@@ -54,7 +54,9 @@ def catalog(telegram_live=False):
         configured=bool(getattr(config,p.get('field',''),''))
         status='Kalit sozlangan, aloqa tekshirilmagan' if configured else 'Sozlanmagan'
         if key=='telegram' and telegram_live:status='Ulangan'
-        if key=='instagram' and config.ig_accounts:status='Ulangan: '+', '.join('@'+a for a in config.ig_accounts)
+        if key=='instagram' and config.ig_accounts:
+            names=', '.join('@'+a for a in config.ig_accounts)
+            status=f'Ulangan · {len(config.ig_accounts)} profil: {names}'
         if key=='voice':status=f'Sozlangan: {config.tts_backend}'
         if key in {'google','meta'}:status='Integratsiya hali o‘rnatilmagan'
         if key in ('github','vercel'):
@@ -151,7 +153,8 @@ async def connect_instagram(token):
         except OSError:raise ValueError('Server sozlamani saqlay olmadi.') from None
         config.ig_access_token=token;config.ig_accounts=dict(accounts)
         os.environ['IG_ACCESS_TOKEN']=token;os.environ['IG_ACCOUNTS']=value
-    return {'ok':True,'message':'Instagram ulandi: '+', '.join('@'+n for n in accounts)+'. Ali joylash, analitika, izohlar va Direct’ni boshqara oladi (har bir amal tasdiq bilan).'}
+    names=', '.join('@'+n for n in accounts)
+    return {'ok':True,'message':f'Instagram ulandi · {len(accounts)} profil: {names}. Har bir post va tahlilda @username bilan profilni tanlang; joylashdan oldin tasdiq so‘raladi.'}
 
 
 async def connect_firebase(text):

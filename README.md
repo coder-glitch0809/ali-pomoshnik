@@ -94,14 +94,26 @@ Ali sizning (yoki tanlagan) ovozda gapiradi — ElevenLabs ovoz klonlash orqali.
 
 Instagram **Business** yoki **Creator** akkaunt kerak (Facebook sahifaga ulangan).
 
-1. https://developers.facebook.com → ilova yarating → Instagram Graph API qo'shing
-2. Graph API Explorer'da token oling, ruxsatlar: `instagram_basic`, `instagram_manage_insights`,
-   `pages_show_list`, `pages_read_engagement` (uzoq muddatli tokenga almashtiring)
-3. Akkaunt ID: `GET /me/accounts?fields=instagram_business_account`
-4. `.env`: `IG_ACCESS_TOKEN=...` va `IG_ACCOUNTS=brend=1784...,shaxsiy=1784...`
+Ruxsatlar → Ulanishlar → Instagram'da bitta Meta/Facebook Login tokenini ulang. Ikki profilni boshqarish uchun
+Meta hisobingiz ikkala profil ulangan Facebook sahifaga ham kira olishi va token quyidagi ruxsatlarga ega bo'lishi
+kerak: `instagram_basic`, `instagram_content_publish`, `instagram_manage_comments`, `instagram_manage_insights`,
+`pages_show_list`, `pages_read_engagement`. Instagram Login tokeni odatda faqat bitta profilni topadi; ulash oynasi
+topilgan profillarni ko'rsatadi. Post yoki tahlil so'rovlarida profilni `@username` bilan tanlang; bir nechta profil
+ulangan bo'lsa, profil ko'rsatilmaguncha amal bajarilmaydi. Joylashdan oldin tasdiq so'raladi.
 
 So'rash misollari: *"Instagramimni tahlil qil va keyingi haftaga 5 ta reels g'oyasi ber"*,
+*"@profil1 Instagram Reels'ga shu videoni joyla"*,
 *"@raqobatchi akkauntini o'rgan, ular nimasi bilan yutyapti?"*
+
+## Video montaj
+
+Telegram kanaliga yuborilgan video mahalliy FFmpeg vositalari bilan montaj qilinib, natija kanalga va egasiga
+yuboriladi. Reja uchun ulangan AI ilovasi ixtiyoriy; AI ilovasi javob bermasa yoki limiti tugasa, montaj mahalliy
+qoidalarga o'tadi. Subtitrda Gemini ishlamasa, kompyuterdagi Whisper ishlatiladi (o'rnatilgan bo'lsa). Natijani
+avtomatik jo'natish uchun Telegram akkaunt ulanishi kerak.
+
+Google Flow brauzeriga bu repozitoriyda avtomatik yuklash/eksport ulanishi yo'q. Flow interfeysini avtomatlashtirdik
+deb da'vo qilinmaydi; limitga bog'liq bo'lmagan asosiy yo'l — kompyuterdagi FFmpeg montaji.
 
 ## Tuzilishi
 

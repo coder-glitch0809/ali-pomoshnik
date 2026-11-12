@@ -108,6 +108,9 @@ def _account_id(account: str) -> str:
     if not config.ig_accounts:
         raise RuntimeError("Instagram akkaunt topilmadi - Ruxsatlar bo'limida Instagram'ni qayta ulang")
     if not account:
+        if len(config.ig_accounts) > 1:
+            names = ", ".join("@" + name for name in config.ig_accounts)
+            raise RuntimeError(f"Bir nechta Instagram profil ulangan. Bu amal uchun bittasini tanlang: {names}")
         return next(iter(config.ig_accounts.values()))
     name = account.lstrip("@")
     if name in config.ig_accounts:
@@ -119,7 +122,7 @@ def _dump(data) -> str:
     return json.dumps(data, ensure_ascii=False, indent=1)
 
 
-ACCOUNT = {"type": "string", "description": "Akkaunt username (bo'sh - birinchisi)"}
+ACCOUNT = {"type": "string", "description": "Ulangan profil username'i (@ belgisi ixtiyoriy). Bir nechta profil bo'lsa, aniq tanlang."}
 
 
 @skill(description="Ulangan Instagram akkauntlar ro'yxati va token turi.")
@@ -127,7 +130,8 @@ def instagram_accounts() -> str:
     if not config.ig_accounts:
         return "Instagram akkauntlar ulanmagan."
     kind = "Instagram Login" if is_ig_login() else "Facebook Login"
-    return f"{', '.join('@' + a for a in config.ig_accounts)} ({kind})"
+    profiles = ", ".join("@" + a for a in config.ig_accounts)
+    return f"{profiles} ({kind}). Post yoki tahlil uchun profil username'ini aniq ko'rsating."
 
 
 @skill(
@@ -272,9 +276,10 @@ def _wait(cid: str, minutes: int = 10) -> None:
 
 @skill(
     description=(
-        "Instagram'ga joylaydi: post (rasm), Reels (video), Stories yoki karusel (2-10 ta rasm/video). media - fayl yo'li "
-        "(kompyuterdagi rasm/video, masalan Ali yaratgan rasm) yoki https havola. Joylashdan oldin egasiga caption va "
-        "faylni ko'rsatib tasdiq olinadi."
+        "Tanlangan Instagram profilga post (rasm), Reels (video), Stories yoki karusel (2-10 ta rasm/video) joylaydi. "
+        "Bir nechta profil ulangan bo'lsa, account username'ini albatta tanlang. media - fayl yo'li (kompyuterdagi "
+        "rasm/video, masalan Ali yaratgan rasm) yoki https havola. Joylashdan oldin egasiga caption va faylni ko'rsatib "
+        "tasdiq olinadi."
     ),
     params={
         "kind": {"type": "string", "enum": ["post", "reel", "story", "carousel"], "description": "Joylash turi"},

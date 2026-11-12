@@ -1,3 +1,4 @@
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -33,6 +34,31 @@ class StudioFlowTests(unittest.TestCase):
     def test_no_waiting_brief_ignores_image(self):
         s._save({"next": 2, "channel_last": 0, "briefs": {"1": _brief(1, status="done")}})
         self.assertEqual(s.add_image("x.jpg", ""), (None, ""))
+
+    def test_edit_plan_uses_local_rules_when_ai_access_is_not_enabled(self):
+        from ali import local_ai
+
+        with patch.object(local_ai, "access", return_value=False), \
+                patch("ali.skills.video_edit.info", return_value={"duration": 12, "width": 720, "height": 1280}) as info, \
+                patch.object(s, "_frames") as frames:
+            plan = s._plan(Path("video.mp4"), "cinematic montaj")
+        self.assertTrue(plan["offline"])
+        self.assertEqual(plan["render"]["grade"], "cinematic")
+        info.assert_called_once()
+        frames.assert_not_called()
+
+    def test_edit_plan_falls_back_when_ai_limit_returns_no_plan(self):
+        from ali import local_ai
+
+        with patch.object(local_ai, "access", return_value=True), \
+                patch.object(local_ai, "ask_pro", return_value=None), \
+                patch("ali.skills.video_edit.info", return_value={"duration": 12, "width": 720, "height": 1280}), \
+                patch.object(s, "_frames", return_value=[]), \
+                patch("ali.skills.video_edit._srt", return_value=""), \
+                patch.object(s, "_style_hint", return_value=""):
+            plan = s._plan(Path("video.mp4"), "oddiy reels")
+        self.assertTrue(plan["offline"])
+        self.assertTrue(plan["render"]["progress_bar"])
 
 
 if __name__ == "__main__":

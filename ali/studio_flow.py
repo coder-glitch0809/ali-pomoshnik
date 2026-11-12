@@ -209,11 +209,14 @@ def _frames(video: Path, tmp: Path, n: int = 6) -> list[str]:
 
 
 def _plan(video: Path, caption: str) -> dict:
-    """AI kadrlarni ko'rib, nutqni o'qib montaj rejasini tuzadi (Claude/Gemini rasm ko'radi)."""
+    """AI imkon bo'lsa kadrlarni tahlil qiladi; aks holda mahalliy qoidalar bilan reja tuzadi."""
     import tempfile
     from . import local_ai
     from .skills.video_edit import _srt, info
     i = info(video)
+    if local_ai.access() is not True:
+        from .skills.video_motion import RULE_WORDS
+        return _offline_edit_plan(caption, RULE_WORDS)
     with tempfile.TemporaryDirectory() as tmp:
         tmp_p = Path(tmp)
         frames = _frames(video, tmp_p)
@@ -223,19 +226,31 @@ def _plan(video: Path, caption: str) -> dict:
             speech = "(nutq yo'q yoki tanilmadi)"
         prompt = EDIT_PLAN.format(dur=i["duration"], size=f"{i['width']}x{i['height']}", caption=caption or "-", speech=speech,
                                   style=_style_hint())
-        got = local_ai.ask_pro(prompt, 300, None, frames) if local_ai.access() is True else None
+        try:
+            got = local_ai.ask_pro(prompt, 300, None, frames)
+        except RuntimeError as e:
+            log.warning("AI montaj rejasi olinmadi, mahalliy rejaga o'tiladi: %s", e)
+            got = None
     try:
         raw = got[1] if got else ""
-        return json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+        plan = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+        if isinstance(plan, dict):
+            return plan
     except (ValueError, TypeError):
-        from .skills.video_motion import RULE_WORDS
-        cine = bool(RULE_WORDS["cinematic"].search(caption or ""))  # AI band - topshiriq so'zlaridan
-        return {"hook": "", "cta": "" if cine else "Direktga yozing", "cut_silence": not cine, "missing": [],
-                "render": {"grade": "cinematic" if cine else "natural", "fade": cine, "progress_bar": not cine,
-                           "fps": 24 if cine or RULE_WORDS["fps24"].search(caption or "") else 30,
-                           "uhd": bool(RULE_WORDS["uhd"].search(caption or ""))},
-                "caption": "Planet Print - tashqi reklama. Direktga yozing.",
-                "hashtags": "#planetprint #tashqireklama #reklama #reels #uzbekistan", "offline": True}
+        pass
+    from .skills.video_motion import RULE_WORDS
+    return _offline_edit_plan(caption, RULE_WORDS)
+
+
+def _offline_edit_plan(caption: str, words: dict) -> dict:
+    """AI yoki uning limiti mavjud bo'lmasa, FFmpeg montaji uchun qoidaviy reja."""
+    cine = bool(words["cinematic"].search(caption or ""))
+    return {"hook": "", "cta": "" if cine else "Direktga yozing", "cut_silence": not cine, "missing": [],
+            "render": {"grade": "cinematic" if cine else "natural", "fade": cine, "progress_bar": not cine,
+                       "fps": 24 if cine or words["fps24"].search(caption or "") else 30,
+                       "uhd": bool(words["uhd"].search(caption or ""))},
+            "caption": "Planet Print - tashqi reklama. Direktga yozing.",
+            "hashtags": "#planetprint #tashqireklama #reklama #reels #uzbekistan", "offline": True}
 
 
 ALBUM_PLAN = """Sen professional Reels montajchisisan. Egam kanalga {n} ta klipdan iborat albom tashladi - ulardan BITTA
@@ -293,7 +308,11 @@ def _album(paths: list[str], caption: str, tmp: Path) -> tuple[str, dict]:
         frames += _frames(Path(p), tmp / f"c{k}", 2)
     prompt = ALBUM_PLAN.format(n=len(paths), clips=", ".join(f"{k}: {i['duration']:.1f} s" for k, i in enumerate(infos, 1)),
                                caption=(caption or "-")[:6000], style=_style_hint())
-    got = local_ai.ask_pro(prompt, 300, None, frames[:16]) if local_ai.access() is True else None
+    try:
+        got = local_ai.ask_pro(prompt, 300, None, frames[:16]) if local_ai.access() is True else None
+    except RuntimeError as e:
+        log.warning("Albom uchun AI reja olinmadi, mahalliy rejaga o'tiladi: %s", e)
+        got = None
     try:
         raw = got[1] if got else ""
         plan = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
