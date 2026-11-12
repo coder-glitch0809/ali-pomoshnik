@@ -24,6 +24,10 @@ class DasturchiTests(unittest.TestCase):
         self.assertTrue(su.is_request("Али дастурчига айт pr media гурухидан менга нарса ташламасин, шуни тогирласин"))
         self.assertTrue(su.is_request("dasturchi, /ob_havo ga 3 kunlik prognoz qo'sh"))
         self.assertTrue(su.is_request("Ali o'zingni kuchaytir: tugmalarni tuzat"))
+        self.assertTrue(su.is_request("Ali, kodda kamchilik bor, uni tuzat"))
+        self.assertTrue(su.is_request("Kodda bug topildi, tuzatishga tush"))
+        self.assertTrue(su.is_request("Кодда хатолик бор, тўғрила"))
+        self.assertFalse(su.is_request("Ali, kodda kamchilik bormi?"))
         self.assertTrue(su.is_request("Али дастурчига айт телеграмда pr media гурухи бор мени белгиламаса хабар келмасин "
                                       "хар бир агентга алохида буйрук гурухларда бера олай"))
         self.assertFalse(su.is_request("Али нега дастурчи халихам тогирламади"))
@@ -59,7 +63,23 @@ class TeamAddressTests(unittest.TestCase):
             self.assertEqual(team_hub.addressed("Sevara, reels g'oya ber", agents), "kontent")
             self.assertEqual(team_hub.addressed("Ali dasturchiga ayt: tugmani tuzat", agents), "dasturchi")
             self.assertEqual(team_hub.addressed("Али монтажчи видео кил", agents), "video_montajchi")
+            self.assertEqual(team_hub.addressed("Ali, menga yordam ber", agents), "ali")
             self.assertIsNone(team_hub.addressed("bugun ob-havo qanday", agents))
+
+    def test_agent_feedback_is_saved_and_recalled_in_future_system_prompt(self):
+        from types import SimpleNamespace
+        from ali import memory, service, team_hub
+
+        message = "Sen javobda raqamlarni tekshirmading, bundan keyin hisob-kitobni qayta tekshir."
+        with patch.object(memory.memory, "add_knowledge") as save:
+            self.assertTrue(team_hub.remember_feedback("treyder", message))
+            save.assert_called_once_with("[treyder] Egasi fikr-mulohazasi", message)
+        with patch.object(memory.memory, "agent_feedback", return_value=[message]), \
+                patch.object(service.brain, "agent_knowledge", return_value=""):
+            prompt = service.agent_system(SimpleNamespace(
+                key="treyder", prompt="Treyder ko'rsatmasi", name="Treyder"))
+        self.assertIn("Egasi ilgari bergan tuzatishlar", prompt)
+        self.assertIn(message, prompt)
 
     def test_instagram_daily_report_not_repeated_after_restart(self):
         from datetime import datetime

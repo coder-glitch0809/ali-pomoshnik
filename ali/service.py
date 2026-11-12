@@ -218,7 +218,11 @@ def route(text: str, ready: list[str]) -> str | None:
 
 def agent_system(a) -> str:
     from .brain import _facts_text
-    return (f"{a.prompt}{brain.agent_knowledge(a.key) if hasattr(brain, 'agent_knowledge') else ''}\n\n"
+    feedback = memory.agent_feedback(a.key)
+    feedback_note = ("\n\nEgasi ilgari bergan tuzatishlar (keyingi javoblarda albatta hisobga ol):\n"
+                     + "\n".join(f"- {item}" for item in feedback)) if feedback else ""
+    return (f"{a.prompt}{brain.agent_knowledge(a.key) if hasattr(brain, 'agent_knowledge') else ''}"
+            f"{feedback_note}\n\n"
             f"Sen {config.assistant_name} jamoasidagi agentsan: vazifani {config.assistant_name} beradi, javobing "
             f"{config.user_name}ga yetkaziladi. Ko'rsatmangda til belgilangan bo'lsa - o'sha tilda, aks holda savol "
             f"tilida javob ber. To'liq, aniq va amaliy javob ber; bilmasang - taxmin qilma, ochiq ayt.\n\n"

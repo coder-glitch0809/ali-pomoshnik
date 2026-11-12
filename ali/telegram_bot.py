@@ -1241,10 +1241,21 @@ class TelegramBot(PublicTelegram, Listener):
         if key == "sinf":
             await self.cmd_class(update, ctx)
             return True
-        agent = key if key in brain.agents else ("telegram_nazoratchi" if key == "telegram" and
-                                                 "telegram_nazoratchi" in brain.agents else None)
-        if not agent:  # Ali/umumiy mavzuda «Sevara, ...», «Kontent meyker ...», «Dasturchiga ayt ...» - to'g'ridan-to'g'ri agentga
-            agent = team_hub.addressed(text, brain.agents)
+        if key in brain.agents:
+            agent = key
+        elif key == "ali":
+            agent = team_hub.addressed(text, brain.agents) or "ali"
+        else:
+            agent = ("telegram_nazoratchi" if key == "telegram" and
+                     "telegram_nazoratchi" in brain.agents else None)
+            if not agent:  # Umumiy mavzuda agent nomi bilan yozilsa - o'sha agent javob beradi
+                agent = team_hub.addressed(text, brain.agents)
+        if agent in brain.agents and team_hub.remember_feedback(agent, text):
+            team_hub.touch(agent, "fikr_mulohaza")
+            await msg.reply_text(f"{team_hub.label(agent, brain.agents)}:\n"
+                                 "✅ Fikr-mulohazangizni eslab qoldim. Keyingi javob va ishlarimda hisobga olaman.")
+            await self.mark(msg, "👍")
+            return True
         from . import self_upgrade, studio_flow
         # Dasturchi mavzusi / kod topshirig'i - «video» so'zi bo'lsa ham video navbatiga ketmaydi
         coder_task = key == "dasturchi" or agent == "dasturchi" or self_upgrade.is_request(text)
@@ -1287,11 +1298,13 @@ class TelegramBot(PublicTelegram, Listener):
                 start = outbox.mark()
                 if agent:
                     out = await asyncio.to_thread(team_hub.agent_answer, agent, text, self._ready_apps(), True)
-                    team_hub.touch(agent)
-                    out = f"{team_hub.label(agent, brain.agents)}:\n{out}" if agent != key else out
+                    agent_reply = out
+                    if agent != "ali":
+                        team_hub.touch(agent)
+                    out = f"{team_hub.label(agent, brain.agents)}:\n{agent_reply}" if agent_reply else ""
                     if key != "ali":  # Ali hammasini kuzatadi: kimga nima berildi va javob berdimi
                         team_hub.post("ali", f"👁 Nazorat: {team_hub.label(agent, brain.agents)} - «{text[:200]}» → "
-                                             f"{'javob berdi' if out else 'javob bermadi'}", brain.agents)
+                                             f"{'javob berdi' if agent_reply else 'javob bermadi'}", brain.agents)
                 else:
                     from .service import team_reply
                     out = await team_reply(text, None, self._ready_apps())

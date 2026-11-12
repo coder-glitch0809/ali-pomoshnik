@@ -79,6 +79,11 @@ agentlarning har bir ishi va o'rgangan bilimi o'z mavzusiga chiqadi.
 - `/tekshir GURUH` yoki «X guruhini tekshir» - guruh to'liq ko'rib chiqiladi (rasm va video kadrlari bilan).
 - `/sinf` - sinf (`CLASS_NAME=5-D`) guruhlaridagi muammolar; dars jadvali kelsa - sinf guruhiga tashlash eslatiladi.
   Har soatda avtomatik; botlar va sizga kelgan rasm/videolar 3 soatda bir ko'rib chiqilib, bilimga qo'shiladi.
+- Agent mavzusiga yozsangiz, javobda agentning ismi va roli ko'rinadi; Ali mavzusida yoki «Ali, ...» deb murojaat
+  qilsangiz Ali javob beradi. Agentga uning xatosi yoki keyingi safar nima o'zgartirishi kerakligini aytsangiz,
+  fikr-mulohaza xotirada saqlanib keyingi javoblariga qo'shiladi.
+- Koddagi xatoni «kodda bug bor, tuzat» kabi aytsangiz Dasturchi alohida nusxada tuzatib, testlaydi. Qo'llash usuli
+  `Ruxsatlar → ali_kuchaytirish` sozlamasiga bog'liq: avtomatik qo'llash o'chirilgan bo'lsa, tasdiq so'raladi.
 
 ## O'z ovozingizni qo'yish
 

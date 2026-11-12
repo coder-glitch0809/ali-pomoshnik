@@ -159,18 +159,43 @@ def _norm(text: str) -> str:
 
 
 def addressed(text: str, agents: dict) -> str | None:
-    """Guruhda kimga yozilgani: matn boshida (birinchi 6 so'z) agent ismi yoki kasbi - «Sevara, ...», «Kontent meyker
-    post yoz», «@dasturchi ...», «Dasturchiga ayt ...». Topilmasa None - Ali o'zi javob beradi/taqsimlaydi."""
-    head = " ".join(_norm(text).split()[:6])
-    head = re.sub(r"^\W*(ali|али)\b\W*", "", head)
+    """Guruhdagi murojaatni topadi: Ali bevosita chaqirilsa Ali, agent chaqirilsa agent."""
+    normalized = _norm(text)
+    head = " ".join(normalized.split()[:8])
+    direct_ali = bool(re.match(r"^\W*@?ali\b", head))
+    head = re.sub(r"^\W*@?ali\b\W*", "", head)
     best = None
     for key, a in agents.items():
         names = {_norm(name_of(key)), _norm(a.name), key.replace("_", " "), *EXTRA.get(key, ())}
         for n in filter(None, names):
             m = re.search(rf"(^|[\s@,]){re.escape(n)}", head)
             if m and (best is None or m.start() < best[0]):
-                best = (m.start(), key)
+                best = (m.start(), key, n)
+    if direct_ali:
+        if best and best[0] <= 1:
+            return best[1]
+        return "ali"
     return best[1] if best else None
+
+
+FEEDBACK = re.compile(
+    r"\b(?:sen|siz|sening|sizing)\b.{0,80}\b(?:xato|kamchilik|noto'g'ri|notogri|yomon|"
+    r"yetishmay|unut|takrorla|etibor)\b|"
+    r"\b(?:xato|kamchilik|noto'g'ri|notogri|yomon|yetishmay)\b.{0,80}\b"
+    r"(?:qilding|qildingiz|berding|berdingiz|yozding|yozdingiz|bo'ldi|bo'libdi)\b|"
+    r"\bbundan keyin\b|\bkeyingi safar\b|\btakrorlama\b|\beslab qol\b",
+    re.I,
+)
+
+
+def remember_feedback(key: str, text: str) -> bool:
+    """Agentga egasi bergan aniq tuzatish/yo'l-yo'riqni uning doimiy bilimiga saqlaydi."""
+    if key not in {"ali"} and FEEDBACK.search(_norm(text)):
+        from .memory import memory
+        feedback = " ".join((text or "").split())[:1500]
+        memory.add_knowledge(f"[{key}] Egasi fikr-mulohazasi", feedback)
+        return True
+    return False
 
 
 def _chunks(text: str) -> list[str]:

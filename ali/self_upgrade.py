@@ -40,6 +40,10 @@ TO_CODER = re.compile(r"(dasturchi|дастурчи|programmist|программ
                       r"(ayt|айт|yoz|ёз|йоз|buyur|буюр|топшир|topshir|тушунтир|tushuntir|\S)", re.I)
 # Dasturchi haqidagi shikoyat/savol - topshiriq emas («nega to'g'irlamadi», «javob bermayapti»)
 NOT_ORDER = re.compile(r"^\W*(ali|али)?\W*(nega|нега|nima\s+uchun|нима\s+учун|qachon|качон|қачон)\b", re.I)
+CODE_ISSUE = re.compile(r"\b(?:kod|код|code|dastur|дастур|xato|хатолик|bug|kamchilik|камчилик|"
+                        r"nuqson|носозлик)\w*\b", re.I)
+CODE_FIX = re.compile(r"\b(?:tuzat|тузат|to['ʻ‘’]?g['ʻ‘’]?irla|тўғрила|тогирла|fix|"
+                      r"bartaraf\s+et)\w*\b", re.I)
 PERMISSION = "ali_kuchaytirish"  # Ruxsatlar: "auto" - testlar o'tsa o'zi qo'llaydi va GitHub'ga push qiladi; "ask" - tugma
 SECRET_ENV = re.compile(r"TOKEN|KEY|SECRET|PASSWORD|CREDENTIAL|TELEGRAM|SESSION", re.I)
 _lock = threading.Lock()
@@ -63,7 +67,9 @@ def is_request(text: str) -> bool:
     text = text or ""
     if text.rstrip().endswith("?") or NOT_ORDER.search(text):
         return bool(QUERY.search(text))
-    return bool(QUERY.search(text) or TO_CODER.search(text) or (CODER.search(text) and CHANGE.search(text)))
+    code_issue_order = CODE_ISSUE.search(text) and CODE_FIX.search(text)
+    return bool(QUERY.search(text) or TO_CODER.search(text) or
+                (CODER.search(text) and CHANGE.search(text)) or code_issue_order)
 
 
 def extract_task(text: str) -> str:

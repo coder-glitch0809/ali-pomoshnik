@@ -210,6 +210,13 @@ class Memory:
                           (len(prefix), prefix)).fetchall()
         return {"count": len(rows), "latest": [dict(r) for r in rows[:3]]}
 
+    def agent_feedback(self, key: str, limit: int = 5) -> list[str]:
+        """Oxirgi egasi fikr-mulohazalari - agent har safar o'z xatolarini hisobga olishi uchun."""
+        topic = f"[{key}] Egasi fikr-mulohazasi"
+        rows = self._exec("SELECT content FROM knowledge WHERE topic=? ORDER BY id DESC LIMIT ?",
+                          (topic, limit)).fetchall()
+        return [r["content"] for r in reversed(rows)]
+
     # Unified, read-only view over the original records; no copies of chat history.
     VAULT_SQL = """
         SELECT 'note:' || id AS id, 'inbox' AS folder, title, content, created_at AS updated_at FROM vault_notes

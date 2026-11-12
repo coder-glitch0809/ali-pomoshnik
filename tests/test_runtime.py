@@ -1442,12 +1442,13 @@ class TeamHubTests(unittest.TestCase):
         brain.agents.setdefault("treyder", self.agents()["treyder"])
 
         async def go():
-            with patch.object(self.hub, "agent_answer", return_value="Sardor: 65k qo'llab-quvvatlash") as ans:
+            with patch.object(self.hub, "agent_answer", return_value="65k qo'llab-quvvatlash") as ans:
                 self.assertTrue(await bot.team_text(update, None))
                 await asyncio.gather(*bot.learn_tasks)
                 ans.assert_called_once()
                 self.assertEqual(ans.call_args.args[0], "treyder")
             msg.reply_text.assert_awaited()
+            self.assertIn(self.hub.label("treyder", brain.agents), msg.reply_text.call_args.args[0])
             self.assertIn("65k", msg.reply_text.call_args.args[0])
             update.effective_user = SimpleNamespace(id=5)  # begona odam - javob yo'q
             msg.reply_text.reset_mock()
@@ -1455,6 +1456,64 @@ class TeamHubTests(unittest.TestCase):
             msg.reply_text.assert_not_awaited()
             update.effective_chat = SimpleNamespace(id=-2002, type="supergroup")  # boshqa guruh - tegilmaydi
             self.assertFalse(await bot.team_text(update, None))
+        asyncio.run(go())
+
+    def test_ali_topic_defaults_to_ali_reply(self):
+        from types import SimpleNamespace
+        bot = TelegramBot();bot.owner_id = 999
+        self.hub._save({"chat_id": -1001, "topics": {"ali": 9}, "names": {}, "activity": {}})
+        msg = SimpleNamespace(text="Salom, yordam kerak", message_thread_id=9, is_topic_message=True,
+                              reply_text=AsyncMock())
+        update = SimpleNamespace(effective_chat=SimpleNamespace(id=-1001, type="supergroup"),
+                                 effective_user=SimpleNamespace(id=999), message=msg)
+        bot.app = SimpleNamespace(bot=SimpleNamespace(send_chat_action=AsyncMock()))
+
+        async def go():
+            with patch.object(self.hub, "agent_answer", return_value="Salom, men Ali.") as ans:
+                self.assertTrue(await bot.team_text(update, None))
+                await asyncio.gather(*bot.learn_tasks)
+            ans.assert_called_once()
+            self.assertEqual(ans.call_args.args[0], "ali")
+            self.assertIn(self.hub.label("ali"), msg.reply_text.call_args.args[0])
+
+        asyncio.run(go())
+
+    def test_code_fix_request_in_ali_topic_starts_developer_work(self):
+        from types import SimpleNamespace
+        bot = TelegramBot();bot.owner_id = 999
+        self.hub._save({"chat_id": -1001, "topics": {"ali": 9}, "names": {}, "activity": {}})
+        msg = SimpleNamespace(text="Kodda bug bor, tuzat", message_thread_id=9, is_topic_message=True,
+                              reply_text=AsyncMock())
+        update = SimpleNamespace(effective_chat=SimpleNamespace(id=-1001, type="supergroup"),
+                                 effective_user=SimpleNamespace(id=999), message=msg)
+
+        async def go():
+            with patch.object(bot, "start_upgrade", new=AsyncMock()) as start:
+                self.assertTrue(await bot.team_text(update, None))
+            start.assert_awaited_once_with(update, msg.text)
+
+        asyncio.run(go())
+
+    def test_agent_feedback_is_acknowledged_without_becoming_a_new_assignment(self):
+        from types import SimpleNamespace
+        bot = TelegramBot();bot.owner_id = 999
+        self.hub._save({"chat_id": -1001, "topics": {"treyder": 7}, "names": {}, "activity": {}})
+        msg = SimpleNamespace(text="Sen xato qilding, keyingi safar raqamlarni tekshir.",
+                              message_thread_id=7, is_topic_message=True, reply_text=AsyncMock())
+        update = SimpleNamespace(effective_chat=SimpleNamespace(id=-1001, type="supergroup"),
+                                 effective_user=SimpleNamespace(id=999), message=msg)
+        bot.app = SimpleNamespace(bot=SimpleNamespace(send_chat_action=AsyncMock()))
+        brain.agents.setdefault("treyder", self.agents()["treyder"])
+
+        async def go():
+            with patch.object(self.hub, "remember_feedback", return_value=True) as remember, \
+                    patch.object(self.hub, "agent_answer") as answer:
+                self.assertTrue(await bot.team_text(update, None))
+            remember.assert_called_once_with("treyder", msg.text)
+            answer.assert_not_called()
+            self.assertIn(self.hub.label("treyder", brain.agents), msg.reply_text.call_args.args[0])
+            self.assertIn("eslab qoldim", msg.reply_text.call_args.args[0])
+
         asyncio.run(go())
 
 
