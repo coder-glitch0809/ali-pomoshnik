@@ -16,7 +16,7 @@ va Instagram akkauntlaringizni tahlil qilib kontent reja tuzadi.
 | **Kompyuterni boshqarish** | PowerShell orqali istalgan ish (har safar tasdiq bilan), ekranni ko'rish, ilova/sayt ochish |
 | **O'rganish** | Bilmagan mavzuni internetdan o'rganadi, bilimlar bazasiga saqlaydi va sizga o'rgatadi |
 | **Joylashuv** | Telefon GPS, ob-havo, yaqin atrofdagi joylar |
-| **Instagram** | Statistika, eng yaxshi postlar tahlili, izohlar, raqobatchilar, video g'oyalari va ssenariylar |
+| **Instagram** | Statistika, eng yaxshi postlar tahlili, izohlar, raqobatchilar, video g'oyalari va ssenariylar; Reels 1080x1920 / 30 fps, video oqimida kontent-meyker, dizayner va montajchi (animatsiyada dasturchi ham) qatnashadi |
 | **Xotira** | Siz haqingizdagi faktlar, eslatmalar, barcha suhbatlar |
 
 Barcha kanallar **bitta suhbat**ni bo'lishadi: Telegram'da yozgan narsangiz kompyuter ekranida ham jonli ko'rinadi.

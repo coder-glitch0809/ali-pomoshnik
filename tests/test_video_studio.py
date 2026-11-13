@@ -58,11 +58,35 @@ class VideoStudioTests(unittest.TestCase):
         self.assertIn("targetolog", system)
         self.assertIn("Planet Print", system)
         self.assertIn("informatika", system)
+        self.assertIn("Dizayner", system)
+        self.assertIn("Video montajchi", system)
         self.assertIn(video_studio.DEFAULT_TOPIC, prompt)
+
+    def test_video_validation_rejects_bad_dimensions_and_missing_audio(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "video.mp4"
+            path.write_bytes(b"mp4")
+            with patch("ali.skills.video_edit.info", return_value={
+                "width": 720, "height": 1280, "duration": 4.0, "audio": True
+            }):
+                with self.assertRaisesRegex(RuntimeError, "o'lchami noto'g'ri"):
+                    video_studio._validate_video(path, (1080, 1920), 4.0, True)
+            with patch("ali.skills.video_edit.info", return_value={
+                "width": 1080, "height": 1920, "duration": 4.0, "audio": False
+            }):
+                with self.assertRaisesRegex(RuntimeError, "audio yo'q"):
+                    video_studio._validate_video(path, (1080, 1920), 4.0, True)
+
+    def test_video_generation_does_not_silently_drop_requested_voice(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(outbox, "DIR", Path(d)), \
+                patch.object(video_studio, "providers") as providers, \
+                patch.object(video_studio, "_tts", side_effect=RuntimeError("TTS down")):
+            providers.chat.return_value = ("AI", json.dumps(SCRIPT))
+            with self.assertRaisesRegex(RuntimeError, "1-sahna uchun diktor ovozi"):
+                video_studio.make_content_video()
 
     def test_make_content_video_writes_script_voice_and_files(self):
         with tempfile.TemporaryDirectory() as d, patch.object(outbox, "DIR", Path(d)), \
-                patch.dict(video_studio.FORMATS, {"9:16": (144, 256)}), \
                 patch.object(video_studio.providers, "chat", return_value=("AI", json.dumps(SCRIPT))), \
                 patch.object(video_studio.providers, "image_sources", return_value=[]), \
                 patch.object(video_studio, "_tts", return_value=_silence()):
@@ -72,6 +96,11 @@ class VideoStudioTests(unittest.TestCase):
             files = {p.suffix for p in Path(d).iterdir()}
             self.assertIn("ovozli", result)
             self.assertEqual(files, {".mp4", ".srt", ".txt"})  # vaqtinchalik ovoz fayllari o'chirilgan
+            from ali.skills.video_edit import info
+            media = info(next(Path(d).glob("*.mp4")))
+            self.assertEqual((media["width"], media["height"]), (1080, 1920))
+            self.assertEqual(media["fps"], 30)
+            self.assertTrue(media["audio"])
             srt = next(Path(d).glob("*.srt")).read_text(encoding="utf-8")
             self.assertIn("Hoziroq yozing", srt)
 

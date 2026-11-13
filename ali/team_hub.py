@@ -273,12 +273,12 @@ def score_of(decision: str) -> float | None:
 
 
 def review_video(path: str, about: str, agents: dict, ready_apps: list[str] | None = None) -> tuple[str, float | None]:
-    """Har tayyor video Maslahat kengashi muhokamasidan o'tadi: video mavzuga qo'yiladi, Kontent-meyker, Montajchi va
-    Dasturchi Instagram uchun baholaydi, Ali qaror va 1-10 baho chiqaradi. (qaror, baho)."""
+    """Tayyor videoni mavzuga mos mutaxassislar ko'radi, Ali qaror va 1-10 baho chiqaradi."""
     post_video("maslahat", path, f"🎬 Muhokamaga: {about[:900]}", agents)
     try:
         decision = council(f"Shu tayyor Reels videoni Instagram uchun baholang va kanalga joylashga arziydimi ayting. "
-                           f"Video haqida: {about}", agents, None, ready_apps)
+                           f"Video haqida: {about}", agents,
+                           pick_members(f"Reels video montaj dizayn: {about}", agents), ready_apps)
     except Exception as e:
         log.warning("Video muhokamasi bo'lmadi: %s", e)
         return "", None
@@ -418,15 +418,22 @@ Masala video, kontent, reklama yoki Instagram'ga tegishli bo'lsa, qo'shimcha:
 5) 🎯 Kutilgan natija: qamrov/saqlash/direkt yozishlar bo'yicha taxmin va 7 kunda nimani o'lchab tekshiramiz."""
 
 
-# Video/kontent/kod masalasida albatta qatnashadigan eng yaxshi maslahatchilar
+# Video va boshqa vazifalar uchun mos maslahatchilar
 EXPERTS = re.compile(r"video|видео|reels|рилс|kontent|контент|instagram|инстаграм|montaj|монтаж|post|пост|reklama|"
                      r"реклама|dastur|дастур|\bkod\b|\bкод\b|sayt|сайт|\bbot\b|\bбот\b", re.I)
 CORE = ("kontent", "video_montajchi", "dasturchi")
+VIDEO_TASK = re.compile(r"video|видео|reels|рилс|montaj|монтаж", re.I)
+VIDEO_CODE = re.compile(r"animats|animation|kod|code|html|css|javascript|motion", re.I)
+VIDEO_CORE = ("kontent", "video_montajchi", "dizayner")
 
 
 def pick_members(question: str, agents: dict, limit: int = 3) -> list[str]:
-    """Masalaga eng mos 2-3 agent: tavsifi va nomidagi so'zlar mosligi bo'yicha (+ dispetcher tanlagani).
-    Video, kontent yoki kod haqida bo'lsa - Kontent-meyker, Video montajchi va Dasturchi albatta qatnashadi."""
+    """Masalaga mos agentlarni tanlaydi; video uchun kontent, montaj, dizayn va kerak bo'lsa kod."""
+    if VIDEO_TASK.search(question):
+        picked = [k for k in VIDEO_CORE if k in agents]
+        if VIDEO_CODE.search(question) and "dasturchi" in agents:
+            picked.append("dasturchi")
+        return picked
     core = [k for k in CORE if k in agents] if EXPERTS.search(question) else []
     if core:
         return core
@@ -458,7 +465,8 @@ def council(question: str, agents: dict, members: list[str] | None = None, ready
     from concurrent.futures import ThreadPoolExecutor, as_completed
     ask = ask or (lambda key, text: agent_answer(key, text, ready_apps))
     # egam: muhokamada HAMMA agentlar qatnashsin (18+ agent bundan mustasno); bir vaqtda - kutish uzaymasin
-    members = [k for k in (members or [k for k in agents if k != "18-agent"]) if k in agents]
+    selected = members if members is not None else [k for k in agents if k != "18-agent"]
+    members = [k for k in selected if k in agents]
     post("maslahat", f"🤝 Yangi masala: {question[:1500]}\n\nKengash ({len(members)} agent): "
          + ", ".join(label(k, agents) for k in members), agents)
     opinions = []

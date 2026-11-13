@@ -25,9 +25,10 @@ from . import Plugin
 
 log = logging.getLogger("ali.video_studio")
 
-FORMATS = {"9:16": (720, 1280), "16:9": (1280, 720), "1:1": (1080, 1080)}
+FORMATS = {"9:16": (1080, 1920), "16:9": (1280, 720), "1:1": (1080, 1080)}
 PLATFORMS = ["reels", "tiktok", "shorts", "youtube", "telegram"]
-FPS = 25
+FPS = 30
+ENCODE_CRF = 18
 BRAND_COLORS = ("#FFFFFF", "#1F9D55", "#FFC21A")
 DEFAULT_TOPIC = "Targetologlik yoki tashqi reklama bo'yicha bitta foydali video g'oyasini o'zing tanla"
 
@@ -85,21 +86,40 @@ def _parse_script(raw: str) -> dict:
     return data
 
 
+def _video_team_context(topic: str) -> str:
+    """Ssenariy uchun faqat shu videoga tegishli agentlarning yo'riqnomalarini beradi."""
+    from ..service import brain
+    from ..team_hub import pick_members
+
+    members = pick_members(f"Reels video montaj dizayn: {topic}", brain.agents)
+    sections = []
+    for key in members:
+        agent = brain.agents.get(key)
+        if agent:
+            profile = (agent.prompt or "").strip()
+            if len(profile) > 1600:
+                profile = profile[:1600].rsplit("\n", 1)[0]
+            sections.append(f"### {agent.name} — {agent.description}\n{profile}")
+    return ("\n\nVideo jamoasining faol mutaxassislari (har biri o'z sohasi talabini natijaga qo'llasin):\n"
+            + "\n\n".join(sections)) if sections else ""
+
+
 def _write_script(topic: str, platform: str, duration_s: int, audience: str, goal: str, language: str) -> dict:
     prompt = (f"Mavzu: {_clean(topic, 500) or DEFAULT_TOPIC}\nPlatforma: {platform}\nDavomiylik: ~{duration_s} soniya\n"
               f"Auditoriya: {audience or 'aniqlanmagan, mavzudan kelib chiq'}\nMaqsad: {goal or 'qamrov va obunachi'}\n"
               f"Til: {language} (jonli, tabiiy). Sahnalar soni: {max(3, min(8, duration_s // 5))}.")
+    system = _SCRIPT_SYSTEM + _video_team_context(topic)
     from .. import local_ai
     ready = local_ai.connected() if local_ai.access() is True else []
     for key in sorted(ready, key=lambda k: k != "codex"):  # ChatGPT ssenariyda birinchi, keyin Claude/Gemini
         try:
             script = _parse_script(local_ai.ask_one(key, local_ai.app_exe(key) or "api",
-                                                    f"{_SCRIPT_SYSTEM}\n\n{prompt}\n\nFAQAT JSON qaytar.", 300))
+                                                    f"{system}\n\n{prompt}\n\nFAQAT JSON qaytar.", 300))
             if script.get("scenes"):
                 return script
         except Exception as e:
             log.warning("%s ssenariy yozmadi: %s", key, e)
-    _, answer = providers.chat(_SCRIPT_SYSTEM, [], prompt, max_tokens=2500, json_mode=True)
+    _, answer = providers.chat(system, [], prompt, max_tokens=2500, json_mode=True)
     return _parse_script(answer)
 
 
@@ -178,11 +198,25 @@ def _mux(video: Path, audios: list[tuple[Path, float]], out: Path, total: float)
         chains.append(f"[{k}:a]adelay=delays={int(start * 1000)}:all=1[a{k}]")
         labels.append(f"[a{k}]")
     graph = ";".join(chains) + f";{''.join(labels)}amix=inputs={len(labels)}:normalize=0:duration=longest[aout]"
-    cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+    cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
             "-t", f"{total:.2f}", str(out)]
     r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600)
     if r.returncode != 0 or not out.exists():
         raise RuntimeError(f"ffmpeg ovozni qo'sha olmadi: {r.stderr[-300:]}")
+
+
+def _validate_video(path: Path, size: tuple[int, int], expected_duration: float, require_audio: bool) -> None:
+    if not path.is_file() or path.stat().st_size == 0:
+        raise RuntimeError("Video eksporti bo'sh fayl yaratdi")
+    from ..skills.video_edit import info
+    media = info(path)
+    width, height = size
+    if (media["width"], media["height"]) != (width, height):
+        raise RuntimeError(f"Video o'lchami noto'g'ri: {media['width']}x{media['height']}, kutilgani {width}x{height}")
+    if media["duration"] <= 0 or abs(media["duration"] - expected_duration) > max(1.0, expected_duration * .03):
+        raise RuntimeError(f"Video davomiyligi noto'g'ri: {media['duration']:.2f} s, kutilgani ~{expected_duration:.2f} s")
+    if require_audio and not media["audio"]:
+        raise RuntimeError("Ovoz so'ralgan, lekin tayyor videoda audio yo'q")
 
 
 # ------------------------------------------------------------------ kadrlar
@@ -285,7 +319,7 @@ def _srt(scenes: list[dict]) -> str:
         "TAYYOR KONTENT VIDEO (.mp4) ni O'ZI yasaydi: scenes berilmasa mavzudan o'zi ssenariy yozadi, har sahnaga "
         "diktor OVOZI (Ali ovozi/TTS), AI fon RASMLARI (ulangan bo'lsa, aks holda animatsiyali gradient), pastda "
         "SUBTITRLAR. Natija avtomatik yuboriladi: ovozli .mp4, .srt subtitr va caption+hashtag .txt. "
-        "Reels/TikTok/Shorts - 9:16, YouTube - 16:9, post - 1:1. "
+        "Reels/TikTok/Shorts - 9:16, 1080x1920 va 30 fps; YouTube - 16:9, post - 1:1. "
         "scenes: [{title, text, narration, image_prompt, duration}] (3-8 sahna)."
     ),
     params={
@@ -335,16 +369,17 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
             if sc["narration"]:
                 try:
                     data = _tts(sc["narration"])
-                    if data:
-                        a = stem.parent / f"{stem.name}_ovoz{i}.{'wav' if data[:4] == b'RIFF' else 'mp3'}"
-                        a.write_bytes(data)
-                        sc["speak"] = _audio_seconds(a) or sc["duration"]
-                        sc["duration"] = max(sc["duration"], min(sc["speak"] + .6, 20.0))
-                        audios.append((a, start))
+                    if not data:
+                        raise RuntimeError("TTS bo'sh audio qaytardi")
+                    a = stem.parent / f"{stem.name}_ovoz{i}.{'wav' if data[:4] == b'RIFF' else 'mp3'}"
+                    a.write_bytes(data)
+                    sc["speak"] = _audio_seconds(a) or sc["duration"]
+                    sc["duration"] = max(sc["duration"], min(sc["speak"] + .6, 20.0))
+                    audios.append((a, start))
                 except Exception as e:
-                    log.warning("Ovoz yaratilmadi: %s", e)
-                    if not notes:
-                        notes.append(f"ovoz qo'shilmadi ({e})")
+                    for audio, _ in audios:
+                        audio.unlink(missing_ok=True)
+                    raise RuntimeError(f"{i + 1}-sahna uchun diktor ovozi tayyorlanmadi: {e}") from e
             start += sc["duration"]
     for sc in clean:  # emoji shriftda yo'q (bo'sh kvadrat) - subtitrdan olib tashlanadi, ovozda qoladi
         bare = re.sub("[𐀀-􏿿☀-➿️‍]", "", sc["narration"] or "").strip()
@@ -378,7 +413,8 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
     particles = [(rnd.random(), rnd.random(), rnd.uniform(1.5, 4.5), rnd.uniform(.03, .09)) for _ in range(40)]
     silent = stem.parent / f"{stem.name}_ovozsiz.mp4" if audios else path
     writer = imageio_ffmpeg.write_frames(str(silent), (w, h), fps=FPS, codec="libx264", pix_fmt_out="yuv420p",
-                                         macro_block_size=8, ffmpeg_log_level="error", output_params=["-crf", "23"])
+                                         macro_block_size=8, ffmpeg_log_level="error",
+                                         output_params=["-crf", str(ENCODE_CRF), "-preset", "medium"])
     writer.send(None)
     t_global = 0.0
     try:
@@ -405,12 +441,13 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
             _mux(silent, audios, path, total)
             voiced = True
         except Exception as e:
-            log.warning("%s", e)
-            silent.replace(path)
-            notes.append("ovoz videoga qo'shilmadi")
-        silent.unlink(missing_ok=True)
-        for a, _ in audios:
-            a.unlink(missing_ok=True)
+            raise RuntimeError(f"Ovoz videoga qo'shilmadi: {e}") from e
+        finally:
+            silent.unlink(missing_ok=True)
+            for a, _ in audios:
+                a.unlink(missing_ok=True)
+
+    _validate_video(path, (w, h), total, bool(audios))
 
     srt = stem.parent / f"{stem.name}.srt"
     srt.write_text(_srt(clean), encoding="utf-8")

@@ -1370,6 +1370,24 @@ class TeamHubTests(unittest.TestCase):
         self.assertEqual(members[0], "treyder")
         self.assertGreaterEqual(len(members), 2)
 
+    def test_video_uses_only_video_specialists_for_review(self):
+        from types import SimpleNamespace
+        agents = {key: SimpleNamespace(key=key, name=key, icon="🎬", description="video")
+                  for key in ("kontent", "video_montajchi", "dizayner", "dasturchi", "treyder")}
+        expected = ["kontent", "video_montajchi", "dizayner"]
+        self.assertEqual(self.hub.pick_members("Reels video reklama", agents), expected)
+        self.assertEqual(self.hub.pick_members("Instagram animatsion Reels video", agents), expected + ["dasturchi"])
+        self.assertEqual(self.hub.pick_members("Python kod xatosini tuzat", agents),
+                         ["kontent", "video_montajchi", "dasturchi"])
+        with patch.object(self.hub, "post_video"), \
+                patch.object(self.hub, "council", return_value="Instagram bahosi: 8/10") as council:
+            result = self.hub.review_video("video.mp4", "Reels reklama", agents)
+        self.assertEqual(result[1], 8)
+        self.assertEqual(council.call_args.args[2], expected)
+        with patch.object(self.hub, "post_video"), patch.object(self.hub, "council", return_value="") as council:
+            self.hub.review_video("video.mp4", "Reels reklama", {"treyder": agents["treyder"]})
+        self.assertEqual(council.call_args.args[2], [])
+
     def test_idle_agents_reported_and_tick_once_a_day(self):
         import time as _t
         now = _t.time()
