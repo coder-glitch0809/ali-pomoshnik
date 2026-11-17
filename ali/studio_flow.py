@@ -582,6 +582,9 @@ def _poll_channel(notify) -> None:
             if not kind:
                 continue
             path = await m.download_media(file=str(folder)) if kind != "text" else None
+            if path and kind in {"photo", "video"}:
+                from .video_variety import register
+                register(path, m.text or "")
             got.append({"kind": kind, "id": m.id, "path": path, "text": m.text or "", "group": m.grouped_id,
                         "reply": m.reply_to_msg_id, "at": m.date.timestamp()})
         return got, max(m.id for m in msgs)

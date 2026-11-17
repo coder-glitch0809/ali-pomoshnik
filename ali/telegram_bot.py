@@ -1468,6 +1468,8 @@ class TelegramBot(PublicTelegram, Listener):
         file = await media.get_file()
         name = getattr(media, "file_name", None) or f"organ_{media.file_unique_id}.mp4"
         path = await asyncio.to_thread(ingest.save_upload, name, bytes(await file.download_as_bytearray()))
+        from .video_variety import register
+        await asyncio.to_thread(register, path, caption)
         await m.reply_text("🎓 Videoni oldim - uslubini o'rganyapman (kesimlar, ritm, o'tishlar, effektlar, yozuvlar, "
                            "musiqa). Hisobot 1-3 daqiqada shu yerga keladi.")
         threading.Thread(target=studio_flow.learn, args=([str(path)], caption, None, hub.notify, self._reply_later(m)),
@@ -1496,6 +1498,8 @@ class TelegramBot(PublicTelegram, Listener):
         file = await media.get_file()
         name = getattr(media, "file_name", None) or f"video_{media.file_unique_id}.mp4"
         path = await asyncio.to_thread(ingest.save_upload, name, bytes(await file.download_as_bytearray()))
+        from .video_variety import register
+        await asyncio.to_thread(register, path, m.caption or "")
         from .skills.music_lib import harvest_later
         harvest_later(path)  # har tashlangan videoning musiqasi xotiraga
         task = m.caption or ""
@@ -1632,6 +1636,8 @@ class TelegramBot(PublicTelegram, Listener):
         caption = update.message.caption or ""
         # Rasm ham o'rganiladi: Pro ilova ko'radi, mos agent bazasiga tavsif va bilim yoziladi
         path = await asyncio.to_thread(ingest.save_upload, "telegram_rasm.jpg", raw)
+        from .video_variety import register
+        await asyncio.to_thread(register, path, caption)
         from . import daily_video
         if daily_video.CHAR_SAVE.search(caption):  # «shu personajni eslab qol» - videolarda shu qahramon gapiradi
             await asyncio.to_thread(daily_video.save_character, str(path))

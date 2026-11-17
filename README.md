@@ -337,3 +337,14 @@ Avtomatik kanal nashri uchun eksport kamida 1080x1920, 9:16, 30 fps va ovozli
 bo'lishi, kengash bahosi kamida 7/10 bo'lishi kerak. Bahosiz yoki tekshiruvdan
 o'tmagan video egasiga ko'rib chiqish uchun yuboriladi. Kengash bahosi ssenariy
 va tavsifga asoslanadi; u videoni ko'z bilan ko'rib tekshirish o'rnini bosmaydi.
+
+Video xilma-xilligi: oxirgi 60 ta tayyorlangan videoning mavzusi, ssenariysi va
+vizual uslubi saqlanadi. Takroriy ssenariy uch urinishdan so'ng ham yangilanmasa,
+eski shablon yuborish o'rniga topshiriq xato bilan to'xtaydi. Kontent-meyker →
+montajchi → dizayner → animatsiya/render oqimi sahnalarga mos grafikalarni qo'llaydi.
+Vizual uslub va ranglar almashadi. Telegram va kuzatiladigan studiya kanalidan
+olingan rasm/video izohlari arxivga yoziladi; kamida ikki mazmunli so'z mos kelsa,
+material sahnaga olinadi. Bir videoda bitta arxiv fayli ikki marta ishlatilmaydi.
+Eski indekslanmagan materiallar tavsifli fayl nomi bo'yicha topiladi; izohsiz
+rasmning mazmuni avtomatik tanilgan deb hisoblanmaydi. Video lavhalari ovozsiz,
+sahna davomiyligiga kesilib, kadrma-kadr sinxronlashtiriladi.

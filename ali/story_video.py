@@ -44,6 +44,7 @@ Qoidalar:
   host_corner (personaj burchakda kichik). Ketma-ket ikki sahnada bir xil bo'lmasin, kamida 3 ta «full».
 - «big» - ekrandagi 2-4 so'zli asosiy yozuv (hook sahnasida kuchli). To'qima statistika ishlatma.
 Oldingi videolar (TAKRORLAMA): {previous}
+Sarlavhani sinonimlar bilan almashtirish yangi mavzu emas: muammo, misol va yechim ham boshqa bo'lsin.
 FAQAT JSON: {{"title": "...", "hook": "...", "scenes": [{{"voice": "...", "big": "...", "image": "...", "layout": "full"}}],
 "cta": "...", "caption": "Instagram matni", "hashtags": "#...", "mood": "energetic|cinematic|calm", "why": "1 gap"}}"""
 
@@ -59,6 +60,8 @@ Har sahna uchun:
 - "layout": full | host_left | host_right | host_center | host_corner (personaj joyi almashsin, ba'zan ko'rinmasin).
 - "move": zoom_in | zoom_out | pan_left | pan_right | tilt_up (kamera harakati).
 - "transition": fade | slide | zoom | up (oldingi sahnadan o'tish; urg'uli joyda zoom, hikoya davomida slide).
+- "diagram": {{"type": "steps|compare|funnel|line|donut|bars_up|bars_down", "labels": ["2-3 qisqa yozuv"]}}.
+  Grafik gapni tushuntirsin, bezak bo'lmasin; to'qima statistika va raqam qo'shma.
 Ssenariy: {script}
 FAQAT JSON: {{"scenes": [{{"image": "...", "layout": "...", "move": "...", "transition": "..."}}], "mood": "energetic|cinematic|calm",
 "notes": "Dasturchiga 1-2 gap: nimaga e'tibor bersin"}}"""
@@ -90,6 +93,10 @@ def montage_plan(data: dict, ready: list[str]) -> tuple[str, str]:
             s["move"] = MOVE_OF[p["move"]]
         if p.get("transition") in TRANS_OF:
             s["transition"] = TRANS_OF[p["transition"]]
+        from .skills import stage
+        diagram = p.get("diagram")
+        if isinstance(diagram, dict) and diagram.get("type") in stage.LABELS:
+            s["diagram"] = diagram
     if got.get("mood") in ("energetic", "cinematic", "calm"):
         data["mood"] = got["mood"]
     fix_layouts(data["scenes"])
@@ -138,17 +145,14 @@ def script(topic: str, previous: str, ready: list[str]) -> tuple[dict, str]:
 
 def fallback(topic: str) -> dict:
     """AI'siz: mavzu gaplaridan sahnalar, rasm tavsifi - umumiy hikoya sahnalari."""
-    head = re.split(r"[:.\n]", topic or "Reklamangiz mijoz olib kelyaptimi?")[0].strip()[:70]
+    from .video_variety import fresh_topic
+    topic = topic or fresh_topic([])
+    head = re.split(r"[;.\n]", topic)[0].strip()[:70]
     parts = [p.strip(" -•") for p in re.split(r"[,;:\n]", topic or "")[1:] if 6 < len(p.strip()) < 90][:5]
     if len(parts) < 3:
-        parts = ["Ko'pchilik bu xatoni bilmaydi", "Mijoz sizni ko'rmasa, sotuv ham bo'lmaydi",
-                 "To'g'ri reklama bir oyda natija beradi"]
-    pics = ["an Uzbek shop owner in his 40s worried, looking at an empty store",
-            "a busy Uzbek street with many shops, people walking past one dark shop",
-            "a smartphone screen showing an Instagram ad, a hand scrolling past it",
-            "a bright illuminated shop sign at night attracting customers",
-            "customers entering a cozy shop, the owner smiling",
-            "a designer and a client planning an advertisement on a laptop"]
+        raise ValueError("Mavzuga mos ssenariy olinmadi: kamida uchta aniq fikr kerak")
+    pics = [f"Editorial illustration, {'wide shot' if i % 2 else 'close-up'}. Topic: {head}. Scene: {line}. No text."
+            for i, line in enumerate([head, *parts, head])]
     scenes = [{"voice": head, "big": head[:30], "image": pics[0], "layout": "host_center"}]
     for k, p in enumerate(parts):
         scenes.append({"voice": p, "big": " ".join(p.split()[:3]), "image": pics[(k + 1) % len(pics)], "layout": "full"})
@@ -181,7 +185,8 @@ def refine(prompt: str) -> str:
     """Rasm tavsifini tozalaydi va sifat so'zlarini qo'shadi (tavsif bo'sh yoki juda uzun bo'lmasin)."""
     p = re.sub(r"\s+", " ", prompt or "").strip().strip(".")
     p = p[:500] or "Uzbek small business street"
-    return f"{p}. Sharp focus, professional composition, high detail. {STYLE}"
+    style = "vertical 9:16, no text, no watermark" if "Visual direction:" in p else STYLE
+    return f"{p}. Sharp focus, professional composition, high detail. {style}"
 
 
 def _pollinations(prompt: str, seed: int, model: str = "flux", size: tuple = (1080, 1920)) -> bytes:
@@ -360,7 +365,8 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
     from .skills import presenter
     esc = html_lib.escape
     dur = starts[-1] + lengths[-1]
-    rnd = random.Random(len(data.get("title", "")))
+    from .skills import stage, motion_bg
+    rnd = random.Random(data.get("title", "") + data.get("style", ""))
     parts, subs = [], []
     for k, s in enumerate(data["scenes"]):
         st, ln = starts[k], lengths[k]
@@ -370,13 +376,27 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
         pic = pics[k][0]
         if pic:
             import base64
-            bg = f'<img class="bg" src="data:image/jpeg;base64,{base64.b64encode(Path(pic).read_bytes()).decode()}" ' \
-                 f'style="animation:{move} {ln + .6:.2f}s linear {st - .3:.2f}s both">'
+            suffix = Path(pic).suffix.lower()
+            video = suffix == ".mp4"
+            mime = "video/mp4" if video else {".png": "image/png", ".webp": "image/webp"}.get(suffix, "image/jpeg")
+            uri = f'data:{mime};base64,{base64.b64encode(Path(pic).read_bytes()).decode()}'
+            attrs = f'data-start="{st}" muted preload="auto"' if video else ""
+            bg = f'<{"video" if video else "img"} class="bg" src="{uri}" {attrs} ' \
+                 f'style="animation:{move} {ln + .6:.2f}s linear {st - .3:.2f}s both">' + ("</video>" if video else "")
         else:
             bg = f'<div style="position:absolute;inset:0;animation:{move} {ln + .6:.2f}s linear {st - .3:.2f}s both">{fallback_bg(s, k)}</div>'
         end = dur if k == len(data["scenes"]) - 1 else st + ln + .35
+        diagram = s.get("diagram") if isinstance(s.get("diagram"), dict) else {}
+        icon = motion_bg.pick({"big": s.get("voice", "")}, [])
+        kind = diagram.get("type") if diagram.get("type") in stage.LABELS else stage.BY_ICON.get(icon, "steps")
+        labels = diagram.get("labels")
+        labels = [str(x)[:28] for x in labels[:3]] if isinstance(labels, list) and labels else stage.LABELS[kind]
+        graphic = (f'<div class="story-graphic" style="animation:tagin {ln}s {st}s both">'
+                   f'<svg viewBox="0 0 440 330"><defs><linearGradient id="gb{k}"><stop stop-color="#ffd54f"/>'
+                   f'<stop offset="1" stop-color="#ff8f00"/></linearGradient></defs>'
+                   f'{stage._diagram(kind, labels, st).replace("url(#gb)", f"url(#gb{k})")}</svg></div>')
         parts.append(f'<div class="sc" style="z-index:{k + 1};animation:{trans} .35s cubic-bezier(.2,.8,.2,1) {st - .15:.2f}s both,'
-                     f'hold {max(.1, end - st - .2):.2f}s {st + .2:.2f}s forwards">{bg}<div class="dim"></div></div>')
+                     f'hold {max(.1, end - st - .2):.2f}s {st + .2:.2f}s forwards">{bg}<div class="dim"></div>{graphic}</div>')
         if k:
             parts.append(f'<div class="flash" style="z-index:{k + 1};animation:flash .22s {st - .05:.2f}s forwards"></div>')
         big = str(s.get("big") or "").strip()
@@ -399,12 +419,22 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
                 wt += wl
             t += span
     host = presenter.html(rig).replace('<div id="pr"', '<div id="pr" class="host"', 1) if rig else ""
-    body = (f'<!doctype html><html><head><meta charset="utf-8"><style>{CSS}{KEYS}#pr{{z-index:30}}#arms{{z-index:31}}</style></head><body>'
+    body = (f'<!doctype html><html><head><meta charset="utf-8"><style>{stage.CSS}{CSS}{KEYS}'
+            '.sc video.bg{position:absolute;inset:-6%;width:112%;height:112%;object-fit:cover}'
+            '.story-graphic{position:absolute;top:500px;left:80px;width:600px;padding:28px;border-radius:30px;'
+            'background:#07102ae6;color:#fff}.story-graphic svg{width:100%;fill:none;stroke:#ffd54f;stroke-width:3}'
+            '.story-graphic text{stroke:none}#pr{z-index:30}#arms{z-index:31}</style></head><body>'
             + "".join(parts) + f'<div style="position:absolute;inset:0;z-index:30">{host}</div>'
             + f'<div class="brand">PLANET PRINT</div><div class="bar" style="animation:bar {dur:.2f}s linear both"></div>'
             + """<script>window.__subs=function(on){var a=document.querySelectorAll('.sub span.on');
 for(var i=0;i<a.length;i++)a[i].className='';for(var j=0;j<on.length;j++){var e=document.getElementById(on[j]);if(e)e.className='on';}};</script>"""
             + "</body></html>")
+    if data.get("style"):
+        from .video_variety import STYLES
+        palettes = (("#59e1d1", "#e8dcb9"), ("#79a5ff", "#ff8075"), ("#ffc05c", "#de8f45"), ("#6de0a0", "#eee6cf"))
+        index = STYLES.index(data["style"]) if data["style"] in STYLES else 0
+        light, dark = palettes[index]
+        body = body.replace("#ffd54f", light).replace("#ffb300", light).replace("#ff8f00", dark)
     return body, subs
 
 
@@ -478,8 +508,18 @@ def host_frames(scenes: list[dict], starts: list[float], lengths: list[float], f
     return out
 
 
-STEP = """([t, s, on]) => { document.getAnimations().forEach(a => { a.pause(); a.currentTime = t; });
-  if (window.__rig) window.__rig(s); if (window.__subs) window.__subs(on); }"""
+STEP = """async ([t, s, on]) => { document.getAnimations().forEach(a => { a.pause(); a.currentTime = t; });
+  if (window.__rig) window.__rig(s); if (window.__subs) window.__subs(on);
+  for (const v of document.querySelectorAll('video.bg')) {
+    if (!Number.isFinite(v.duration)) throw new Error('Video metadata unavailable');
+    const at = Math.max(0, t/1000 - Number(v.dataset.start)) % v.duration;
+    if (Math.abs(v.currentTime-at) < .001) continue;
+    await new Promise((resolve,reject) => {
+      const timeout=setTimeout(()=>{v.onseeked=null;reject(new Error('Video seek timeout'));},5000);
+      v.onseeked=()=>{clearTimeout(timeout);v.onseeked=null;resolve();}; v.currentTime=at;
+    });
+  }
+}"""
 
 
 def render(html: str, out: Path, dur: float, frames: list[dict], subs: list, fps: int = FPS) -> Path:
@@ -494,6 +534,7 @@ def render(html: str, out: Path, dur: float, frames: list[dict], subs: list, fps
         try:
             tab = browser.new_page(viewport={"width": 1080, "height": 1920})
             tab.set_content(html, wait_until="load")
+            tab.wait_for_function("Array.from(document.querySelectorAll('video')).every(v => v.readyState >= 2)", timeout=30000)
             for n in range(int(dur * fps)):
                 t = n / fps
                 on = [w for a, b, w in subs if a <= t < b]
@@ -516,9 +557,22 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
     from .skills.video_edit import _run
     from .skills.video_pro import video_pro
     st = daily_video._state()
-    previous = "; ".join(h["title"] for h in st.get("history", [])[-12:])
+    from . import video_variety
+    history = st.get("history", [])[-60:]
+    previous = "; ".join(h["title"] + ": " + h.get("script", "")[:300] for h in history)
     ready = daily_video._ready()
-    data, src = script(topic, previous, ready)
+    try:
+        selected = topic or video_variety.fresh_topic(history)
+    except ValueError:
+        selected = ""  # AI yangi mavzu topadi; takroriy zaxira quyida rad etiladi.
+    for attempt in range(3):
+        data, src = script(selected, previous, ready)
+        data["topic"] = selected.split(";")[0] if selected else data.get("title", "")
+        if not video_variety.repeated(data, history):
+            break
+        previous += "; RAD ETILDI, takroriy ssenariy: " + data.get("title", "")
+    else:
+        raise ValueError("Takroriy ssenariy rad etildi; yangi mavzu yoki boshqa yondashuv kerak")
     scenes = data["scenes"]
     sevara, otabek, jasur = (team_hub.name_of(k) for k in ("kontent", "video_montajchi", "dasturchi"))
     team_hub.feed("kontent", f"{slot} Reels ssenariysi", f"🎬 {data.get('title', '')}\n"
@@ -531,6 +585,7 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
         team_hub.post("dizayner", design)
     else:
         team_hub.feed("dizayner", f"{slot} Sahnalar vizual uslubi", design)
+    video_variety.direction(data, history)
     team_hub.feed("video_montajchi", f"{slot} Montaj rejasi ({sevara}ning ssenariysi asosida)",
                   "\n".join(f"{k + 1}. [{s['layout']}, {s.get('move', '-')}, {s.get('transition', '-')}] 🖼 {s.get('image', '')[:110]}"
                              for k, s in enumerate(scenes)) + f"\n(manba: {plan_src})\n\n➡️ {jasur}, shu reja bo'yicha animatsiya qil."
@@ -540,13 +595,28 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
         voice, lengths = voices(scenes, tmp)
         starts = [sum(lengths[:k]) for k in range(len(lengths))]
         dur = starts[-1] + lengths[-1]
-        pics = images(scenes, int(hashlib.sha1(data.get("title", "").encode()).hexdigest()[:6], 16))
+        reused, used = {}, set()
+        for k, sc in enumerate(scenes):
+            asset = video_variety.select_media(sc, used)
+            if asset:
+                if asset.suffix.lower() in {".mp4", ".mov"}:
+                    clip = tmp / f"reuse{k}.mp4"
+                    _run(["-i", str(asset), "-t", str(lengths[k]), "-an", "-vf",
+                          "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+                          "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", str(clip)])
+                    asset = clip
+                reused[k] = (asset, "egasi arxivi")
+        missing = [k for k in range(len(scenes)) if k not in reused]
+        generated = iter(images([scenes[k] for k in missing], int(hashlib.sha1(data.get("title", "").encode()).hexdigest()[:6], 16)))
+        pics = [reused[k] if k in reused else next(generated) for k in range(len(scenes))]
         got = sum(1 for p in pics if p[0])
         art = sorted({s for _, s in pics if s} - {"kesh"}) or (["kesh"] if got else [])
 
         def drawn(sc, k):  # rasm kelmasa - Ali'ning chizilgan foni
             icon = motion_bg.pick(sc, [])
-            return stage._backdrop(stage.backdrop_of(icon), "none")
+            background = stage._backdrop(stage.backdrop_of(icon), "none")
+            hue = (len(history) * 47 + k * 23) % 360
+            return f'<div style="filter:hue-rotate({hue}deg)">{background}</div>'
         rig = presenter.build(daily_video.character()) if daily_video.character() else None
         rig = rig or presenter.vector_rig()
         mouth = talking_head.levels(voice, dur, FPS)

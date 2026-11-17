@@ -346,16 +346,9 @@ def render(page: str, out: Path, dur: float = DURATION, fps: int = FPS, face: li
 
 
 def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
-    """Bitta video: avval hikoya uslubi (har sahnaga gapga mos rasm, personaj joyi almashadi, subtitr, hook);
-    u ishlamasa - eski shablon (animatsiyali matn + diagrammalar)."""
+    """Mavzuga mos hikoya; xatoda eski takroriy shablonga yashirin o'tilmaydi."""
     from . import story_video
-    try:
-        return story_video.make(slot, notify, topic)
-    except Exception as e:
-        if "Ovoz yaratilmadi" in str(e):
-            raise
-        log.exception("Hikoya videosi chiqmadi - eski shablon")
-    return _make_classic(slot, notify, topic)
+    return story_video.make(slot, notify, topic)
 
 
 def _make_classic(slot: str, notify=lambda text: None, topic: str = "") -> dict:
@@ -529,6 +522,14 @@ def run(slot: str, notify, topic: str = "") -> None:
     _lock.acquire()  # navbat: band bo'lsa kutadi - buyurtma yo'qolib ketmaydi
     try:
         res = make(slot, notify, topic)
+        hist = _state()
+        idea_data = res["idea"]
+        hist.setdefault("history", []).append({"title": idea_data.get("title", ""),
+            "topic": idea_data.get("topic", ""),
+            "script": " ".join(s.get("voice", s.get("big", "")) for s in idea_data.get("scenes", [])),
+            "style": idea_data.get("style", ""), "at": datetime.now().isoformat(timespec="minutes")})
+        hist["history"] = hist["history"][-60:]
+        _save(hist)
         issues = quality_issues(res["path"])
         if issues:
             from . import team_hub
@@ -569,10 +570,6 @@ def run(slot: str, notify, topic: str = "") -> None:
     studio_flow._save(st)
     studio_flow.send_files(f"🎬 {slot} kunlik Reels tayyor: «{data.get('title', '')}»\n🪝 {data.get('hook', '')}\n"
                            f"💡 {data.get('why', '')}\n({res['sources']}){verdict}\n\n{text}", [res["path"]])
-    hist = _state()
-    hist.setdefault("history", []).append({"title": data.get("title", ""), "at": datetime.now().isoformat(timespec="minutes")})
-    hist["history"] = hist["history"][-60:]
-    _save(hist)
 
 
 def tick(notify, now: datetime | None = None) -> None:
