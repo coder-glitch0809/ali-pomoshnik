@@ -51,6 +51,7 @@ class CouncilGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, patch.object(daily_video, "STATE", Path(d) / "dv.json"), \
                 patch.object(studio_flow, "STATE", Path(d) / "st.json"), \
                 patch.object(daily_video, "make", return_value=res), \
+                patch.object(daily_video, "quality_issues", return_value=[]), \
                 patch("ali.team_hub.review_video", return_value=("qaror", score)), \
                 patch("ali.tg_account.send_file", return_value=7) as post, \
                 patch.object(studio_flow, "send_files") as owner:
@@ -64,6 +65,8 @@ class CouncilGateTests(unittest.TestCase):
         posted, text = self._run(3.0)
         self.assertEqual(posted, 0)
         self.assertIn("kengashdan o'tmadi", text)
+        for score in (None, 6.9):
+            self.assertEqual(self._run(score)[0], 0)
 
     def test_score_parsed_from_decision(self):
         from ali.team_hub import score_of

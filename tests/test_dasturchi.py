@@ -61,8 +61,8 @@ class TeamAddressTests(unittest.TestCase):
         with patch.object(team_hub, "name_of", side_effect=lambda k: team_hub.NAMES.get(k, k)):
             self.assertEqual(team_hub.addressed("Контент мейкер, эртага учун пост ёз", agents), "kontent")
             self.assertEqual(team_hub.addressed("Sevara, reels g'oya ber", agents), "kontent")
-            self.assertEqual(team_hub.addressed("Ali dasturchiga ayt: tugmani tuzat", agents), "dasturchi")
-            self.assertEqual(team_hub.addressed("Али монтажчи видео кил", agents), "video_montajchi")
+            self.assertEqual(team_hub.addressed("Ali dasturchiga ayt: tugmani tuzat", agents), "ali")
+            self.assertEqual(team_hub.addressed("Али монтажчи видео кил", agents), "ali")
             self.assertEqual(team_hub.addressed("Ali, menga yordam ber", agents), "ali")
             self.assertIsNone(team_hub.addressed("bugun ob-havo qanday", agents))
 

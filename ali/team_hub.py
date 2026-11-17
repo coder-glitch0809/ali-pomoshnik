@@ -168,14 +168,27 @@ def addressed(text: str, agents: dict) -> str | None:
     for key, a in agents.items():
         names = {_norm(name_of(key)), _norm(a.name), key.replace("_", " "), *EXTRA.get(key, ())}
         for n in filter(None, names):
-            m = re.search(rf"(^|[\s@,]){re.escape(n)}", head)
+            m = re.search(rf"(^|[\s@,]){re.escape(n)}(?=$|[\s,:!?]|ga\b)", head)
             if m and (best is None or m.start() < best[0]):
                 best = (m.start(), key, n)
     if direct_ali:
-        if best and best[0] <= 1:
-            return best[1]
         return "ali"
     return best[1] if best else None
+
+
+def reply_agent(text: str, topic: str | None, agents: dict, reply_text: str = "") -> str | None:
+    """Explicit address, topic, then signed bot reply; never impersonate Ali by default."""
+    explicit = addressed(text, agents)
+    if explicit:
+        return explicit
+    if topic in agents or topic == "ali":
+        return topic
+    if topic == "telegram" and "telegram_nazoratchi" in agents:
+        return "telegram_nazoratchi"
+    for key in [*agents, "ali"]:
+        if reply_text.startswith(label(key, agents) + ":"):
+            return key
+    return None
 
 
 FEEDBACK = re.compile(
@@ -190,7 +203,8 @@ FEEDBACK = re.compile(
 
 def remember_feedback(key: str, text: str) -> bool:
     """Agentga egasi bergan aniq tuzatish/yo'l-yo'riqni uning doimiy bilimiga saqlaydi."""
-    if key not in {"ali"} and FEEDBACK.search(_norm(text)):
+    if key not in {"ali"} and (FEEDBACK.search(_norm(text)) or re.search(
+            r"\b(?:kamchilik|xato|notogri|sifatsiz|yomon|tuzat|togirla)\w*\b", _norm(text))):
         from .memory import memory
         feedback = " ".join((text or "").split())[:1500]
         memory.add_knowledge(f"[{key}] Egasi fikr-mulohazasi", feedback)
@@ -212,6 +226,10 @@ def _chunks(text: str) -> list[str]:
 
 def _send(key: str, text: str, agents: dict | None = None) -> None:
     cid = chat_id()
+    if key not in FIXED or key == "ali":
+        signature = label(key, agents) + ":\n"
+        if not text.startswith(signature):
+            text = signature + text
     for attempt in range(2):
         thread = ensure_topic(key, agents)
         try:
@@ -313,6 +331,14 @@ def touch(key: str, kind: str = "ish") -> None:
         _save(data)
 
 
+def set_status(key: str, status: str, task: str = "") -> None:
+    with LOCK:
+        data = _load()
+        rec = data["activity"].setdefault(key, {"total": 0})
+        rec.update(status=status, task=task[:300], status_at=time.time())
+        _save(data)
+
+
 def feed(key: str, task: str, result: str, agents: dict | None = None) -> None:
     """Agent ish bajardi - faoliyat yoziladi va uning mavzusiga «vazifa → natija» chiqadi."""
     if not key or key == "ali":
@@ -351,8 +377,9 @@ def watch_report(agents: dict, now: float | None = None) -> str:
         rec = data["activity"].get(key, {})
         last = rec.get("last")
         when = datetime.fromtimestamp(last).strftime("%d.%m %H:%M") if last else "hali ish qilmagan"
-        mark = "😴" if key in idle else ("⚠️" if rec.get("skips", 0) >= 2 else "✅")
+        mark = "😴" if key in idle else ("⚠️" if rec.get("skips", 0) >= 2 else ("✅" if last else "⏸"))
         rows.append(f"{mark} {label(key, agents)}: {rec.get('total', 0)} ta ish, oxirgisi {when}"
+                    + (f", holat: {rec['status']}" if rec.get("status") else "")
                     + (f", maslahatda qatnashmadi: {rec['skips']}" if rec.get("skips") else ""))
     text = "👑 Ali nazorati — jamoa faoliyati\n\n" + "\n".join(rows)
     if idle:

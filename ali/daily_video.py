@@ -504,13 +504,39 @@ def handle_text(text: str, notify) -> str:
     return ""
 
 
+def quality_issues(path: str) -> list[str]:
+    """Check the actual export before any automatic channel publication."""
+    from .skills.video_edit import info
+    meta = info(Path(path))
+    issues = []
+    if meta["width"] < 1080 or meta["height"] < 1920:
+        issues.append("Eksport kamida 1080x1920 bo'lsin")
+    if abs(meta["width"] / max(meta["height"], 1) - 9 / 16) > .02:
+        issues.append("Vertikal 9:16 format kerak")
+    if meta["fps"] < 29:
+        issues.append("Kamida 30 fps kerak")
+    if meta["duration"] < 5:
+        issues.append("Video juda qisqa yoki buzilgan")
+    if not meta["audio"]:
+        issues.append("Ovoz yo'q")
+    return issues
+
+
 def run(slot: str, notify, topic: str = "") -> None:
     """Videoni yasaydi va kanalga (yuborilmasa - navbatga) hamda egasiga yuboradi.
-    topic - egam bergan mavzu: u o'zi kanalga so'ragan - kengash bahosi qanday bo'lsa ham joylanadi (baho hisobotda)."""
+    Egasi bergan mavzu ham texnik tekshiruv va kamida 7/10 bahodan o'tishi kerak."""
     from . import studio_flow, tg_account
     _lock.acquire()  # navbat: band bo'lsa kutadi - buyurtma yo'qolib ketmaydi
     try:
         res = make(slot, notify, topic)
+        issues = quality_issues(res["path"])
+        if issues:
+            from . import team_hub
+            detail = "\n".join(issues)
+            team_hub.post("video_montajchi", f"⚠️ Eksport tekshiruvdan o'tmadi:\n{detail}")
+            studio_flow.send_files(f"🚫 Video kanalga joylanmadi. Tuzatish kerak:\n{detail}", [res["path"]])
+            _jobs["last_error"] = detail
+            return
         _jobs["last_error"] = ""
     except Exception as e:
         log.exception("Kunlik video yasalmadi")
@@ -521,15 +547,16 @@ def run(slot: str, notify, topic: str = "") -> None:
         _lock.release()
     data = res["idea"]
     text = f"{data.get('caption', '')}\n\n{data.get('hashtags', '')}".strip()
-    # Maslahat kengashi: video guruhga qo'yiladi, agentlar Instagram uchun baholaydi; 5 dan past - kanalga chiqmaydi
+    # Texnik eksport tekshiruvidan keyin ssenariy bo'yicha kengash bahosi ham talab qilinadi.
     from . import team_hub
     from .service import brain
     about = (f"«{data.get('title', '')}». Hook: {data.get('hook', '')}. Sahnalar: "
              + "; ".join(s["big"] for s in data["scenes"]) + f". CTA: {data.get('cta', '')}. {DURATION} s animatsiya, faqat ovoz.")
     decision, score = team_hub.review_video(res["path"], about, brain.agents, _ready())
     verdict = f"\n\n🤝 Kengash bahosi: {score:g}/10" if score is not None else ""
-    if score is not None and score < 5 and not topic:
-        studio_flow.send_files(f"🚫 {slot} kunlik Reels kengashdan o'tmadi ({score:g}/10) - kanalga joylanmadi.\n\n"
+    if score is None or score < 7:
+        assessment = f"{score:g}/10" if score is not None else "baho olinmadi"
+        studio_flow.send_files(f"🚫 {slot} kunlik Reels kengashdan o'tmadi ({assessment}) - kanalga joylanmadi.\n\n"
                                f"{decision[-2500:]}", [res["path"]])
         return
     st = studio_flow._state()

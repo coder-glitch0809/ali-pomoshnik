@@ -322,3 +322,18 @@ O'chirish: `PLUGINS_DISABLED=chatgpt`. Holat: Ruxsatlar → Ulanishlar.
 - [ ] Doimiy HTTPS manzil (Cloudflare named tunnel + o'z domeningiz)
 - [ ] Windows ishga tushganda Ali avtomatik yoqilishi
 - [ ] Musiqa, ovoz balandligi, aqlli uy qurilmalari
+# Telegram jamoasi: agent javoblari
+
+Guruhdagi xabarlar bitta bot orqali, agentning ismi va roli bilan yuboriladi.
+`Ali, ...` Ali'ga, `Sevara, ...` Kontent agentiga yo'naltiriladi. Aniq murojaat
+mavzudan ustun; murojaatsiz xabar shu mavzudagi agentga boradi. Umumiy mavzuda
+agentning imzoli xabariga reply qilsangiz, o'sha agent suhbatni davom ettiradi.
+Agent ish boshlaganini, natijani yoki muvaffaqiyatsizlikni yozadi; `/nazorat` hisoboti
+oxirgi holatni ham ko'rsatadi. Fikr-mulohazalar agent xotirasida saqlanadi;
+tuzatish topshirig'i qo'shilgan bo'lsa, ish davom etadi.
+
+Hikoya videosida kontent, montaj, dizayner va animatsiya bosqichlari ishlaydi.
+Avtomatik kanal nashri uchun eksport kamida 1080x1920, 9:16, 30 fps va ovozli
+bo'lishi, kengash bahosi kamida 7/10 bo'lishi kerak. Bahosiz yoki tekshiruvdan
+o'tmagan video egasiga ko'rib chiqish uchun yuboriladi. Kengash bahosi ssenariy
+va tavsifga asoslanadi; u videoni ko'z bilan ko'rib tekshirish o'rnini bosmaydi.

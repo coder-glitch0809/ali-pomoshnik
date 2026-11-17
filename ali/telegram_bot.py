@@ -1241,24 +1241,29 @@ class TelegramBot(PublicTelegram, Listener):
         if key == "sinf":
             await self.cmd_class(update, ctx)
             return True
-        if key in brain.agents:
-            agent = key
-        elif key == "ali":
-            agent = team_hub.addressed(text, brain.agents) or "ali"
-        else:
-            agent = ("telegram_nazoratchi" if key == "telegram" and
-                     "telegram_nazoratchi" in brain.agents else None)
-            if not agent:  # Umumiy mavzuda agent nomi bilan yozilsa - o'sha agent javob beradi
-                agent = team_hub.addressed(text, brain.agents)
+        replied = getattr(msg, "reply_to_message", None)
+        reply_text = (getattr(replied, "text", "") or "") if (
+            replied and getattr(getattr(replied, "from_user", None), "id", None) == self.app.bot.id) else ""
+        agent = team_hub.reply_agent(text, key, brain.agents, reply_text)
+        if not agent:
+            from .service import route
+            agent = await asyncio.to_thread(route, text, self._ready_apps())
+            if agent not in brain.agents:
+                await msg.reply_text("Qaysi agentga topshiray? Agent ismini yozing yoki uning mavzusiga o'ting.")
+                return True
         if agent in brain.agents and team_hub.remember_feedback(agent, text):
             team_hub.touch(agent, "fikr_mulohaza")
             await msg.reply_text(f"{team_hub.label(agent, brain.agents)}:\n"
                                  "✅ Fikr-mulohazangizni eslab qoldim. Keyingi javob va ishlarimda hisobga olaman.")
-            await self.mark(msg, "👍")
-            return True
+            # Tuzatish bilan birga berilgan vazifa ham bajariladi.
+            from .self_upgrade import CHANGE
+            if not CHANGE.search(text):
+                await self.mark(msg, "👍")
+                return True
         from . import self_upgrade, studio_flow
         # Dasturchi mavzusi / kod topshirig'i - «video» so'zi bo'lsa ham video navbatiga ketmaydi
-        coder_task = key == "dasturchi" or agent == "dasturchi" or self_upgrade.is_request(text)
+        upgrade_request = (agent in ("ali", "dasturchi") and self_upgrade.is_request(text))
+        coder_task = agent == "dasturchi" or upgrade_request
         if studio_flow.LINK.search(text):  # jamoa guruhidagi har bir video havolasi - namuna: uslubi o'rganiladi
             note = await asyncio.to_thread(studio_flow.learn_link, text, hub.notify, self._reply_later(msg))
             await msg.reply_text(f"{team_hub.label('video_montajchi', brain.agents)}:\n{note}")
@@ -1283,7 +1288,7 @@ class TelegramBot(PublicTelegram, Listener):
         # Dasturchi mavzusiga yozilgan har topshiriq - Dasturchining o'ziga (boshqa agentga burilmaydi); faqat savol
         # («...?», buyruqsiz) bo'lsa - Dasturchi o'zi javob beradi
         question = text.rstrip().endswith("?") and not self_upgrade.is_request(text)
-        if (key == "dasturchi" and not question) or (agent == "dasturchi" and not question) or self_upgrade.is_request(text):
+        if (agent == "dasturchi" and not question) or upgrade_request:
             team_hub.touch("dasturchi")
             if key != "ali":
                 team_hub.post("ali", f"👁 Nazorat: {team_hub.label('dasturchi', brain.agents)} ga kod topshirig'i - "
@@ -1292,15 +1297,21 @@ class TelegramBot(PublicTelegram, Listener):
             return True
 
         async def run():
+            from . import outbox
+            start = outbox.mark()
+            succeeded = False
             try:
+                team_hub.set_status(agent, "ishlayapti", text)
+                await msg.reply_text(f"{team_hub.label(agent, brain.agents)}:\n⏳ Topshiriq ustida ishlayapman.")
                 await self.app.bot.send_chat_action(chat.id, "typing", message_thread_id=thread)
-                from . import outbox
-                start = outbox.mark()
                 if agent:
                     out = await asyncio.to_thread(team_hub.agent_answer, agent, text, self._ready_apps(), True)
                     agent_reply = out
-                    if agent != "ali":
+                    succeeded = bool(agent_reply)
+                    if agent != "ali" and agent_reply:
                         team_hub.touch(agent)
+                    elif agent != "ali":
+                        team_hub.skipped(agent)
                     out = f"{team_hub.label(agent, brain.agents)}:\n{agent_reply}" if agent_reply else ""
                     if key != "ali":  # Ali hammasini kuzatadi: kimga nima berildi va javob berdimi
                         team_hub.post("ali", f"👁 Nazorat: {team_hub.label(agent, brain.agents)} - «{text[:200]}» → "
@@ -1309,7 +1320,10 @@ class TelegramBot(PublicTelegram, Listener):
                     from .service import team_reply
                     out = await team_reply(text, None, self._ready_apps())
             except Exception as e:
-                out = f"⚠️ {str(e)[:500]}"
+                out = f"{team_hub.label(agent, brain.agents)}:\n⚠️ Topshiriq bajarilmadi: {str(e)[:500]}"
+            team_hub.set_status(agent, "bajarildi" if succeeded else "bajarilmadi", text)
+            if not out:
+                out = f"{team_hub.label(agent, brain.agents)}:\n⚠️ Hozir javob ololmadim. Topshiriq bajarilmadi."
             for pos in range(0, len(out or "…"), 4000):
                 await msg.reply_text((out or "Javob yo'q.")[pos:pos + 4000])
             try:  # agent yasagan fayllar (PDF, logotip, maket) - shu mavzuga
@@ -1318,7 +1332,7 @@ class TelegramBot(PublicTelegram, Listener):
                         await msg.reply_document(fh, filename=f.name)
             except Exception as e:
                 log.warning("Agent fayli guruhga yuborilmadi: %s", e)
-            await self.mark(msg, "👍" if out else "🤔")  # bajarildi
+            await self.mark(msg, "👍" if succeeded else "🤔")
         self._bg(run())
         return True
 

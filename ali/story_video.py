@@ -96,6 +96,30 @@ def montage_plan(data: dict, ready: list[str]) -> tuple[str, str]:
     return str(got.get("notes", ""))[:400], ("AI" if plan else "o'z qoidasi")
 
 
+def design_plan(data: dict, ready: list[str]) -> str:
+    """Designer refines real scene artwork before images are generated."""
+    from .daily_video import _agent
+    from .service import _ask_json
+    import json
+    try:
+        result = _ask_json(_agent("dizayner") + "\nSsenariy uchun yagona professional vizual uslub tuz. "
+                           "Sahna soni va tartibini saqla. Har sahna uchun image: aniq rasm prompti, "
+                           "bir xil personaj, rang va yoritish; rasm ichida matn bo'lmasin. "
+                           "FAQAT JSON: {\"scenes\": [{\"image\": \"...\"}]}. Ssenariy:\n"
+                           + json.dumps(data["scenes"], ensure_ascii=False), ready, 180)
+        scenes = result.get("scenes", [])
+        if len(scenes) != len(data["scenes"]) or not all(
+                isinstance(s, dict) and isinstance(s.get("image"), str) and len(s["image"].strip()) > 20
+                for s in scenes):
+            raise ValueError("Dizayn rejasi to'liq emas")
+        for scene, visual in zip(data["scenes"], scenes):
+            scene["image"] = visual["image"][:600]
+        return "Dizayner sahnalar rasmlari va yagona vizual uslubni tayyorladi."
+    except Exception:
+        log.warning("Dizayner rejasi olinmadi; montaj rejasidagi rasmlar saqlandi")
+        return "⚠️ Dizayner rejasi olinmadi; montaj rejasidagi rasmlar ishlatiladi."
+
+
 def script(topic: str, previous: str, ready: list[str]) -> tuple[dict, str]:
     """Kontent-meyker ssenariysi: (ssenariy, manba). AI band bo'lsa - mavzu va bilimdan sodda ssenariy."""
     from .daily_video import _agent
@@ -501,6 +525,12 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
                   + "\n".join(f"{k + 1}. {s['voice']}" for k, s in enumerate(scenes))
                   + f"\n(manba: {src})\n\n➡️ {otabek}, ssenariy tayyor - montaj rejasini tuz.")
     notes, plan_src = montage_plan(data, ready)  # Otabek Sevaraning ssenariysi bilan ishlaydi
+    design = design_plan(data, ready)
+    if design.startswith("⚠️"):
+        team_hub.skipped("dizayner")
+        team_hub.post("dizayner", design)
+    else:
+        team_hub.feed("dizayner", f"{slot} Sahnalar vizual uslubi", design)
     team_hub.feed("video_montajchi", f"{slot} Montaj rejasi ({sevara}ning ssenariysi asosida)",
                   "\n".join(f"{k + 1}. [{s['layout']}, {s.get('move', '-')}, {s.get('transition', '-')}] 🖼 {s.get('image', '')[:110]}"
                              for k, s in enumerate(scenes)) + f"\n(manba: {plan_src})\n\n➡️ {jasur}, shu reja bo'yicha animatsiya qil."
