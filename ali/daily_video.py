@@ -474,6 +474,10 @@ def handle_text(text: str, notify) -> str:
     """Egam matni video buyurtmasi, holat so'rovi yoki oxirgi videoni so'rash bo'lsa - shu yerda bajariladi (javob matni).
     Boshqa gap - bo'sh satr (agent javob beraveradi)."""
     text = text or ""
+    from . import youtube_video
+    youtube_reply = youtube_video.handle_text(text, notify)
+    if youtube_reply:
+        return youtube_reply
     if _WHERE.search(text) and (_ASK.search(text) or not _ORDER.search(text)):
         return status_text()
     if _ORDER.search(text) and not _ASK.search(text):

@@ -181,11 +181,13 @@ NEGATIVE = "blurry, low quality, distorted face, extra fingers, deformed hands, 
 _poll_lock = threading.Lock()  # bepul xizmat bir vaqtda bitta so'rov qabul qiladi
 
 
-def refine(prompt: str) -> str:
+def refine(prompt: str, size: tuple = (1080, 1920)) -> str:
     """Rasm tavsifini tozalaydi va sifat so'zlarini qo'shadi (tavsif bo'sh yoki juda uzun bo'lmasin)."""
     p = re.sub(r"\s+", " ", prompt or "").strip().strip(".")
-    p = p[:500] or "Uzbek small business street"
+    p = p[:1800] or "Uzbek small business street"
     style = "vertical 9:16, no text, no watermark" if "Visual direction:" in p else STYLE
+    if size[0] > size[1]:
+        style = "cinematic landscape 16:9 composition, no text, no watermark"
     return f"{p}. Sharp focus, professional composition, high detail. {style}"
 
 
@@ -213,7 +215,7 @@ def good(data: bytes) -> bool:
         return False
 
 
-def _fit(data: bytes, crop_mark: bool = False) -> bytes:
+def _fit(data: bytes, crop_mark: bool = False, size: tuple = (1080, 1920)) -> bytes:
     """1080x1920 ga to'ldirib kesadi. crop_mark - faqat bepul xizmat rasmlarida pastdagi belgi kesiladi."""
     from PIL import Image
     im = Image.open(io.BytesIO(data)).convert("RGB")
@@ -221,20 +223,21 @@ def _fit(data: bytes, crop_mark: bool = False) -> bytes:
     if crop_mark:
         im = im.crop((0, 0, w, int(h * .93)))  # bepul xizmat belgisi pastki o'ngda
         w, h = im.size
-    scale = max(1080 / w, 1920 / h)
+    width, height = size
+    scale = max(width / w, height / h)
     im = im.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
-    left, top = (im.width - 1080) // 2, (im.height - 1920) // 2
+    left, top = (im.width - width) // 2, (im.height - height) // 2
     buf = io.BytesIO()
-    im.crop((left, top, left + 1080, top + 1920)).save(buf, "JPEG", quality=92)
+    im.crop((left, top, left + width, top + height)).save(buf, "JPEG", quality=92)
     return buf.getvalue()
 
 
-def image(prompt: str, seed: int = 7) -> tuple[Path | None, str]:
+def image(prompt: str, seed: int = 7, size: tuple = (1080, 1920)) -> tuple[Path | None, str]:
     """Sahna rasmi (kesh bilan): (fayl, manba). Hech biri ishlamasa (None, '').
     Tartib: Gemini/ChatGPT -> Pollinations (flux, turbo; kichikroq o'lcham bilan ham) - yaroqsiz rasm keyingisiga o'tkazadi."""
-    full = refine(prompt)
+    full = refine(prompt, size)
     ART.mkdir(parents=True, exist_ok=True)
-    path = ART / (hashlib.sha1(f"{full}|{seed}".encode()).hexdigest()[:16] + ".jpg")
+    path = ART / (hashlib.sha1(f"{full}|{seed}|{size}".encode()).hexdigest()[:16] + ".jpg")
     if path.exists():
         return path, "kesh"
     from . import providers
@@ -245,21 +248,21 @@ def image(prompt: str, seed: int = 7) -> tuple[Path | None, str]:
         pass
     for name, fn in sources:
         try:
-            data = fn(full + " Vertical 9:16.")
+            data = fn(full + (" Landscape 16:9." if size[0] > size[1] else " Vertical 9:16."))
             if not good(data):
                 raise RuntimeError("rasm yaroqsiz (bo'sh yoki juda kichik)")
-            path.write_bytes(_fit(data))
+            path.write_bytes(_fit(data, size=size))
             return path, name
         except Exception as e:
             log.info("Rasm %s: %s", name, str(e)[:120])
-    tries = [(m, sz) for sz in ((1080, 1920), (768, 1344)) for m in POLL_MODELS]
-    for attempt, (model, size) in enumerate(tries):
+    tries = [(m, sz) for sz in (size, (1344, 768) if size[0] > size[1] else (768, 1344)) for m in POLL_MODELS]
+    for attempt, (model, request_size) in enumerate(tries):
         try:
             with _poll_lock:
-                data = _pollinations(full, seed + attempt, model, size)
+                data = _pollinations(full, seed + attempt, model, request_size)
             if not good(data):
                 raise RuntimeError("rasm yaroqsiz")
-            path.write_bytes(_fit(data, crop_mark=True))
+            path.write_bytes(_fit(data, crop_mark=True, size=size))
             return path, "Pollinations"
         except Exception as e:  # 402/429 - navbat band, biroz kutadi
             log.info("Pollinations %s (%s): %s", model, attempt + 1, e)
@@ -267,14 +270,17 @@ def image(prompt: str, seed: int = 7) -> tuple[Path | None, str]:
     return None, ""
 
 
-def images(scenes: list[dict], seed: int) -> list[tuple[Path | None, str]]:
+def images(scenes: list[dict], seed: int, size: tuple = (1080, 1920)) -> list[tuple[Path | None, str]]:
     """Hamma sahna rasmlari parallel (3 tadan): API rasmlari birga, bepul Pollinations navbat bilan."""
     out: list = [None] * len(scenes)
     sem = threading.Semaphore(3)
 
     def one(k):
         with sem:
-            out[k] = image(str(scenes[k].get("image") or scenes[k].get("big") or "Uzbek small business street"), seed + k * 11)
+            visual = scenes[k].get("visual", {})
+            scene_seed = visual.get("seed", seed + k * 11) if isinstance(visual, dict) else seed + k * 11
+            prompt = str(scenes[k].get("image") or scenes[k].get("big") or "Uzbek small business street")
+            out[k] = image(prompt, scene_seed, size=size) if size != (1080, 1920) else image(prompt, scene_seed)
     threads = [threading.Thread(target=one, args=(k,), daemon=True) for k in range(len(scenes))]
     for t in threads:
         t.start()
@@ -366,10 +372,18 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
     esc = html_lib.escape
     dur = starts[-1] + lengths[-1]
     from .skills import stage, motion_bg
-    rnd = random.Random(data.get("title", "") + data.get("style", ""))
+    from .video_visuals import scene_visual, palette, VISUAL_CSS
+    rnd = random.Random(str(data.get("visual_id", "")) + data.get("title", "") + data.get("style", ""))
     parts, subs = [], []
     for k, s in enumerate(data["scenes"]):
         st, ln = starts[k], lengths[k]
+        visual = s.get("visual") if isinstance(s.get("visual"), dict) else {}
+        base, accent, secondary = palette(s) if visual else ("#07102a", "#ffd54f", "#ff8f00")
+        try:
+            speed = float(s.get("speed", .65 if visual and k % 3 == 1 else 1))
+        except (ValueError, TypeError):
+            speed = 1
+        speed = max(.35, min(1., speed)) if math.isfinite(speed) else 1
         # Montajchi rejasi bo'lsa - o'sha, bo'lmasa o'zgaruvchan
         trans = "t_fade" if k == 0 else (s.get("transition") if s.get("transition") in TRANS else TRANS[(k + rnd.randint(0, 3)) % len(TRANS)])
         move = s.get("move") if s.get("move") in MOVES else MOVES[(k * 2 + rnd.randint(0, 4)) % len(MOVES)]
@@ -380,9 +394,13 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
             video = suffix == ".mp4"
             mime = "video/mp4" if video else {".png": "image/png", ".webp": "image/webp"}.get(suffix, "image/jpeg")
             uri = f'data:{mime};base64,{base64.b64encode(Path(pic).read_bytes()).decode()}'
-            attrs = f'data-start="{st}" muted preload="auto"' if video else ""
+            attrs = f'data-start="{st}" data-speed="{speed}" muted preload="auto"' if video else ""
             bg = f'<{"video" if video else "img"} class="bg" src="{uri}" {attrs} ' \
                  f'style="animation:{move} {ln + .6:.2f}s linear {st - .3:.2f}s both">' + ("</video>" if video else "")
+            if visual:
+                bg += f'<div class="visual-overlay">{scene_visual(s, k, st, ln)}</div>'
+        elif visual:
+            bg = scene_visual(s, k, st, ln)
         else:
             bg = f'<div style="position:absolute;inset:0;animation:{move} {ln + .6:.2f}s linear {st - .3:.2f}s both">{fallback_bg(s, k)}</div>'
         end = dur if k == len(data["scenes"]) - 1 else st + ln + .35
@@ -391,12 +409,12 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
         kind = diagram.get("type") if diagram.get("type") in stage.LABELS else stage.BY_ICON.get(icon, "steps")
         labels = diagram.get("labels")
         labels = [str(x)[:28] for x in labels[:3]] if isinstance(labels, list) and labels else stage.LABELS[kind]
-        graphic = (f'<div class="story-graphic" style="animation:tagin {ln}s {st}s both">'
-                   f'<svg viewBox="0 0 440 330"><defs><linearGradient id="gb{k}"><stop stop-color="#ffd54f"/>'
-                   f'<stop offset="1" stop-color="#ff8f00"/></linearGradient></defs>'
+        graphic = (f'<div class="story-graphic" style="background:{base}e6;--accent:{accent};animation:tagin {ln}s {st}s both">'
+                   f'<svg viewBox="0 0 440 330"><defs><linearGradient id="gb{k}"><stop stop-color="{accent}"/>'
+                   f'<stop offset="1" stop-color="{secondary}"/></linearGradient></defs>'
                    f'{stage._diagram(kind, labels, st).replace("url(#gb)", f"url(#gb{k})")}</svg></div>')
         parts.append(f'<div class="sc" style="z-index:{k + 1};animation:{trans} .35s cubic-bezier(.2,.8,.2,1) {st - .15:.2f}s both,'
-                     f'hold {max(.1, end - st - .2):.2f}s {st + .2:.2f}s forwards">{bg}<div class="dim"></div>{graphic}</div>')
+                     f'hold {max(.1, end - st - .2):.2f}s {st + .2:.2f}s forwards">{bg}<div class="dim"></div><div class="cinema-vignette"></div>{graphic}</div>')
         if k:
             parts.append(f'<div class="flash" style="z-index:{k + 1};animation:flash .22s {st - .05:.2f}s forwards"></div>')
         big = str(s.get("big") or "").strip()
@@ -419,17 +437,19 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
                 wt += wl
             t += span
     host = presenter.html(rig).replace('<div id="pr"', '<div id="pr" class="host"', 1) if rig else ""
-    body = (f'<!doctype html><html><head><meta charset="utf-8"><style>{stage.CSS}{CSS}{KEYS}'
+    body = (f'<!doctype html><html><head><meta charset="utf-8"><style>{stage.CSS}{CSS}{KEYS}{VISUAL_CSS}'
+            '.visual-overlay{position:absolute;inset:0;opacity:.16;pointer-events:none}'
+            '.cinema-vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse,transparent 45%,#0007)}'
             '.sc video.bg{position:absolute;inset:-6%;width:112%;height:112%;object-fit:cover}'
             '.story-graphic{position:absolute;top:500px;left:80px;width:600px;padding:28px;border-radius:30px;'
-            'background:#07102ae6;color:#fff}.story-graphic svg{width:100%;fill:none;stroke:#ffd54f;stroke-width:3}'
+            'background:#07102ae6;color:#fff}.story-graphic svg{width:100%;fill:none;stroke:var(--accent,#ffd54f);stroke-width:3}'
             '.story-graphic text{stroke:none}#pr{z-index:30}#arms{z-index:31}</style></head><body>'
             + "".join(parts) + f'<div style="position:absolute;inset:0;z-index:30">{host}</div>'
             + f'<div class="brand">PLANET PRINT</div><div class="bar" style="animation:bar {dur:.2f}s linear both"></div>'
             + """<script>window.__subs=function(on){var a=document.querySelectorAll('.sub span.on');
 for(var i=0;i<a.length;i++)a[i].className='';for(var j=0;j<on.length;j++){var e=document.getElementById(on[j]);if(e)e.className='on';}};</script>"""
             + "</body></html>")
-    if data.get("style"):
+    if data.get("style") and not any(s.get("visual") for s in data["scenes"]):
         from .video_variety import STYLES
         palettes = (("#59e1d1", "#e8dcb9"), ("#79a5ff", "#ff8075"), ("#ffc05c", "#de8f45"), ("#6de0a0", "#eee6cf"))
         index = STYLES.index(data["style"]) if data["style"] in STYLES else 0
@@ -511,8 +531,10 @@ def host_frames(scenes: list[dict], starts: list[float], lengths: list[float], f
 STEP = """async ([t, s, on]) => { document.getAnimations().forEach(a => { a.pause(); a.currentTime = t; });
   if (window.__rig) window.__rig(s); if (window.__subs) window.__subs(on);
   for (const v of document.querySelectorAll('video.bg')) {
-    if (!Number.isFinite(v.duration)) throw new Error('Video metadata unavailable');
-    const at = Math.max(0, t/1000 - Number(v.dataset.start)) % v.duration;
+    if (!Number.isFinite(v.duration) || v.duration <= 0) throw new Error('Video metadata unavailable');
+    const rate = Number(v.dataset.speed || 1);
+    const speed = Number.isFinite(rate) ? Math.max(.35, Math.min(1, rate)) : 1;
+    const at = Math.min(Math.max(0, v.duration - .001), Math.max(0, t/1000 - Number(v.dataset.start)) * speed);
     if (Math.abs(v.currentTime-at) < .001) continue;
     await new Promise((resolve,reject) => {
       const timeout=setTimeout(()=>{v.onseeked=null;reject(new Error('Video seek timeout'));},5000);
@@ -522,7 +544,8 @@ STEP = """async ([t, s, on]) => { document.getAnimations().forEach(a => { a.paus
 }"""
 
 
-def render(html: str, out: Path, dur: float, frames: list[dict], subs: list, fps: int = FPS) -> Path:
+def render(html: str, out: Path, dur: float, frames: list[dict], subs: list, fps: int = FPS,
+           viewport: tuple = (1080, 1920)) -> Path:
     import tempfile
 
     from playwright.sync_api import sync_playwright
@@ -532,7 +555,7 @@ def render(html: str, out: Path, dur: float, frames: list[dict], subs: list, fps
     with tempfile.TemporaryDirectory() as tmp, sync_playwright() as p:
         browser = p.chromium.launch(headless=True, executable_path=CHROME if Path(CHROME).exists() else None)
         try:
-            tab = browser.new_page(viewport={"width": 1080, "height": 1920})
+            tab = browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
             tab.set_content(html, wait_until="load")
             tab.wait_for_function("Array.from(document.querySelectorAll('video')).every(v => v.readyState >= 2)", timeout=30000)
             for n in range(int(dur * fps)):

@@ -31,6 +31,8 @@ keyin - shu reja bo'yicha sahna rasmlarini generatsiya qilasan (har gapga mos, b
 qilasan. Qolgan hamma payt «video» so'zi bo'lsa ham bu video buyurtmasi emas - kod topshirig'i, uni o'zing bajar.
 
 Qoidalar:
+- YouTube oqimi `youtube_content` -> `video_variety` -> `youtube_render` -> `youtube_video`: 1920x1080, sahnaga xos seed/palitra/fon, o'zgaruvchan matn va o'tishlar. Kunlik jadval Asia/Tashkent 10:00, 13:00, 17:00.
+- Hikoya Reels uchun `video_variety` bergan sahna seed, fon, grafika va palitrasini `video_visuals` orqali dinamik chiz. Render davomida tasodifiylikni qayta tanlama: bir sahnaning barcha kadrlari bitta rejaga tayansin.
 - Maxfiy kalitlarni (API key, token, parol) javobda ko'rsatma va kodga yozma - .env dan foydalan.
 - Har bir o'zgartirishdan oldin nima qilishingni qisqa ayt; xavfli amallar baribir tasdiq so'raydi.
 - Javob: qisqa xulosa, keyin tafsilotlar (fayl:qator, kod bloklari). Til: foydalanuvchi tilida (standart o'zbek).

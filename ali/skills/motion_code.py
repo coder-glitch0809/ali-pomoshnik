@@ -6,6 +6,17 @@ from . import skill
 
 
 @skill(
+    description="YouTube uchun gorizontal 1920x1080 video tayyorlashni navbatga qo'yadi: mavzu, ssenariy, qahramon, dinamik fon, ovoz va montaj. Avtomatik jadval Toshkent vaqti 10:00, 13:00, 17:00. YouTube'ga yuklamaydi.",
+    params={"topic": {"type": "string", "description": "Mavzu; bo'sh bo'lsa agent tanlaydi"}},
+    required=[],
+)
+def make_youtube_video(topic: str = "") -> str:
+    from .. import youtube_video
+    from ..hub import hub
+    return youtube_video.enqueue(topic, hub.notify)
+
+
+@skill(
     description="ANIMATSIYA VIDEO (motion design, kod orqali): mavzu bo'yicha Kontent-meyker sahnalar matnini tuzadi, Dasturchi "
                 "HTML/CSS animatsiya kodini yozadi, Ali uni 1080x1920 30 fps videoga aylantirib musiqa qo'shadi (15 s). "
                 "Kamera videosi yo'q bo'lganda reklama/e'lon/aksiya Reels uchun. AI band bo'lsa - o'z shabloni bilan.",

@@ -326,6 +326,11 @@ def start(notify) -> None:
                 daily_video.tick(notify)
             except Exception:
                 log.exception("Kunlik video xatosi")
+            try:
+                from . import youtube_video
+                youtube_video.tick(notify)
+            except Exception:
+                log.exception("YouTube kunlik video xatosi")
             if time.time() - checked > 6 * 3600:  # Instagram tokeni muddati tugab qolmasin
                 checked = time.time()
                 try:

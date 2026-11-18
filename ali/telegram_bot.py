@@ -57,6 +57,7 @@ COMMANDS = [
     ("organ", "Namuna videodan montaj uslubini o'rganish: /organ <havola> yoki video + /organ"),
     ("tarix", "ChatGPT va Claude suhbatlar tarixini Ali bilimiga o'tkazish"),
     ("kunlik_video", "Jamoa Reels yasaydi: kontent -> kod -> montaj (har kuni 11:00 va 16:00)"),
+    ("youtube_video", "YouTube video: har kuni 10:00, 13:00, 17:00 (Toshkent)"),
     ("kuchaytir", "Ali o'zini kuchaytirsin: /kuchaytir yangi imkoniyat"),
     ("tugma_test", "Tugmalar ishlayotganini tekshirish"),
     ("ekotizim", "Agentlar: baho, rag'bat va jazo"),
@@ -173,6 +174,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("kontent_reja", self.cmd_content_plan))
         a.add_handler(CommandHandler("instagram", self.cmd_instagram))
         a.add_handler(CommandHandler("kunlik_video", self.cmd_daily_video))
+        a.add_handler(CommandHandler("youtube_video", self.cmd_youtube_video))
         a.add_handler(CommandHandler("tarix", self.cmd_history_import))
         a.add_handler(CommandHandler("organ", self.cmd_organ))
         a.add_handler(CommandHandler("kuchaytir", self.cmd_upgrade))
@@ -707,6 +709,12 @@ class TelegramBot(PublicTelegram, Listener):
                                         "yozadi, Montajchi videoga aylantiradi (3-6 daqiqa). Tayyor bo'lgach kanalga va "
                                         "sizga yuboraman.")
         threading.Thread(target=daily_video.run, args=("Hozir", hub.notify), daemon=True).start()
+
+    async def cmd_youtube_video(self, update: Update, ctx):
+        from . import youtube_video
+        if not await self._guard(update):
+            return
+        await update.message.reply_text(youtube_video.enqueue(" ".join(ctx.args or []), hub.notify))
 
     async def cmd_instagram(self, update: Update, ctx):
         """/instagram - profil audit: postlarni ko'rib, aniq tavsiyalar (bir necha daqiqa)."""
