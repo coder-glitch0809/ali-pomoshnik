@@ -2,6 +2,7 @@
 import base64
 import html
 import math
+import random
 from pathlib import Path
 
 from .video_visuals import VISUAL_CSS, palette, scene_visual
@@ -19,6 +20,7 @@ body{font-family:Arial,sans-serif}.yt-scene{position:absolute;inset:0;visibility
 .yt-scene.right .yt-media{left:90px}.yt-scene.right .yt-copy{left:1170px}
 .yt-scene.full .yt-media{inset:0;width:1920px;height:1080px;border-radius:0;opacity:.58}
 .yt-scene.full .yt-copy{top:320px;left:140px;width:1150px}.yt-scene.full .yt-copy h1{font-size:90px}
+.yt-scene.has-host .yt-copy{max-width:1050px}.yt-scene.has-host .yt-media{width:650px;left:750px}
 .yt-chapter{position:absolute;left:105px;top:65px;font-size:25px;letter-spacing:2px;max-width:1500px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
 .yt-chapter b{color:var(--accent);margin-right:25px}.yt-line{position:absolute;left:105px;top:115px;width:90px;height:4px;background:var(--accent)}
 .yt-caption{position:absolute;left:210px;right:210px;bottom:65px;text-align:center;z-index:1000;font-size:38px;line-height:1.35;visibility:hidden}
@@ -47,11 +49,17 @@ def page(data, starts, lengths, pics, rig=None):
         raise ValueError("Invalid YouTube scene timing")
     duration = starts[-1] + lengths[-1]
     parts, subtitles = [], []
+    previous_layout = None
     for index, (scene, start, length, pic) in enumerate(zip(scenes, starts, lengths, pics)):
         base, accent, _ = palette(scene)
-        layout = "full" if index % 4 == 0 else "right" if index % 2 == 0 else "left"
-        transition = {"t_slide": "yt-slide", "slide": "yt-slide", "t_zoom": "yt-zoom", "zoom": "yt-zoom"}.get(scene.get("transition"), "yt-fade")
-        motion = "yt-pull" if index % 2 else "yt-pan"
+        visual = scene.get("visual") if isinstance(scene.get("visual"), dict) else {}
+        rng = random.Random(str(visual.get("seed", index)))
+        layouts = ("left", "full") if rig else ("left", "right", "full")
+        layout = rng.choice([value for value in layouts if value != previous_layout])
+        previous_layout = layout
+        transition = {"t_slide": "yt-slide", "slide": "yt-slide", "t_zoom": "yt-zoom", "zoom": "yt-zoom"}.get(
+            scene.get("transition"), rng.choice(("yt-fade", "yt-slide", "yt-zoom")))
+        motion = rng.choice(("yt-pull", "yt-pan"))
         art = scene_visual(scene, index, start, length)
         media = ""
         asset = pic[0] if isinstance(pic, (tuple, list)) else pic
@@ -71,11 +79,16 @@ def page(data, starts, lengths, pics, rig=None):
             media = (f'<div class="yt-media"><{tag} class="bg" src="{uri}"{attrs} '
                      f'style="animation:{motion} {length:.3f}s linear {start:.3f}s both">'
                      + ('</video>' if video else '') + '</div>')
-        chapter = html.escape(str(scene.get("chapter") or data.get("title") or "YouTube"))
+        section = scene.get("section", "")
+        section = {"hook": "Boshlanish", "problem": "Muammo", "demonstration": "Amaliy misol",
+                   "solution": "Yechim", "cta": "Keyingi qadam"}.get(section, section)
+        chapter = html.escape(str(scene.get("chapter") or section or data.get("title") or "YouTube"))
         heading = html.escape(str(scene.get("big") or scene.get("title") or data.get("title") or ""))
         summary = html.escape(str(scene.get("summary") or ""))
-        parts.append(f'<section class="yt-scene {layout}" style="--accent:{accent};background:{base};z-index:{index + 1};'
-                     f'animation:yt-active {length:.3f}s linear {start:.3f}s forwards">{art}{media}<div class="yt-shade"></div>'
+        host_class = " has-host" if rig else ""
+        parts.append(f'<section class="yt-scene {layout}{host_class}" style="--accent:{accent};background:{base};z-index:{index + 1};'
+                     f'animation:yt-active {length:.3f}s linear {start:.3f}s forwards,'
+                     f'{transition} .35s ease-out {start:.3f}s both">{art}{media}<div class="yt-shade"></div>'
                      f'<div class="yt-chapter"><b>{index + 1:02d}</b>{chapter}</div><div class="yt-line"></div>'
                      f'<div class="yt-copy" style="animation:{transition} .35s ease-out {start:.3f}s both">'
                      f'<div class="eyebrow">{html.escape(str(data.get("series") or ""))}</div><h1>{heading}</h1>'

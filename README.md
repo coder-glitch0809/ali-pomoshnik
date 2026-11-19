@@ -348,3 +348,27 @@ material sahnaga olinadi. Bir videoda bitta arxiv fayli ikki marta ishlatilmaydi
 Eski indekslanmagan materiallar tavsifli fayl nomi bo'yicha topiladi; izohsiz
 rasmning mazmuni avtomatik tanilgan deb hisoblanmaydi. Video lavhalari ovozsiz,
 sahna davomiyligiga kesilib, kadrma-kadr sinxronlashtiriladi.
+
+## YouTube kunlik videolari
+
+Ali backend ishga tushganda YouTube navbati har kuni **10:00, 13:00 va 17:00,
+Asia/Tashkent (UTC+5)** da video tayyorlashni boshlaydi. Bu tayyor bo'lish vaqti
+emas: ssenariy, rasmlar, ovoz va render vaqt talab qiladi. Kompyuter va backend
+ishlab turishi, AI/ovoz xizmatlariga kirish bo'lishi kerak. Kod yangilangach
+backendni qayta ishga tushiring. Shu kunning o'tib ketgan slotlari navbatga olinadi;
+muvaffaqiyatli slot qayta bajarilmaydi, xatolar 15 daqiqadan keyin qayta sinaladi.
+Holat alohida `data/youtube_video.json` faylida saqlanadi. Bir backend nusxasini ishlating.
+
+Qo'lda: Telegram'da `/youtube_video [mavzu]` yoki `YouTube video qilib ber`.
+Agent vositasi: `make_youtube_video`. Mavzu berilmasa Planet Print yo'nalishidagi
+nomzodlar tadqiq qilinadi. Manbalar mavjudligi ommaboplik reytingi tasdiqlanganini
+anglatmaydi; qidiruv ishlamasa soha bilimiga tayaniladi. Qisqa yoki takroriy
+ssenariy uch urinishdan keyin ham tuzatilmasa, xato qaytariladi.
+
+Format: 1920x1080, 16:9, 30 fps, H.264/AAC 48 kHz MP4, taxminan 2–4 daqiqa.
+Sahnalarga alohida fon, palitra, grafika, matn joylashuvi va o'tish tanlanadi;
+qahramon va subtitrlar ovozga moslanadi. Rasmlar olinmasa protsedurali fon ishlaydi.
+Video bilan yonma-yon JSON faylda ssenariy, manbalar va bo'lim vaqt belgilari qoladi.
+Promptlar `video_media.json` ichidagi `visual_plan` yozuvlariga qo'shiladi.
+Eksport tekshirilgach egasiga yuboriladi; 45 MB dan kattasi asl sifatda mahalliy
+saqlanadi va yo'li xabarda beriladi. YouTube'ga avtomatik yuklash bu oqimga kirmaydi.

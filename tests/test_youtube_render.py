@@ -1,4 +1,5 @@
 import tempfile
+import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -31,6 +32,17 @@ class YouTubeRenderTests(unittest.TestCase):
     def test_invalid_timing_rejected(self):
         with self.assertRaises(ValueError):
             youtube_render.page({"scenes": [{}]}, [0], [-1], [(None, "")])
+
+    def test_seeded_layouts_vary_without_adjacent_repeats(self):
+        layouts = set()
+        for seed in range(12):
+            data = {'scenes': [{'visual': {'seed': seed + i}, 'voice': 'Matn', 'section': 'problem'} for i in range(3)]}
+            page, _ = youtube_render.page(data, [0, 2, 4], [2, 2, 2], [(None, '')] * 3)
+            sequence = re.findall(r'class="yt-scene (\w+)', page)
+            self.assertTrue(all(a != b for a, b in zip(sequence, sequence[1:])))
+            layouts.add(tuple(sequence))
+            self.assertIn('Muammo', page)
+        self.assertGreater(len(layouts), 1)
 
 
 if __name__ == '__main__':

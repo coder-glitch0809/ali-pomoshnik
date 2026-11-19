@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -103,6 +104,9 @@ class YouTubeScheduleTests(unittest.TestCase):
         self.assertIn("+faststart", ffmpeg.call_args.args[0])
         self.assertIn("48000", ffmpeg.call_args.args[0])
         self.assertEqual(Path(result["path"]).read_bytes(), b"mux output")
+        metadata = json.loads(output.with_suffix('.json').read_text(encoding='utf-8'))
+        self.assertEqual(metadata['duration'], 30)
+        self.assertEqual(metadata['chapters'][0]['start'], 0)
 
 
 if __name__ == "__main__":

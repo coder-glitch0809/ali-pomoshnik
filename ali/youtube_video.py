@@ -125,6 +125,14 @@ def make(slot="Buyurtma", notify=lambda text: None, topic=""):
         output = outbox.new_path("youtube_" + str(data.get("title", slot)), "mp4")
         import shutil
         shutil.copy2(final, output)
+        metadata = output.with_suffix(".json")
+        chapters = []
+        for scene, start in zip(scenes, starts):
+            section = scene.get("section", "")
+            if not chapters or chapters[-1]["section"] != section:
+                chapters.append({"section": section, "start": round(start, 3)})
+        metadata.write_text(json.dumps({**data, "duration": duration, "chapters": chapters},
+                                      ensure_ascii=False, indent=2), encoding="utf-8")
     outbox.register(output)
     return {"path": str(output), "idea": data, "duration": duration,
             "sources": "YouTube 1920x1080, H.264, AAC 48 kHz, har sahna uchun yangi vizual reja"}
