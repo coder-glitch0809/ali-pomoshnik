@@ -13,7 +13,7 @@ import re
 import tempfile
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import config
@@ -25,6 +25,9 @@ LATE = 10 * 3600  # kompyuter uxlab qolgan bo'lsa uyg'ongach yasaydi; 10 soatdan
 STATE = config.data_dir / "daily_video.json"
 DURATION, FPS = 15, 30
 _lock = threading.Lock()
+_state_lock = threading.RLock()
+_scheduled = set()
+TZ = timezone(timedelta(hours=5), 'Asia/Tashkent')
 
 IDEA = """{agent}
 
@@ -92,7 +95,11 @@ def _state() -> dict:
 
 
 def _save(st: dict) -> None:
-    STATE.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+    with _state_lock:
+        STATE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = STATE.with_suffix('.tmp')
+        tmp.write_text(json.dumps(st, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.replace(STATE)
 
 
 def _agent(key: str) -> str:
@@ -519,21 +526,23 @@ def quality_issues(path: str) -> list[str]:
     return issues
 
 
-def run(slot: str, notify, topic: str = "") -> None:
+def run(slot: str, notify, topic: str = "") -> str | None:
     """Videoni yasaydi va kanalga (yuborilmasa - navbatga) hamda egasiga yuboradi.
     Egasi bergan mavzu ham texnik tekshiruv va kamida 7/10 bahodan o'tishi kerak."""
     from . import studio_flow, tg_account
     _lock.acquire()  # navbat: band bo'lsa kutadi - buyurtma yo'qolib ketmaydi
     try:
         res = make(slot, notify, topic)
-        hist = _state()
-        idea_data = res["idea"]
-        hist.setdefault("history", []).append({"title": idea_data.get("title", ""),
-            "topic": idea_data.get("topic", ""),
-            "script": " ".join(s.get("voice", s.get("big", "")) for s in idea_data.get("scenes", [])),
-            "style": idea_data.get("style", ""), "at": datetime.now().isoformat(timespec="minutes")})
-        hist["history"] = hist["history"][-60:]
-        _save(hist)
+        with _state_lock:
+            hist = _state()
+            idea_data = res["idea"]
+            hist.setdefault("history", []).append({"title": idea_data.get("title", ""),
+                "topic": idea_data.get("topic", ""),
+                "script": " ".join(s.get("voice", s.get("big", "")) for s in idea_data.get("scenes", [])),
+                "style": idea_data.get("style", ""), "path": res['path'],
+                "at": datetime.now(TZ).isoformat(timespec="minutes")})
+            hist["history"] = hist["history"][-60:]
+            _save(hist)
         issues = quality_issues(res["path"])
         if issues:
             from . import team_hub
@@ -557,13 +566,16 @@ def run(slot: str, notify, topic: str = "") -> None:
     from .service import brain
     about = (f"«{data.get('title', '')}». Hook: {data.get('hook', '')}. Sahnalar: "
              + "; ".join(s["big"] for s in data["scenes"]) + f". CTA: {data.get('cta', '')}. {DURATION} s animatsiya, faqat ovoz.")
-    decision, score = team_hub.review_video(res["path"], about, brain.agents, _ready())
+    try:
+        decision, score = team_hub.review_video(res["path"], about, brain.agents, _ready())
+    except Exception as error:
+        decision, score = f"Kengash vaqtincha ishlamadi: {type(error).__name__}", None
     verdict = f"\n\n🤝 Kengash bahosi: {score:g}/10" if score is not None else ""
     if score is None or score < 7:
         assessment = f"{score:g}/10" if score is not None else "baho olinmadi"
         studio_flow.send_files(f"🚫 {slot} kunlik Reels kengashdan o'tmadi ({assessment}) - kanalga joylanmadi.\n\n"
                                f"{decision[-2500:]}", [res["path"]])
-        return
+        return res['path']
     st = studio_flow._state()
     try:
         pid = tg_account.send_file(studio_flow.CHANNEL, res["path"], f"{text}\n\n{studio_flow.MARK}"[:1024])
@@ -574,19 +586,53 @@ def run(slot: str, notify, topic: str = "") -> None:
     studio_flow._save(st)
     studio_flow.send_files(f"🎬 {slot} kunlik Reels tayyor: «{data.get('title', '')}»\n🪝 {data.get('hook', '')}\n"
                            f"💡 {data.get('why', '')}\n({res['sources']}){verdict}\n\n{text}", [res["path"]])
+    return res['path']
+
+
+def _scheduled_run(slot, notify, key):
+    try:
+        path = run(slot, notify)
+        with _state_lock:
+            state = _state()
+            if path:
+                state.setdefault("done", {})[key] = path
+                state.setdefault("retry", {}).pop(key, None)
+                state["last_error"] = ""
+            else:
+                state.setdefault("retry", {})[key] = time.time() + 900
+                state["last_error"] = _jobs.get("last_error") or "Video tayyorlanmadi"
+            state["done"] = dict(list(state.get("done", {}).items())[-60:])
+            _save(state)
+    except Exception as error:
+        log.exception("Kunlik video navbati xatosi")
+        with _state_lock:
+            state = _state()
+            state.setdefault("retry", {})[key] = time.time() + 900
+            state["last_error"] = type(error).__name__
+            _save(state)
+    finally:
+        with _state_lock:
+            _scheduled.discard(key)
 
 
 def tick(notify, now: datetime | None = None) -> None:
-    """Kontent reja tsiklidan (har 30 s): 11:00 va 16:00 da bir martadan (qayta yoqilganda takrorlanmaydi)."""
-    now = now or datetime.now()
-    st = _state()
-    for slot in TIMES:
-        h, m = map(int, slot.split(":"))
-        at = now.replace(hour=h, minute=m, second=0, microsecond=0)
-        key = f"{now.date().isoformat()} {slot}"
-        if at <= now and key not in st.get("done", {}):
-            st.setdefault("done", {})[key] = (now - at).total_seconds() <= LATE
-            st["done"] = dict(list(st["done"].items())[-20:])
-            _save(st)
-            if st["done"][key]:
-                threading.Thread(target=run, args=(slot, notify), daemon=True, name="daily-video").start()
+    """Tashkent slots: reserve in memory; persist success only after generation/delivery queue."""
+    from . import ai_status
+    now = now or datetime.now(TZ)
+    now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
+    with _state_lock:
+        state = _state()
+        keys = sorted(set(state.get('retry', {})) | {f'{now.date().isoformat()} {slot}' for slot in TIMES})
+        for key in keys:
+            at = datetime.strptime(key, '%Y-%m-%d %H:%M').replace(tzinfo=TZ)
+            slot = at.strftime('%H:%M')
+            retry = state.get("retry", {}).get(key, 0)
+            if (now < at or ((now-at).total_seconds() > LATE and key not in state.get('retry', {})) or key in state.get("done", {})
+                    or key in _scheduled or (retry > now.timestamp() and ai_status.recovered_at() <= retry - 900)):
+                continue
+            _scheduled.add(key)
+            try:
+                threading.Thread(target=_scheduled_run, args=(slot, notify, key), daemon=True, name="daily-video").start()
+            except Exception:
+                _scheduled.discard(key)
+                raise

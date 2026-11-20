@@ -1,8 +1,8 @@
 """Avtopilot: agentlar o'z-o'zini o'qitadi va treyding loyihalari kuzatib boriladi.
 
 Yoqish (.env):
-  AUTO_LEARN=true        har bir agent "o'rganish" mavzulari bo'yicha AUTO_LEARN_HOURS da bir marta yangiliklarni
-                         o'rganib, bilimlar bazasiga yozadi
+  O'rganish faqat egasi buyrug'i bilan: Telegram /kanallar_organ.
+  Eski AUTO_LEARN sozlamasi rejalashtirilgan o'qitishni ishga tushirmaydi.
   SELF_IMPROVE=true      har kuni agentlar tekshiriladi, xatolari tuzatiladi va tajriba qo'shiladi (ali/evolution.py)
   WATCH_PROJECTS=true    Dasturchi agent WATCH_HOURS da bir marta treyding loyihalarini (kompyuter, GitHub, Vercel)
                          tekshiradi va muammo bo'lsa telefonga/Telegramga xabar beradi
@@ -205,10 +205,10 @@ def learning_status(brain) -> dict:
                        "knowledge": memory.agent_knowledge_summary(key),
                        "improve": {k: v for k, v in state["improve"].get(key, {}).items()
                                    if k in ("status", "score", "issues", "fixed", "summary", "last_success")},
-                       "next_at": entry.get("next_at", state["learn"].get(key, 0) + config.auto_learn_hours * 3600 if state["learn"].get(key) else None)}
+                       "next_at": None}
     result["ali"] = {"improve": {k: v for k, v in state["improve"].get("ali", {}).items()
                                  if k in ("status", "score", "issues", "fixed", "summary", "last_success")}}
-    return {"enabled": config.auto_learn, "interval_hours": config.auto_learn_hours, "agents": result,
+    return {"enabled": False, "interval_hours": None, "agents": result,
             "self_improve": config.self_improve}
 
 
@@ -259,7 +259,6 @@ def _improve_tick(brain, state: dict, now: float) -> bool:
     return True
 
 
-TG_CHANNELS_HOURS = 6   # kanallardan yangi post/fayllarni o'rganish
 TG_CHATS_HOURS = 3      # yozishmalardan faktlar va rejalar (eslatmalar)
 
 
@@ -281,18 +280,6 @@ def _telegram_tick(state: dict, now: float) -> None:
             log.info("Yozishmalar ko'rildi: %s fakt, %s eslatma", r["facts"], len(r["reminders"]))
         except Exception as e:
             log.warning("Yozishmalarni ko'rib bo'lmadi: %s", e)
-    if now - state.get("tg_channels", 0) >= TG_CHANNELS_HOURS * 3600:
-        state["tg_channels"] = now
-        _save(state)
-        try:
-            results = tg_account.learn_all_channels()
-            if results:
-                text = "📢 Kanallardan o'rganildi:\n" + "\n".join(
-                    f"• {r['channel']}: {r['posts']} post, {r['files']} fayl → {r['saved']} bilim" for r in results)[:3500]
-                hub.notify(text)
-                team_hub.post("telegram", text)
-        except Exception as e:
-            log.warning("Kanallardan o'rganib bo'lmadi: %s", e)
     from . import tg_watch  # guruhlar (5-D sinf, dars jadvali), botlar, kelgan rasm/videolar
     tg_watch.tick(hub.notify, now)
 
@@ -307,36 +294,6 @@ def _tick(brain) -> None:
     ecosystem.tick(brain, hub.notify, lambda name, args: hub.confirm(name, args, timeout=1800))
     if config.self_improve and not _improve_tick(brain, state, now):
         return
-    if config.auto_learn:
-        for key, a in list(brain.agents.items()):
-            entry = state["learning"].get(key, {})
-            due = entry.get("next_at", state["learn"].get(key, 0) + config.auto_learn_hours * 3600)
-            if now < due:
-                continue
-            if not brain.lock.acquire(blocking=False):
-                return  # Ali band - keyinroq
-            try:
-                before = memory.agent_knowledge_summary(key)["count"]
-                state["learning"][key] = {**entry, "status": "running", "last_attempt": now, "next_at": now + 3600}
-                _save(state)
-                result = learn(brain, key)
-                added = max(0, memory.agent_knowledge_summary(key)["count"] - before)
-                finished = time.time()
-                state["learn"][key] = finished
-                state["learning"][key] = {"status": "updated" if added else "checked", "last_attempt": now,
-                    "last_success": finished, "next_at": finished + config.auto_learn_hours * 3600,
-                    "added": added, "summary": result[:800]}
-                log.info("O'rganish tekshirildi: %s, yangi yozuvlar=%s", key, added)
-            except Exception as e:
-                log.exception("O'rganish bajarilmadi: %s", key)
-                # Internet yoki limit vaqtincha - 15 daqiqadan keyin qayta urinadi
-                state["learning"][key] = {**entry, "status": "error", "last_attempt": now,
-                    "next_at": time.time() + 900, "summary": f"Vaqtincha bajarilmadi, 15 daqiqada qayta urinadi: {str(e)[:200]}"}
-            finally:
-                try:
-                    _save(state)
-                finally:
-                    brain.lock.release()
     if config.watch_projects and now - state.get("watch", 0) >= config.watch_hours * 3600:
         if not brain.lock.acquire(blocking=False):
             return

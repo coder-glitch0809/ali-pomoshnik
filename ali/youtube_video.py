@@ -140,7 +140,7 @@ def make(slot="Buyurtma", notify=lambda text: None, topic=""):
 
 def run(slot, notify=lambda text: None, topic="", key=None):
     """Persist completion only after validation; failures become eligible after 15 minutes."""
-    from . import daily_video, studio_flow
+    from . import daily_video, studio_flow, video_delivery
     with _job_lock:
         try:
             with _state_lock:
@@ -153,6 +153,8 @@ def run(slot, notify=lambda text: None, topic="", key=None):
                     raise RuntimeError("; ".join(issues))
             now = datetime.now(TZ)
             data = result["idea"]
+            text = f"{slot} YouTube video tayyor: {data.get('title', '')}\n{result['sources']}"
+            delivery = video_delivery.enqueue(text, [result['path']])
             with _state_lock:
                 state = _state()
                 state.setdefault("history", []).append({"title": data.get("title", ""),
@@ -165,6 +167,7 @@ def run(slot, notify=lambda text: None, topic="", key=None):
                     state["done"] = dict(list(state["done"].items())[-90:])
                     state.setdefault("retry", {}).pop(key, None)
                 state["last_error"] = ""
+                state.setdefault('deliveries', {})[key or result['path']] = delivery
                 _save(state)
         except Exception as error:
             log.exception("YouTube video yasalmadi")
@@ -180,30 +183,27 @@ def run(slot, notify=lambda text: None, topic="", key=None):
         finally:
             with _state_lock:
                 _scheduled.discard(key)
-    text = f"{slot} YouTube video tayyor: {data.get('title', '')}\n{result['path']}\n{result['sources']}"
-    path = Path(result["path"])
-    files = [str(path)] if path.stat().st_size <= 45 * 1024 * 1024 else []
-    if not files:
-        text += "\nAsl sifatdagi fayl mahalliy saqlandi; hajmi Telegram bot chegarasidan katta."
     try:
-        studio_flow.send_files(text, files)
-        notify(text)
+        sent = studio_flow.send_files(text, [result['path']])
+        notify(text if sent else f"{slot} YouTube video yaratildi; Telegram yetkazish navbatida.")
     except Exception:
         log.exception("YouTube natija xabari yuborilmadi; tayyor fayl saqlandi")
 
 
 def tick(notify, now=None):
     """Catch up today's due slots once, including after restart; never mark failed jobs done."""
+    from . import ai_status
     now = now or datetime.now(TZ)
     now = now.replace(tzinfo=TZ) if now.tzinfo is None else now.astimezone(TZ)
     with _state_lock:
         state = _state()
-        for slot in TIMES:
-            hour, minute = map(int, slot.split(":"))
-            at = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            key = f"{now.date().isoformat()} {slot}"
+        keys = sorted(set(state.get('retry', {})) | {f'{now.date().isoformat()} {slot}' for slot in TIMES})
+        for key in keys:
+            at = datetime.strptime(key, '%Y-%m-%d %H:%M').replace(tzinfo=TZ)
+            slot = at.strftime('%H:%M')
             if (now < at or key in state.get("done", {}) or key in _scheduled
-                    or state.get("retry", {}).get(key, 0) > now.timestamp()):
+                    or (state.get("retry", {}).get(key, 0) > now.timestamp()
+                        and ai_status.recovered_at() <= state.get("retry", {}).get(key, 0) - RETRY_SECONDS)):
                 continue
             _scheduled.add(key)
             try:

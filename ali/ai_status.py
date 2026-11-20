@@ -10,6 +10,7 @@ log = logging.getLogger("ali.ai_status")
 PAUSE = 10 * 60  # hamma AI javob bermasa - shuncha vaqt faqat o'z bilimi bilan
 _lock = threading.Lock()
 _state = {"until": 0.0, "since": 0.0}
+_recovered_at = 0.0
 
 
 def is_down() -> bool:
@@ -26,10 +27,16 @@ def down(reason: str = "") -> None:
 
 
 def up() -> None:
+    global _recovered_at
     with _lock:
         if _state["until"]:
+            _recovered_at = time.time()
             log.info("AI qaytdi - agentlar yana AI bilan ishlaydi")
         _state["until"] = 0.0
+
+
+def recovered_at() -> float:
+    return _recovered_at
 
 
 def note() -> str:

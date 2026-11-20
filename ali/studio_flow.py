@@ -657,43 +657,15 @@ def _build_and_send(bid: int, notify) -> None:
 
 
 def send_files(text: str, files: list[str], queue: bool = True) -> bool:
-    """Natijani egasiga Telegram bot orqali yuboradi (video - video bo'lib, qolgani - fayl).
-    Internet uzilgan bo'lsa - navbatga qo'yiladi, kanal kuzatuvi har daqiqada qayta urinadi."""
-    api = f"https://api.telegram.org/bot{config.telegram_token}"
-    uid = config.telegram_owner_id
-    if not (config.telegram_token and uid):
-        return False
-    original = (text, list(files))
-    big = [f for f in files if Path(f).is_file() and Path(f).stat().st_size > 45 * 1024 * 1024]
-    if big:  # Telegram bot 50 MB dan katta fayl yubora olmaydi (4K video) - kanaldagi postga havola
-        text += f"\n\n🎬 Video katta ({Path(big[0]).stat().st_size // 1048576} MB) - kanalda ko'ring: https://t.me/{CHANNEL}"
-        files = [f for f in files if f not in big]
-    try:
-        httpx.post(api + "/sendMessage", data={"chat_id": uid, "text": text[:4000]}, timeout=30).raise_for_status()
-        for f in files:
-            kind, field = ("sendVideo", "video") if f.endswith(".mp4") else ("sendDocument", "document")
-            data = {"chat_id": uid}
-            if kind == "sendVideo":  # o'lcham - Telegram videoni kesib ko'rsatmasin
-                from .skills.video_edit import info
-                i = info(Path(f))
-                data.update(width=i["width"], height=i["height"], duration=int(round(i["duration"])),
-                            supports_streaming="true")
-            with open(f, "rb") as fh:
-                httpx.post(f"{api}/{kind}", data=data, files={field: (Path(f).name, fh)},
-                           timeout=300).raise_for_status()
-        return True
-    except (httpx.HTTPError, OSError) as e:
-        log.warning("Studio natijasi yuborilmadi: %s", e)
-        if queue:
-            state = _state()
-            state.setdefault("pending_send", []).append({"text": original[0], "files": original[1]})
-            _save(state)
-        return False
+    """Persist the entire payload and require Telegram receipts for every file."""
+    from . import video_delivery
+    return video_delivery.send_files(text, files, queue=queue)
 
 
 def flush_pending() -> None:
     """Internet uzilganda yuborilmay qolgan natijalar: kanalga joylash va egasiga yuborish (navbat tartibida)."""
-    from . import tg_account
+    from . import tg_account, video_delivery
+    video_delivery.flush_pending()
     state = _state()
     posts, sends = state.get("pending_post", []), state.get("pending_send", [])
     if not posts and not sends:
@@ -714,7 +686,7 @@ def flush_pending() -> None:
     left_sends = []
     for item in sends:
         if left_sends or not send_files("📬 (internet uzilganda yuborilmay qolgan edi)\n" + item["text"],
-                                        [f for f in item["files"] if Path(f).is_file()], queue=False):
+                                        item["files"], queue=False):
             left_sends.append(item)
     state = _state()
     state["pending_send"] = left_sends

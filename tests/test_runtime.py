@@ -622,38 +622,17 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(memory.vault_list('past conversation needle','chats')['total'],1)
         self.assertEqual(memory.vault_list('unique-news','identity')['total'],0)
 
-    def test_learning_failure_retries_without_claiming_success(self):
+    def test_automatic_learning_is_disabled_even_with_legacy_setting(self):
         from ali import autopilot
-        import threading
         from types import SimpleNamespace
-        fake = SimpleNamespace(agents={"tester": SimpleNamespace(learn=[], description="Testing")}, lock=threading.Lock())
-        path = Path(state.name) / "learning-test.json"
-        with patch.object(autopilot, "STATE", path), patch.object(config, "auto_learn", True), patch.object(config, "watch_projects", False), patch.object(autopilot, "learn", side_effect=RuntimeError("API failed")) as learn:
+        fake = SimpleNamespace(agents={})
+        with patch.object(config, "auto_learn", True), patch.object(config, "self_improve", False), \
+                patch.object(config, "watch_projects", False), patch.object(autopilot, "_telegram_tick"), \
+                patch("ali.team_hub.tick"), patch("ali.ecosystem.tick"), \
+                patch.object(autopilot, "learn") as learn:
             autopilot._tick(fake)
-            saved = autopilot._load()
-            self.assertEqual(saved["learning"]["tester"]["status"], "error")
-            self.assertNotIn("tester", saved["learn"])
-            self.assertFalse(fake.lock.locked())
-            autopilot._tick(fake)
-            self.assertEqual(learn.call_count, 1)
-
-    def test_learning_success_tracks_saved_knowledge_and_waits(self):
-        from ali import autopilot
-        from ali.memory import memory
-        import threading
-        from types import SimpleNamespace
-        fake = SimpleNamespace(agents={"research-test": SimpleNamespace(learn=["Research"], description="Testing")}, lock=threading.Lock())
-        path = Path(state.name) / "learning-success.json"
-        def learn(*args):
-            memory.add_knowledge("[research-test] Verified topic", "Source: https://example.com; checked today")
-            return "Saved one topic"
-        with patch.object(autopilot, "STATE", path), patch.object(config, "auto_learn", True), patch.object(config, "watch_projects", False), patch.object(autopilot, "learn", side_effect=learn) as run:
-            autopilot._tick(fake)
-            saved = autopilot.learning_status(fake)
-            self.assertEqual(saved["agents"]["research-test"]["status"], "updated")
-            self.assertEqual(saved["agents"]["research-test"]["added"], 1)
-            autopilot._tick(fake)
-            self.assertEqual(run.call_count, 1)
+            self.assertFalse(autopilot.learning_status(fake)["enabled"])
+            learn.assert_not_called()
 
     def test_self_improve_fixes_tools_adds_lessons_and_rolls_back(self):
         from ali import evolution

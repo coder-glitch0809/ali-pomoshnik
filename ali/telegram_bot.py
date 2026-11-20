@@ -185,6 +185,7 @@ class TelegramBot(PublicTelegram, Listener):
         a.add_handler(CommandHandler("kontent", self.cmd_content_today))
         a.add_handler(CommandHandler("tayyor", self.cmd_content_done))
         a.add_handler(CommandHandler("kanallar_organ", self.cmd_learn_all))
+        a.add_handler(CallbackQueryHandler(self.on_learn_channels, pattern=r"^learn:channels$"))
         a.add_handler(CommandHandler("jamoa", self.cmd_team))
         a.add_handler(CommandHandler("maslahat", self.cmd_council))
         a.add_handler(CommandHandler("nazorat", self.cmd_team_report))
@@ -288,7 +289,8 @@ class TelegramBot(PublicTelegram, Listener):
     def site_keyboard(self):
         if config.public_url.startswith("https://"):
             return InlineKeyboardMarkup([[InlineKeyboardButton(
-                "🖥 Ali Pomoshnik — to'liq panel", web_app=WebAppInfo(url=config.public_url+'/miniapp'))]])
+                "🖥 Ali Pomoshnik — to'liq panel", web_app=WebAppInfo(url=config.public_url+'/miniapp'))],
+                [InlineKeyboardButton("📚 Telegram kanallaridan o‘rganish", callback_data="learn:channels")]])
         return None
 
     async def cmd_site(self, update: Update, ctx):
@@ -1009,7 +1011,15 @@ class TelegramBot(PublicTelegram, Listener):
         chat_id = update.effective_chat.id
         loop = asyncio.get_running_loop()
         progress = lambda m: asyncio.run_coroutine_threadsafe(self.app.bot.send_message(chat_id, m), loop)
-        await update.message.reply_text("📚 Barcha kanallarni o'qishni boshladim - har birining natijasini yozib boraman.")
+        if getattr(self, '_channel_learning', False):
+            await update.effective_message.reply_text("Telegram kanallarini o‘rganish allaqachon davom etyapti.")
+            return
+        self._channel_learning = True
+        try:
+            await update.effective_message.reply_text("📚 Barcha kanallarni o'qishni boshladim - har birining natijasini yozib boraman.")
+        except Exception:
+            self._channel_learning = False
+            raise
 
         async def run():
             try:
@@ -1023,6 +1033,11 @@ class TelegramBot(PublicTelegram, Listener):
         self.learn_tasks = getattr(self, "learn_tasks", set())
         self.learn_tasks.add(task)
         task.add_done_callback(self.learn_tasks.discard)
+        task.add_done_callback(lambda _: setattr(self, '_channel_learning', False))
+
+    async def on_learn_channels(self, update: Update, ctx):
+        await self.safe_answer(update.callback_query, "Telegram kanallaridan o‘rganish")
+        await self.cmd_learn_all(update, ctx)
 
     # ---------- Ali jamoasi: forum-guruh, maslahat kengashi, nazorat ----------
     TEAM_RE = re.compile(r"(jamoa\w*|жамоа\w*|ali\s+jamoasi|али\s+жамоаси)\s+(guruh|гуруҳ|гурух|групп)\w*\s*\w*\s*"

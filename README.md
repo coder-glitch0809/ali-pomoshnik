@@ -265,8 +265,9 @@ Rejalar - konsept: qurilishdan oldin joyida o'lchash va mutaxassis tekshiruvi ke
 ## Avtopilot: o'z-o'zini o'rganish va loyihalarni kuzatish
 
 `.env` da yoqiladi (API'dan pul sarflaydi):
-- `AUTO_LEARN=true` — har bir agent `AUTO_LEARN_HOURS` da bir marta o'z "o'rganish" mavzulari bo'yicha internetdan
-  yangiliklarni o'rganib, bilimlar bazasiga yozadi va keyingi javoblarida ishlatadi. Qo'lda: chatda "Treyderni hozir o'qit".
+- Rejali o'qitish o'chirilgan: eski `AUTO_LEARN` qiymati avtomatik o'qitishni yoqmaydi.
+  Telegram kanallari har 6 soatda o'qilmaydi. `/kanallar_organ` menyusi yoki paneldagi
+  **Telegram kanallaridan o?rganish** tugmasi bilan qo'lda boshlang.
 - `WATCH_PROJECTS=true` — Dasturchi `WATCH_HOURS` da bir marta treyding loyihalarini (git, GitHub Actions, Vercel) tekshiradi
   va muammo bo'lsa xabar beradi. Qo'lda: "Treyding loyihalarimni tekshir".
 
@@ -282,7 +283,7 @@ Rejalar - konsept: qurilishdan oldin joyida o'lchash va mutaxassis tekshiruvi ke
 
   Agentning asosiy ko'rsatmasi qayta yozilmaydi, har o'zgarishdan oldin nusxa `agents/_history` ga saqlanadi.
   Qo'lda: "Agentlarni hozir rivojlantir", "O'zingni tekshir", "Treyder holatini tekshir", "Treyderni oldingi holatiga qaytar".
-  `AUTO_LEARN` bilan birga yoqing: Murabbiy qo'shgan mavzularni agentlar har kuni o'rganadi.
+  Murabbiy tavsiya qilgan mavzularni egasi topshirig'i bilan o'rganish mumkin.
 
 Avtopilot siz yo'qligingizda faqat tasdiq talab qilmaydigan vositalardan foydalanadi: loyihalar va fayllar o'zgartirilmaydi.
 Hammasi Monitoring bo'limida jonli ko'rinadi.
@@ -370,5 +371,13 @@ Sahnalarga alohida fon, palitra, grafika, matn joylashuvi va o'tish tanlanadi;
 qahramon va subtitrlar ovozga moslanadi. Rasmlar olinmasa protsedurali fon ishlaydi.
 Video bilan yonma-yon JSON faylda ssenariy, manbalar va bo'lim vaqt belgilari qoladi.
 Promptlar `video_media.json` ichidagi `visual_plan` yozuvlariga qo'shiladi.
-Eksport tekshirilgach egasiga yuboriladi; 45 MB dan kattasi asl sifatda mahalliy
-saqlanadi va yo'li xabarda beriladi. YouTube'ga avtomatik yuklash bu oqimga kirmaydi.
+Eksport tekshirilgach egasiga yuboriladi. Fayl yetkazilishi Telegram message_id bilan
+alohida tasdiqlanadi; 45 MB dan katta yoki yo'q fayl yuborildi deb hisoblanmaydi. YouTube'ga avtomatik yuklash bu oqimga kirmaydi.
+
+Video yetkazish navbati `data/video_delivery.sqlite3` da saqlanadi. Qisman yuborilganda
+faqat tasdiqlanmagan fayllar qayta yuboriladi; transport xatosida 15 daqiqadan keyin
+qayta uriniladi. Telegram javobi yo'qolgan juda tor holatda qayta yuborish dublikat
+chiqarishi mumkin; bot API server tomonida idempotency kalitini qo'llamaydi.
+Reels va YouTube generatsiya xatolari endi yangi kunda ham navbatda qoladi. AI'dan
+muvaffaqiyatli javob kelib, tiklangani ma'lum bo'lsa, video navbati keyingi 30 soniyalik
+tikda qayta urinadi. Tizim kredit balansini to'g'ridan-to'g'ri kuzatmaydi.
