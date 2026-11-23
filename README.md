@@ -390,7 +390,10 @@ Arxivdan kliplar ham, alohida kadr rasmlari ham olinadi; original tomonlar nisba
 Video bilan yonma-yon JSON faylda ssenariy, manbalar va bo'lim vaqt belgilari qoladi.
 Promptlar `video_media.json` ichidagi `visual_plan` yozuvlariga qo'shiladi.
 Eksport tekshirilgach egasiga yuboriladi. Fayl yetkazilishi Telegram message_id bilan
-alohida tasdiqlanadi; 45 MB dan katta yoki yo'q fayl yuborildi deb hisoblanmaydi. YouTube'ga avtomatik yuklash bu oqimga kirmaydi.
+alohida tasdiqlanadi. 45 MB dan katta ovozli MP4 uchun original saqlanib,
+o'lcham va fps o'zgarmagan, hajmi tekshirilgan Telegram nusxasi tayyorlanadi.
+Yo'q yoki tekshiruvdan o'tmagan fayl yuborildi deb hisoblanmaydi.
+YouTube'ga avtomatik yuklash bu oqimga kirmaydi.
 
 Video yetkazish navbati `data/video_delivery.sqlite3` da saqlanadi. Qisman yuborilganda
 faqat tasdiqlanmagan fayllar qayta yuboriladi; transport xatosida 15 daqiqadan keyin

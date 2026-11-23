@@ -2,7 +2,9 @@
 import hashlib
 import json
 import logging
+import math
 import sqlite3
+import tempfile
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -55,6 +57,38 @@ def send_files(text, files, queue=True):
     return _send(enqueue(text, files))
 
 
+def telegram_video(path):
+    """Keep the original export; make a validated, size-budgeted transport copy."""
+    path = Path(path)
+    limit = 45 * 1024 * 1024
+    if path.stat().st_size <= limit or path.suffix.lower() != '.mp4':
+        return path
+    from .skills.video_edit import _run, info
+    meta = info(path)
+    duration = meta['duration']
+    if not math.isfinite(duration) or duration <= 0 or not meta['audio']:
+        raise RuntimeError('Oversized video is not a valid narrated export')
+    output = path.with_name(path.stem + '_telegram.mp4')
+    if output.exists() and output.stat().st_mtime_ns >= path.stat().st_mtime_ns and output.stat().st_size <= limit:
+        return output
+    bitrate = int(42 * 1024 * 1024 * 8 / duration) - 128000
+    if bitrate < 250000:
+        raise RuntimeError('Video is too long for a readable Telegram copy')
+    with tempfile.TemporaryDirectory(dir=path.parent) as folder:
+        final = Path(folder) / 'delivery.mp4'
+        _run(['-i', str(path), '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'libx264',
+              '-preset', 'fast', '-b:v', str(bitrate), '-maxrate', str(bitrate),
+              '-bufsize', str(bitrate * 2), '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+              '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', str(final)])
+        result = info(final)
+        if (final.stat().st_size > limit or not result['audio']
+                or any(result[k] != meta[k] for k in ('width', 'height', 'fps'))
+                or abs(result['duration'] - duration) > .5):
+            raise RuntimeError('Telegram video copy failed validation')
+        final.replace(output)
+    return output
+
+
 def _send(key):
     with _db() as db:
         row = db.execute('SELECT * FROM deliveries WHERE id=?', (key,)).fetchone()
@@ -71,14 +105,17 @@ def _send(key):
     try:
         if not config.telegram_token or not payload['chat_id']:
             raise RuntimeError('Telegram bot or owner is not configured')
-        files = payload['files']
+        files = list(payload['files'])
         # Validate the complete payload before sending a misleading success text.
-        for filename in files:
+        for index, filename in enumerate(files):
             path = Path(filename)
             if not path.is_file():
                 raise RuntimeError(f'Delivery file missing: {path.name}')
             if path.stat().st_size > 45 * 1024 * 1024:
-                raise RuntimeError(f'Delivery file exceeds bot limit: {path.name}')
+                path = telegram_video(path)
+                if path.stat().st_size > 45 * 1024 * 1024:
+                    raise RuntimeError(f'Delivery file exceeds bot limit: {path.name}')
+                files[index] = str(path)
         steps = [None, *files]
         for index, filename in enumerate(steps):
             if index < len(receipts):

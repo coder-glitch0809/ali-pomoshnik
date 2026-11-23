@@ -54,6 +54,18 @@ class DeliveryTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'receipt missing'):
                 delivery._post('sendMessage')
 
+    def test_large_valid_video_gets_transport_copy_without_changing_original(self):
+        with self.file.open('wb') as stream:
+            stream.truncate(46 * 1024 * 1024)
+        meta = {'duration': 200, 'width': 1920, 'height': 1080, 'fps': 30, 'audio': True}
+        with patch('ali.skills.video_edit.info', return_value=meta), \
+                patch('ali.skills.video_edit._run', side_effect=lambda args: Path(args[-1]).write_bytes(b'encoded')) as encode:
+            output = delivery.telegram_video(self.file)
+            self.assertEqual(output.read_bytes(), b'encoded')
+            self.assertEqual(self.file.stat().st_size, 46 * 1024 * 1024)
+            self.assertEqual(delivery.telegram_video(self.file), output)
+            encode.assert_called_once()
+
     def test_reels_failure_is_retryable_not_done(self):
         with patch.object(daily_video, 'STATE', self.root/'daily.json'), \
                 patch.object(daily_video, 'run', return_value=None):
