@@ -344,7 +344,7 @@ vizual uslubi saqlanadi. Takroriy ssenariy uch urinishdan so'ng ham yangilanmasa
 eski shablon yuborish o'rniga topshiriq xato bilan to'xtaydi. Kontent-meyker →
 montajchi → dizayner → animatsiya/render oqimi sahnalarga mos grafikalarni qo'llaydi.
 Vizual uslub va ranglar almashadi. Telegram va kuzatiladigan studiya kanalidan
-olingan rasm/video izohlari arxivga yoziladi; kamida ikki mazmunli so'z mos kelsa,
+olingan rasm/video izohlari arxivga yoziladi; mazmunli so'z mos kelsa,
 material sahnaga olinadi. Bir videoda bitta arxiv fayli ikki marta ishlatilmaydi.
 Eski indekslanmagan materiallar tavsifli fayl nomi bo'yicha topiladi; izohsiz
 rasmning mazmuni avtomatik tanilgan deb hisoblanmaydi. Video lavhalari ovozsiz,
@@ -360,6 +360,10 @@ backendni qayta ishga tushiring. Shu kunning o'tib ketgan slotlari navbatga olin
 muvaffaqiyatli slot qayta bajarilmaydi, xatolar 15 daqiqadan keyin qayta sinaladi.
 Holat alohida `data/youtube_video.json` faylida saqlanadi. Bir backend nusxasini ishlating.
 
+Har kuni **18:00 (Toshkent)** da alohida bitta YouTube Shorts ham tayyorlanadi:
+1080x1920, 9:16, 30 fps, 15–60 soniya. Qo'lda: `YouTube Shorts qilib ber`.
+Shorts ham muvaffaqiyatli eksportdan keyin bajarildi deb belgilanadi va xatoda qayta uriniladi.
+
 Qo'lda: Telegram'da `/youtube_video [mavzu]` yoki `YouTube video qilib ber`.
 Agent vositasi: `make_youtube_video`. Mavzu berilmasa Planet Print yo'nalishidagi
 nomzodlar tadqiq qilinadi. Manbalar mavjudligi ommaboplik reytingi tasdiqlanganini
@@ -368,7 +372,21 @@ ssenariy uch urinishdan keyin ham tuzatilmasa, xato qaytariladi.
 
 Format: 1920x1080, 16:9, 30 fps, H.264/AAC 48 kHz MP4, taxminan 2–4 daqiqa.
 Sahnalarga alohida fon, palitra, grafika, matn joylashuvi va o'tish tanlanadi;
-qahramon va subtitrlar ovozga moslanadi. Rasmlar olinmasa protsedurali fon ishlaydi.
+qahramon va subtitrlar ovozga moslanadi. Ssenariyda amaliy maslahatlar talab qilinadi.
+Rasm xizmatlari ishlamasa, yetishmagan sahnalar uchun mavzuga mos mahalliy SVG
+illustratsiyalar JPEG qilib render qilinadi (Reels, Shorts va YouTube uchun).
+Ular `ILLUSTRATSIYA` deb belgilanadi; haqiqiy foto sifatida ko'rsatilmaydi.
+Xato bergan rasm provayderi 15 daqiqa dam oladi; Pollinations 401/402/403/429
+javobida boshqa o'lcham va model bilan behuda qayta urinilmaydi. Keshdagi
+rasmlar ham ochilishi va bo'sh emasligi bo'yicha tekshiriladi.
+Faqat aniq montaj rejasida berilgan diagramma rasm ustiga qo'yiladi.
+Instagram uchun ustaxona jarayoni, mijoz savoli, afsonani tekshirish,
+maket taqqoslash va mahsulot detali kabi o'n ikkita yangi amaliy mavzu qo'shilgan.
+Sozlangan studiya kanalining so'nggi 40 xabaridagi materiallar arxivga olinadi.
+Vizual AI mavjud bo'lsa, bir ishga tushishda sakkiztagacha yangi material tavsiflanadi;
+mos video ichidagi oltita namuna kadrdan sahna matniga yaqini tanlanadi.
+Vizual AI ishlamasa o'rta kadr ishlatiladi va metadata ichida `middle_sample` deb yoziladi.
+Arxivdan kliplar ham, alohida kadr rasmlari ham olinadi; original tomonlar nisbati saqlanadi.
 Video bilan yonma-yon JSON faylda ssenariy, manbalar va bo'lim vaqt belgilari qoladi.
 Promptlar `video_media.json` ichidagi `visual_plan` yozuvlariga qo'shiladi.
 Eksport tekshirilgach egasiga yuboriladi. Fayl yetkazilishi Telegram message_id bilan

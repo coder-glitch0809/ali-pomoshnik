@@ -43,6 +43,9 @@ Qoidalar:
 - «layout»: full (faqat rasm), host_left / host_right / host_center (boshlovchi personaj rasm oldida gapiradi),
   host_corner (personaj burchakda kichik). Ketma-ket ikki sahnada bir xil bo'lmasin, kamida 3 ta «full».
 - «big» - ekrandagi 2-4 so'zli asosiy yozuv (hook sahnasida kuchli). To'qima statistika ishlatma.
+- Yangi yo'nalishlar: ustaxona ichidagi jarayon, afsona va tekshiruv, mijoz savoliga namoyishli javob,
+  oldin/keyin maket taqqoslash, mahsulot detali. Bittasini tanla; har maslahatda nima va qanday qilishni ayt.
+- Mavzu haqidagi montaj ko'rsatmalarini ovozda o'qima: tomoshabinga tayyor foydali hikoya ayt.
 Oldingi videolar (TAKRORLAMA): {previous}
 Sarlavhani sinonimlar bilan almashtirish yangi mavzu emas: muammo, misol va yechim ham boshqa bo'lsin.
 FAQAT JSON: {{"title": "...", "hook": "...", "scenes": [{{"voice": "...", "big": "...", "image": "...", "layout": "full"}}],
@@ -179,6 +182,7 @@ def fix_layouts(scenes: list[dict]) -> None:
 POLL_MODELS = ("flux", "turbo")  # bepul Pollinations: avval sifatli flux, band bo'lsa tezkor turbo
 NEGATIVE = "blurry, low quality, distorted face, extra fingers, deformed hands, text, watermark, logo"
 _poll_lock = threading.Lock()  # bepul xizmat bir vaqtda bitta so'rov qabul qiladi
+_image_cooldowns = {}  # Failed services are retried after 15 minutes, not for every scene.
 
 
 def refine(prompt: str, size: tuple = (1080, 1920)) -> str:
@@ -196,7 +200,7 @@ def _pollinations(prompt: str, seed: int, model: str = "flux", size: tuple = (10
            + f"?width={size[0]}&height={size[1]}&nologo=true&model={model}&seed={seed}"
            + "&negative=" + urllib.parse.quote(NEGATIVE))
     req = urllib.request.Request(url, headers={"User-Agent": "AliAssistant/1.0"})
-    with urllib.request.urlopen(req, timeout=150) as r:
+    with urllib.request.urlopen(req, timeout=30) as r:
         data = r.read()
     if len(data) < 5000:
         raise RuntimeError("rasm kelmadi")
@@ -238,7 +242,7 @@ def image(prompt: str, seed: int = 7, size: tuple = (1080, 1920)) -> tuple[Path 
     full = refine(prompt, size)
     ART.mkdir(parents=True, exist_ok=True)
     path = ART / (hashlib.sha1(f"{full}|{seed}|{size}".encode()).hexdigest()[:16] + ".jpg")
-    if path.exists():
+    if path.exists() and good(path.read_bytes()):
         return path, "kesh"
     from . import providers
     sources = []
@@ -247,6 +251,8 @@ def image(prompt: str, seed: int = 7, size: tuple = (1080, 1920)) -> tuple[Path 
     except Exception:
         pass
     for name, fn in sources:
+        if _image_cooldowns.get(name, 0) > time.monotonic():
+            continue
         try:
             data = fn(full + (" Landscape 16:9." if size[0] > size[1] else " Vertical 9:16."))
             if not good(data):
@@ -254,11 +260,14 @@ def image(prompt: str, seed: int = 7, size: tuple = (1080, 1920)) -> tuple[Path 
             path.write_bytes(_fit(data, size=size))
             return path, name
         except Exception as e:
+            _image_cooldowns[name] = time.monotonic() + 900
             log.info("Rasm %s: %s", name, str(e)[:120])
     tries = [(m, sz) for sz in (size, (1344, 768) if size[0] > size[1] else (768, 1344)) for m in POLL_MODELS]
     for attempt, (model, request_size) in enumerate(tries):
         try:
             with _poll_lock:
+                if _image_cooldowns.get("Pollinations", 0) > time.monotonic():
+                    break
                 data = _pollinations(full, seed + attempt, model, request_size)
             if not good(data):
                 raise RuntimeError("rasm yaroqsiz")
@@ -266,7 +275,9 @@ def image(prompt: str, seed: int = 7, size: tuple = (1080, 1920)) -> tuple[Path 
             return path, "Pollinations"
         except Exception as e:  # 402/429 - navbat band, biroz kutadi
             log.info("Pollinations %s (%s): %s", model, attempt + 1, e)
-            time.sleep(4 * (attempt + 1))
+            if getattr(e, "code", None) in (401, 402, 403, 429) or attempt == len(tries) - 1:
+                _image_cooldowns["Pollinations"] = time.monotonic() + 900
+                break
     return None, ""
 
 
@@ -280,13 +291,21 @@ def images(scenes: list[dict], seed: int, size: tuple = (1080, 1920)) -> list[tu
             visual = scenes[k].get("visual", {})
             scene_seed = visual.get("seed", seed + k * 11) if isinstance(visual, dict) else seed + k * 11
             prompt = str(scenes[k].get("image") or scenes[k].get("big") or "Uzbek small business street")
-            out[k] = image(prompt, scene_seed, size=size) if size != (1080, 1920) else image(prompt, scene_seed)
+            try:
+                out[k] = image(prompt, scene_seed, size=size) if size != (1080, 1920) else image(prompt, scene_seed)
+            except Exception:
+                log.exception("Sahna rasmi olinmadi: %s", k + 1)
     threads = [threading.Thread(target=one, args=(k,), daemon=True) for k in range(len(scenes))]
     for t in threads:
         t.start()
     for t in threads:
-        t.join(600)
-    return [o or (None, "") for o in out]
+        t.join()
+    missing = [k for k, result in enumerate(out) if not result or not result[0]]
+    if missing:
+        from .scene_art import illustrate
+        for k, path in zip(missing, illustrate([scenes[k] for k in missing], ART, size)):
+            out[k] = (path, "mahalliy mavzuli illustratsiya")
+    return out
 
 
 # ---------- ovoz: har sahna alohida (sahna gap bilan birga almashadi) ----------
@@ -413,6 +432,8 @@ def page(data: dict, starts: list[float], lengths: list[float], pics: list[tuple
                    f'<svg viewBox="0 0 440 330"><defs><linearGradient id="gb{k}"><stop stop-color="{accent}"/>'
                    f'<stop offset="1" stop-color="{secondary}"/></linearGradient></defs>'
                    f'{stage._diagram(kind, labels, st).replace("url(#gb)", f"url(#gb{k})")}</svg></div>')
+        if pic and not diagram:
+            graphic = ""  # Keep the actual scene visible; only overlay an explicitly planned diagram.
         parts.append(f'<div class="sc" style="z-index:{k + 1};animation:{trans} .35s cubic-bezier(.2,.8,.2,1) {st - .15:.2f}s both,'
                      f'hold {max(.1, end - st - .2):.2f}s {st + .2:.2f}s forwards">{bg}<div class="dim"></div><div class="cinema-vignette"></div>{graphic}</div>')
         if k:
@@ -546,6 +567,7 @@ STEP = """async ([t, s, on]) => { document.getAnimations().forEach(a => { a.paus
 
 def render(html: str, out: Path, dur: float, frames: list[dict], subs: list, fps: int = FPS,
            viewport: tuple = (1080, 1920)) -> Path:
+    import base64
     import tempfile
 
     from playwright.sync_api import sync_playwright
@@ -557,12 +579,17 @@ def render(html: str, out: Path, dur: float, frames: list[dict], subs: list, fps
         try:
             tab = browser.new_page(viewport={"width": viewport[0], "height": viewport[1]})
             tab.set_content(html, wait_until="load")
+            tab.evaluate("document.fonts.ready")
             tab.wait_for_function("Array.from(document.querySelectorAll('video')).every(v => v.readyState >= 2)", timeout=30000)
+            capture = tab.context.new_cdp_session(tab)
             for n in range(int(dur * fps)):
                 t = n / fps
                 on = [w for a, b, w in subs if a <= t < b]
                 tab.evaluate(STEP, [t * 1000, frames[n] if n < len(frames) else frames[-1], on])
-                tab.screenshot(path=str(Path(tmp) / f"f{n:05d}.jpg"), type="jpeg", quality=90)
+                # STEP already seeks every animation. Avoid screenshot's repeated
+                # layout-stability waits for each of thousands of known frames.
+                shot = capture.send("Page.captureScreenshot", {"format": "jpeg", "quality": 90, "fromSurface": True})
+                (Path(tmp) / f"f{n:05d}.jpg").write_bytes(base64.b64decode(shot["data"]))
         finally:
             browser.close()
         _run(["-framerate", str(fps), "-i", str(Path(tmp) / "f%05d.jpg"), "-c:v", "libx264", "-preset", "medium",
@@ -622,13 +649,11 @@ def make(slot: str, notify=lambda text: None, topic: str = "") -> dict:
         for k, sc in enumerate(scenes):
             asset = video_variety.select_media(sc, used)
             if asset:
-                if asset.suffix.lower() in {".mp4", ".mov"}:
-                    clip = tmp / f"reuse{k}.mp4"
-                    _run(["-i", str(asset), "-t", str(lengths[k]), "-an", "-vf",
-                          "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
-                          "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", str(clip)])
-                    asset = clip
-                reused[k] = (asset, "egasi arxivi")
+                try:
+                    asset = video_variety.prepare_media(asset, sc, lengths[k], tmp / f"reuse{k}", (1080, 1920))
+                    reused[k] = (asset, "egasi arxivi")
+                except Exception:
+                    log.exception("Arxiv sahnasi yaroqsiz; yangi rasm ishlatiladi: %s", k + 1)
         missing = [k for k in range(len(scenes)) if k not in reused]
         generated = iter(images([scenes[k] for k in missing], int(hashlib.sha1(data.get("title", "").encode()).hexdigest()[:6], 16)))
         pics = [reused[k] if k in reused else next(generated) for k in range(len(scenes))]

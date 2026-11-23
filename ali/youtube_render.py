@@ -13,7 +13,7 @@ CSS = """
 body{font-family:Arial,sans-serif}.yt-scene{position:absolute;inset:0;visibility:hidden;overflow:hidden}
 .yt-scene>.procedural-visual{opacity:.65}.yt-shade{position:absolute;inset:0;background:linear-gradient(90deg,#000b,transparent 85%),radial-gradient(ellipse,transparent 45%,#0008)}
 .yt-media{position:absolute;left:820px;top:145px;width:1010px;height:700px;overflow:hidden;border-radius:28px;box-shadow:0 30px 100px #0008}
-.yt-media .bg{width:100%;height:100%;object-fit:cover;transform-origin:center}
+.yt-media .bg{width:100%;height:100%;object-fit:contain;transform-origin:center;background:#101725}
 .yt-copy{position:absolute;left:105px;top:290px;width:640px}.yt-copy h1{font-size:68px;line-height:1.12;letter-spacing:-2px;margin:25px 0;overflow-wrap:anywhere}
 .yt-copy .eyebrow{color:var(--accent);font-size:23px;letter-spacing:5px;text-transform:uppercase}
 .yt-copy p{font-size:28px;line-height:1.5;color:#e1e6ed;max-height:190px;overflow:hidden}
@@ -21,6 +21,8 @@ body{font-family:Arial,sans-serif}.yt-scene{position:absolute;inset:0;visibility
 .yt-scene.full .yt-media{inset:0;width:1920px;height:1080px;border-radius:0;opacity:.58}
 .yt-scene.full .yt-copy{top:320px;left:140px;width:1150px}.yt-scene.full .yt-copy h1{font-size:90px}
 .yt-scene.has-host .yt-copy{max-width:1050px}.yt-scene.has-host .yt-media{width:650px;left:750px}
+.yt-scene.full.has-host .yt-media{left:0;width:1920px;height:1080px;opacity:.82}
+.yt-scene.full.has-host .yt-copy{width:1050px;text-shadow:0 3px 18px #000}
 .yt-chapter{position:absolute;left:105px;top:65px;font-size:25px;letter-spacing:2px;max-width:1500px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
 .yt-chapter b{color:var(--accent);margin-right:25px}.yt-line{position:absolute;left:105px;top:115px;width:90px;height:4px;background:var(--accent)}
 .yt-caption{position:absolute;left:210px;right:210px;bottom:65px;text-align:center;z-index:1000;font-size:38px;line-height:1.35;visibility:hidden}

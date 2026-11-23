@@ -58,7 +58,7 @@ def research(topic, candidates=()):
     return result
 
 
-def validate(data):
+def validate(data, shorts=False):
     """Reject malformed or short scripts before any expensive voice/render work."""
     if not isinstance(data, dict):
         raise ValueError("YouTube ssenariysi JSON obyekt bo'lishi kerak")
@@ -68,28 +68,31 @@ def validate(data):
     if not 20 <= len(data["character"]) <= 200:
         raise ValueError("Personaj uchun aniq va doimiy tavsif kerak")
     scenes = data.get("scenes")
-    if not isinstance(scenes, list) or not 18 <= len(scenes) <= 36:
+    if not isinstance(scenes, list) or not ((5 <= len(scenes) <= 8) if shorts else (18 <= len(scenes) <= 36)):
         raise ValueError("YouTube ssenariysi 18–36 sahnadan iborat bo'lishi kerak")
     total = 0
-    for scene in scenes:
+    for index, scene in enumerate(scenes, 1):
         if not isinstance(scene, dict):
             raise ValueError("Sahna JSON obyekt bo'lishi kerak")
         for key in ("voice", "big", "image", "section"):
             if not isinstance(scene.get(key), str) or not scene[key].strip():
                 raise ValueError(f"Sahnada {key} yo'q")
         count = len(scene["voice"].split())
-        if not 12 <= count <= 25:
-            raise ValueError("Har sahna ovozi 12–25 so'z bo'lishi kerak")
+        if not ((6 <= count <= 16) if shorts else (12 <= count <= 25)):
+            limits = "6–16" if shorts else "12–25"
+            raise ValueError(f"{index}-sahna ovozi {count} so'z; {limits} so'z bo'lishi kerak")
         if not 20 <= len(scene["image"]) <= 300 or len(scene["big"].split()) > 8:
             raise ValueError("Sahna rasmi aniq va ekrandagi matn qisqa bo'lishi kerak")
         total += count
     # About 140 spoken words/minute; real duration is measured after TTS.
-    if not 280 <= total <= 560:
+    if not ((65 <= total <= 100) if shorts else (280 <= total <= 560)):
         raise ValueError("YouTube ovoz matni taxminan 2–4 daqiqa: 280–560 so'z bo'lishi kerak")
     if scenes[0]["section"] != "hook" or scenes[-1]["section"] != "cta":
         raise ValueError("Birinchi sahna hook va oxirgi sahna cta bo'lishi kerak")
     if len({s["section"] for s in scenes}) < 4:
         raise ValueError("Ssenariyda kamida to'rtta mazmuniy bo'lim kerak")
+    if sum(s["section"] == "solution" for s in scenes) < (1 if shorts else 3):
+        raise ValueError("Amaliy maslahatlar solution sahnalarida bo'lishi kerak")
     if " ".join(data["hook"].split()) != " ".join(scenes[0]["voice"].split()):
         raise ValueError("Hook birinchi sahnaning ovoz matniga teng bo'lishi kerak")
     from .story_video import fix_layouts
@@ -97,13 +100,13 @@ def validate(data):
     for scene in scenes:
         scene["image"] = f"Consistent character: {data['character']}. {scene['image']}"
     data["estimated_duration"] = round(total / 140 * 60, 1)
-    data["format"] = "youtube"
-    data["aspect_ratio"] = "16:9"
+    data["format"] = "youtube_shorts" if shorts else "youtube"
+    data["aspect_ratio"] = "9:16" if shorts else "16:9"
     data["mood"] = data.get("mood") if data.get("mood") in ("energetic", "cinematic", "calm") else "cinematic"
     return data
 
 
-def script(history, ready, topic=""):
+def script(history, ready, topic="", shorts=False):
     from .daily_video import _agent
     from .service import _ask_json
     old_topics = {frozenset(words(h.get("topic", ""))) for h in history}
@@ -129,10 +132,19 @@ def script(history, ready, topic=""):
               "\"cta\":\"...\",\"caption\":\"...\",\"mood\":\"cinematic\"}.\n"
               + "Mavzu: " + selected + "\nTadqiqot: " + json.dumps(evidence, ensure_ascii=False)
               + "\nOldingi videolar: " + json.dumps(previous, ensure_ascii=False))
+    prompt += ("\nKamida uchta aniq amaliy maslahatni solution sahnalarida ayt: nima qilish, qanday tekshirish va qanday xatodan saqlanish. "
+               "Rasmlarda maslahatga mos haqiqiy mahsulot, ustaxona, ish jarayoni va natija ko'rinsin; mavhum fon bilan cheklanma.")
+    if shorts:
+        prompt += ("\nBU BUYURTMA YOUTUBE SHORTS: yuqoridagi uzunlik o'rniga 9:16, 5–8 sahna, jami 65–100 so'z, "
+                   "har sahna 6–16 so'z. 30–55 soniya, bitta muammo va unga aniq maslahat, hook/problem/solution/cta. "
+                   "CTA YouTube uchun: kanalga obuna bo'lish. Kamida uchta full layout.")
     error = ""
+    correction = ""
     for attempt in range(3):
         try:
-            data = validate(_ask_json(prompt + "\nOldingi urinish xatosi: " + error, ready, 300))
+            candidate = _ask_json(prompt + "\nOldingi urinish xatosi: " + error + correction, ready, 300)
+            correction = "\nShu ssenariydagi xatoni tuzat, to'liq JSON qaytar:\n" + json.dumps(candidate, ensure_ascii=False)[:30000]
+            data = validate(candidate, shorts=shorts)
             # Keep the selected topic stable so later runs can rotate the bank;
             # let the model name genuinely new topics only after it is exhausted.
             data["topic"] = selected if topic or candidates else str(data.get("topic") or selected)

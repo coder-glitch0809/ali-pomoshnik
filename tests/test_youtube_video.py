@@ -29,6 +29,11 @@ class YouTubeScheduleTests(unittest.TestCase):
             self.assertEqual(thread.call_count, 2)
             video.tick(Mock(), datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc))
             self.assertEqual(thread.call_count, 3)
+            video.tick(Mock(), datetime(2026, 11, 19, 13, 0, tzinfo=timezone.utc))
+            self.assertEqual(thread.call_count, 4)
+            self.assertTrue(thread.call_args.kwargs['kwargs']['shorts'])
+            video.tick(Mock(), datetime(2026, 11, 19, 13, 1, tzinfo=timezone.utc))
+            self.assertEqual(thread.call_count, 4)
             self.assertNotIn("done", video._state())
 
     def test_failed_job_is_retryable_and_success_is_not_repeated(self):
@@ -88,7 +93,8 @@ class YouTubeScheduleTests(unittest.TestCase):
                 patch("ali.daily_video.character", return_value=None), \
                 patch("ali.video_variety.direction"), patch("ali.video_variety.select_media", return_value=None), \
                 patch("ali.story_video.voices", return_value=(Path("voice.wav"), [30])), \
-                patch("ali.story_video.images", return_value=[(None, "procedural")]) as images, \
+                patch("ali.video_variety.sync_studio"), \
+                patch("ali.story_video.images", return_value=[(Path("photo.jpg"), "image")]) as images, \
                 patch("ali.youtube_render.page", return_value=("html", [])), \
                 patch("ali.skills.presenter.vector_rig", return_value={}), \
                 patch("ali.skills.talking_head.levels", return_value=[]), \
