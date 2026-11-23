@@ -391,6 +391,26 @@ async def connection_save(provider: str, request: Request):
     except ValueError as error:return JSONResponse({'error':str(error)},status_code=400)
 
 
+@app.post('/api/image-connections/{provider}/{action}')
+async def image_connection_action(provider: str, action: str, request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if foreign_origin(request):
+        return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
+    from ali import image_connections
+    if provider not in image_connections.FIELDS or action not in ('configure', 'test'):
+        return JSONResponse({'error': 'Noma’lum rasm amali'}, status_code=400)
+    try:
+        if action == 'configure':
+            return await image_connections.configure(provider, await json_object(request))
+        result = await asyncio.to_thread(image_connections.test_image, provider)
+        return JSONResponse(result, status_code=200 if result['ok'] else 400)
+    except ValueError as error:
+        return JSONResponse({'error': str(error)}, status_code=400)
+    except OSError:
+        return JSONResponse({'error': 'Rasm sozlamasi yoki natijasini saqlab bo‘lmadi'}, status_code=500)
+
+
 def is_local(request: Request) -> bool:
     """So'rov aynan shu kompyuterdan (localhost) - tunnel/proxy orqali emas."""
     host = (request.headers.get("host") or "").split(":")[0]

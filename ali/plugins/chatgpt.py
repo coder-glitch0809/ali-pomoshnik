@@ -23,10 +23,12 @@ def _start() -> tuple[bool, str]:
     try:
         r = httpx.get(f"{API}/models", headers=_headers(), timeout=15)
     except httpx.HTTPError:
-        return True, "Kalit bor, OpenAI'ga hozir ulanib bo'lmadi"
+        return False, "Kalit bor, OpenAI'ga hozir ulanib bo'lmadi"
     if r.status_code == 401:
         return False, "OpenAI kalitni qabul qilmadi"
-    return True, f"Ulangan ({config.openai_model})"
+    if r.status_code != 200:
+        return False, f"OpenAI ulanishi tekshirilmadi (HTTP {r.status_code})"
+    return True, f"API kalit tekshirildi ({config.openai_model}); rasm alohida tekshiriladi"
 
 
 PLUGIN = Plugin(key="chatgpt", name="ChatGPT", icon="◎", start=_start,

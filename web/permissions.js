@@ -14,7 +14,9 @@
     const list=node('ol');c.steps.forEach(step=>list.append(node('li',step)));
     const link=node('a',c.link+' ↗','connection-link');link.href=c.url;link.target='_blank';link.rel='noopener noreferrer';
     const status=node('p',undefined,'connection-feedback');status.setAttribute('role','status');
-    form.append(heading,close,list,link);
+    form.append(heading,close);
+    if(c.ai)form.append(aiConnectionPanel(c));
+    form.append(list,link);
     if(c.action){const go=node('a',c.action_label||'Kirish','connection-save');go.href=c.action;go.target='_blank';go.rel='noopener';go.style.display='inline-block';go.style.marginLeft='10px';form.append(go);}  // OAuth: Ali orqali kirish
     if(c.can_save){
       form.append(node('p','Rasmiy sahifada tokenni oling, so‘ng shu oynaga qayting. Parolingizni bu yerga kiritmang.'));
@@ -25,12 +27,61 @@
       const save=node('button','Tekshirish va saqlash','connection-save');save.type='submit';
       form.append(label,save);
       form.onsubmit=async event=>{event.preventDefault();save.disabled=true;status.textContent='Ulanish tekshirilmoqda…';
-        try{const r=await fetch('/api/connections/'+encodeURIComponent(c.id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:input.value.trim()})});const data=await r.json();if(!r.ok)throw Error(data.error||(r.status===401?'Avval tizimga kiring.':'Ulanish saqlanmadi.'));input.value='';status.textContent=data.message;await refresh();}
+        try{const r=await fetch('/api/connections/'+encodeURIComponent(c.id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:input.value.trim()})});const data=await r.json();if(!r.ok)throw Error(data.error||(r.status===401?'Avval tizimga kiring.':'Ulanish saqlanmadi.'));input.value='';status.textContent=data.message;if(c.ai){c.ai.api_configured=true;form.querySelector('[data-image-test]').disabled=false;}await refresh();}
         catch(e){status.textContent=e.message;}finally{save.disabled=false;}
       };
     } else form.onsubmit=event=>event.preventDefault();
     form.append(status);dialog.append(form);document.body.append(dialog);
     dialog.addEventListener('close',()=>{dialog.remove();trigger.focus();},{once:true});dialog.showModal();
+  }
+  function aiConnectionPanel(c){
+    const panel=node('section',undefined,'ai-connection-panel');
+    panel.append(node('h3','1. Akkaunt bilan kirish'));
+    const account=node('a',c.id==='chatgpt'?'ChatGPT Pro saytiga kirish ↗':'Google Gemini saytiga kirish ↗','connection-button');
+    account.href=c.ai.account_url;account.target='_blank';account.rel='noopener noreferrer';
+    panel.append(account,node('p','Saytda o‘z akkauntingizga kirib rasm yarata olasiz. Bu Ali serveriga API kalitini bermaydi.'));
+    const state=node('p',c.ai.account_connected?'CLI akkaunti oldin tekshirilgan':'CLI akkaunti hali tekshirilmagan','connection-feedback');
+    const actions=node('div',undefined,'ai-app-actions');
+    for(const [label,action] of [['CLI o‘rnatish','install'],['Akkaunt bilan kirish','login'],['Akkauntni tekshirish','verify']]){
+      if(action==='install'&&c.ai.account_installed)continue;
+      const button=node('button',label,'connection-button');button.type='button';
+      button.onclick=()=>aiAppAction(c.ai.account_key,action,state,Array.from(actions.querySelectorAll('button')));
+      actions.append(button);
+    }
+    panel.append(actions,state,node('p','CLI orqali Ali matn va ssenariy oladi. Tugmalar faqat server ishlayotgan kompyuterda ochiladi.'));
+    panel.append(node('h3','2. Videolar uchun avtomatik rasmlar'));
+    panel.append(node('p','Quyidagi API kaliti va rasm modeli ishlashi kerak. Akkaunt yoki model ro‘yxati ochilishi rasm yaratish huquqini tasdiqlamaydi.'));
+    if(c.id==='chatgpt'){
+      const credits=node('a','Pro obunangiz uchun API kredit imtiyozini tekshirish ↗','connection-link');
+      credits.href='https://developers.openai.com/api/docs/guides/chatgpt-api-credits';credits.target='_blank';credits.rel='noopener noreferrer';
+      panel.append(credits,node('p','Imtiyoz mavjud bo‘lsa, uni API tashkilotiga alohida ulash kerak. API limitlari alohida amal qiladi.'));
+    }else{
+      const billing=node('a','Google AI Studio: loyiha va billing ↗','connection-link');billing.href='https://aistudio.google.com/projects';billing.target='_blank';billing.rel='noopener noreferrer';panel.append(billing);
+    }
+    const inputs={};
+    for(const [name,value] of Object.entries(c.ai.models)){
+      const label=node('label',name==='pro_model'?'Pro rasm modeli':'Rasm modeli'),input=node('input');
+      input.value=value;input.maxLength=120;input.autocomplete='off';label.append(input);panel.append(label);inputs[name]=input;
+    }
+    const qualityLabel=node('label','Ikkala rasm xizmati uchun sifat'),quality=node('select');
+    for(const [value,title] of [['pro','Yuqori sifat'],['standard','Standart sifat']]){const option=node('option',title);option.value=value;quality.append(option);}
+    quality.value=c.ai.quality;qualityLabel.append(quality);panel.append(qualityLabel);
+    const feedback=node('p','Oxirgi rasm sinovi: '+c.ai.image_status.message,'connection-feedback');feedback.setAttribute('role','status');
+    const save=node('button','Rasm sozlamalarini saqlash','connection-button'),test=node('button','Sinov rasmini yaratish','connection-button primary');
+    save.type=test.type='button';test.dataset.imageTest='';test.disabled=!c.ai.api_configured;
+    const resultLink=node('a','Sinov rasmini ochish ↗','connection-link');resultLink.target='_blank';resultLink.rel='noopener';resultLink.hidden=true;
+    const showResult=file=>{resultLink.hidden=!file;if(file)resultLink.href='/api/outbox/'+encodeURIComponent(file);};
+    showResult(c.ai.image_status.file);
+    const invoke=async(action,body)=>{
+      save.disabled=test.disabled=true;feedback.textContent=action==='test'?'Haqiqiy rasm yaratilmoqda…':'Saqlanmoqda…';
+      try{const response=await fetch(`/api/image-connections/${c.id}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+        const data=await response.json();showResult(data.file);if(!response.ok)throw Error(data.error||data.message||'Bajarilmadi');feedback.textContent=data.message;await refresh();
+      }catch(error){feedback.textContent=error.message;}finally{save.disabled=false;test.disabled=!c.ai.api_configured;}
+    };
+    save.onclick=()=>invoke('configure',{...Object.fromEntries(Object.entries(inputs).map(([k,v])=>[k,v.value.trim()])),quality:quality.value});
+    test.onclick=()=>invoke('test');
+    panel.append(save,test,node('p','Sinov saqlangan modelda bitta haqiqiy rasm yaratadi va API krediti/kvotasini sarflashi mumkin. Modelni o‘zgartirsangiz, avval saqlang.'),feedback,resultLink);
+    return panel;
   }
   async function request(options) {const r=await fetch('/api/permissions',options);if(!r.ok)throw Error(r.status===401?'Avval tizimga kiring.':'Ruxsatlar saqlanmadi yoki yuklanmadi.');return r.json();}
   function render() {
@@ -55,7 +106,7 @@
     buttons.forEach(b=>b.disabled=true);
     status.textContent={install:'O‘rnatilmoqda… (bir necha daqiqa)',login:'Kirish oynasi ochilmoqda…',verify:'Tekshirilmoqda… (1-3 daqiqa)',forget:'Unutilmoqda…'}[action];
     try{const r=await fetch(`/api/ai-apps/${key}/${action}`,{method:'POST'});const data=await r.json();
-      if(!r.ok)throw Error(data.error||'Bajarilmadi');renderAiApps(data);
+      if(!r.ok)throw Error(data.error||'Bajarilmadi');status.textContent=data.message;renderAiApps(data);buttons.forEach(b=>b.disabled=false);
       const row=document.querySelector(`[data-ai-app="${key}"] .ai-app-status`);if(row&&action!=='verify')row.textContent=data.message;}
     catch(e){status.textContent=e.message;buttons.forEach(b=>b.disabled=false);}
   }

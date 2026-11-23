@@ -247,7 +247,7 @@ def image(prompt: str, seed: int = 7, size: tuple = (1080, 1920)) -> tuple[Path 
     from . import providers
     sources = []
     try:
-        sources = providers.image_sources("standard")
+        sources = providers.image_sources(config.image_quality)
     except Exception:
         pass
     for name, fn in sources:

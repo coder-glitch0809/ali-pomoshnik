@@ -30,9 +30,8 @@ ACCESS = config.data_dir / "local_access.json"
 WORKDIR = config.data_dir / "local_ai"
 TIMEOUT = 300
 NAMES = {"claude": "Claude", "codex": "ChatGPT", "gemini": "Gemini", "omniroute": "OmniRoute"}
-# o'rnatiladigan ilovalar. Gemini CLI yo'q: Google uni shaxsiy akkauntlar uchun to'xtatgan (IneligibleTierError) -
-# Gemini API kaliti orqali ishlaydi (Ulanishlar -> Gemini). OmniRoute - HTTP shlyuz, ilova emas.
-APPS = ("claude", "codex")
+# Account eligibility is checked per user; one failed Google login must not hide Gemini for everyone.
+APPS = ("claude", "codex", "gemini")
 
 
 # --- ruxsat ---
@@ -82,6 +81,8 @@ def apps() -> dict[str, str]:
     found = {"codex": app_exe("codex")}
     if config.chat_provider == 'claude' or state.get("claude", {}).get("connected"):
         found['claude'] = _claude_exe()
+    if state.get("gemini", {}).get("connected"):
+        found['gemini'] = app_exe('gemini')
     found = {k: v for k, v in found.items() if v and state.get(k, {}).get("connected") is not False}
     return dict(sorted(found.items(), key=lambda kv: not state.get(kv[0], {}).get("connected")))
 
@@ -254,7 +255,7 @@ def connected() -> list[str]:
     """Egasi ulagan (tekshirilgan) ilovalar: asosiy (primary) birinchi."""
     state, first = app_state(), option("_primary")
     keys = [k for k in APPS if state.get(k, {}).get("connected") and app_exe(k) and not paused_until(k)]
-    if config.gemini_api_key and not paused_until("gemini"):  # Gemini API - tez; Claude'dan keyin, ChatGPT'dan oldin
+    if config.gemini_api_key and 'gemini' not in keys and not paused_until("gemini"):
         keys.insert(1 if keys[:1] == ["claude"] else 0, "gemini")
     from . import omniroute
     if omniroute.available():  # oxirgi zaxira: ko'p modelli shlyuz
@@ -303,11 +304,14 @@ def verify(key: str) -> tuple[bool, str]:
         remember(key, False, "o'rnatilmagan")
         return False, f"{NAMES[key]} o'rnatilmagan"
     try:
-        ask_one(key, exe, "Faqat bitta so'z bilan javob ber: OK", timeout=180)
+        ask_one(key, exe, "Faqat bitta so'z bilan javob ber: OK", timeout=180, account_only=True)
     except RuntimeError as e:
         remember(key, False, str(e))
         return False, str(e)
     remember(key, True)
+    limits = _limits()
+    limits.pop(key, None)
+    LIMITS.write_text(json.dumps(limits), encoding='utf-8')
     return True, f"{NAMES[key]} ulandi va eslab qolindi"
 
 
@@ -390,14 +394,15 @@ def _mark_limit(key: str, raw: str, seconds: float | None = None) -> float:
     return data[key]
 
 
-def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: list[str] | None = None) -> str:
+def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: list[str] | None = None,
+            *, account_only: bool = False) -> str:
     """Bitta ilovaga so'rov (ruxsatni chaqiruvchi tekshiradi). images - rasm fayllari yo'llari. Xatoda RuntimeError."""
-    if until := paused_until(key):
+    if (until := paused_until(key)) and not account_only:
         raise RuntimeError(f"{NAMES[key]} obuna limiti tugagan - {time.strftime('%d.%m %H:%M', time.localtime(until))} da tiklanadi")
     if key == "omniroute":
         from . import omniroute
         return omniroute.chat(prompt, timeout, images)
-    if key == "gemini":  # Gemini CLI shaxsiy akkauntlarga yopilgan - API orqali
+    if key == "gemini" and not account_only and (not exe or exe == 'api' or not app_state().get('gemini', {}).get('connected')):
         from . import providers
         try:
             return providers.gemini_ask(prompt, images)
@@ -422,8 +427,8 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
         raw = (proc.stderr or "") + answer
         detail = re.sub(r"\x1b\[[0-9;]*m", "", proc.stderr or answer).strip()[-400:]
         if "IneligibleTierError" in raw:
-            detail = ("Google Gemini CLI'ni shaxsiy akkauntlar uchun to'xtatgan - bu ilova endi ishlamaydi. "
-                      "Gemini'dan API kaliti orqali foydalaning.")
+            detail = ("Shu Google akkaunti uchun Gemini CLI ruxsati tasdiqlanmadi. Akkaunt turi, hudud yoki "
+                      "tashkilot sozlamalarini tekshiring; boshqa akkaunt yoki API ulanishini tanlash mumkin.")
         elif _AUTH_RE.search(raw):  # ilovaga qayta kirish kerak - 1 soat chetlab o'tiladi, boshqa ilova ishlaydi
             _mark_limit(key, raw, 3600)
             detail = (f"{NAMES[key]} ilovasiga qayta kirish kerak (sessiya eskirgan) - Ruxsatlar -> Ilovalar -> "

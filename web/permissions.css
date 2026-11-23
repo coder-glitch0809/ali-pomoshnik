@@ -42,5 +42,11 @@ html[data-theme="light"] .connection-save { background:linear-gradient(110deg,#2
 .brand-ico { width:28px;height:28px;flex:none;border-radius:8px;display:block; }
 .connection-dialog h2 .brand-ico { display:inline-block;vertical-align:middle;margin-right:4px; }
 .connection-dialog textarea { width:100%;margin-top:6px;padding:10px;border-radius:10px;border:1px solid var(--line-strong);background:var(--bg);color:var(--text);font:inherit;resize:vertical; }
+.ai-connection-panel { border-bottom:1px solid var(--line-strong);padding-bottom:20px;margin-bottom:22px; }
+.ai-connection-panel h3 { margin:24px 0 12px;font-size:16px; }
+.ai-connection-panel select { width:100%;padding:12px;margin-top:8px;border:1px solid var(--line-strong);border-radius:10px;background:var(--card-2);color:var(--text); }
+.ai-connection-panel .connection-button { display:inline-block;margin:4px 5px 4px 0; }
+.ai-connection-panel .connection-link { display:block;margin-top:12px; }
+.ai-connection-panel [hidden] { display:none; }
 .permission-presets { display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:14px 0; }
 .permission-presets span { color:var(--muted);font-size:12px; }

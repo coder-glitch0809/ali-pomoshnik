@@ -38,9 +38,9 @@ PROVIDERS = {
         steps=['Panelda Super admin sifatida Ali uchun alohida foydalanuvchi yarating (masalan login: ali) va unga «Xarajat» ruxsatini bering.', 'Shu login va parolni pastga bo‘sh joy bilan kiriting: «ali parol123». Ali kirib tekshiradi va saqlaydi.', 'Ali guruhlardagi «NOMI SUMMA SOM» ro‘yxatlarini eslatmaga qo‘yadi, saralab sizga yuboradi; siz tanlagan bandni zakazga xarajat qilib yozadi.']),
     'chatplace': dict(name='ChatPlace (Instagram/Telegram avtomatlashtirish)', url='https://chatplace.io', link='ChatPlace sayti', action='/api/mcp/chatplace/start', action_label='ChatPlace’ga kirish va ruxsat berish',
         steps=['Pastdagi tugmani bosing - ChatPlace sahifasi ochiladi, akkauntingizga kiring.', 'Ali so‘ragan ruxsatlarni tasdiqlang (avtomatlashtirish, chatlar, tarqatmalar, izohlar, AI agent).', '“Ali’ga ulandi” chiqqach, bu oynani yoping. Ali ma’lumotni erkin o‘qiydi, o‘zgartirishlarni (xabar, tarqatma, avtojavob) faqat sizning tasdig‘ingiz bilan qiladi.']),
-    'gemini': dict(name='Gemini plagini', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
+    'gemini': dict(name='Google Gemini · akkaunt va rasmlar', url='https://aistudio.google.com/apikey', link='Google AI Studio’da kalit olish', plugin='gemini',
         steps=['Google hisobingiz bilan AI Studio’ga kiring.', '“Create API key” tugmasi bilan kalit yarating.', 'Kalitni pastga kiriting - plagin avtomatik ishga tushadi.'], field='gemini_api_key', env='GEMINI_API_KEY'),
-    'chatgpt': dict(name='ChatGPT plagini', url='https://platform.openai.com/api-keys', link='OpenAI’da kalit olish', plugin='chatgpt',
+    'chatgpt': dict(name='ChatGPT Pro / OpenAI · akkaunt va rasmlar', url='https://platform.openai.com/api-keys', link='OpenAI’da kalit olish', plugin='chatgpt',
         steps=['OpenAI Platform hisobingizga kiring va balans borligini tekshiring.', '“Create new secret key” bilan Ali uchun kalit yarating.', 'Kalitni pastga kiriting - plagin avtomatik ishga tushadi.'], field='openai_api_key', env='OPENAI_API_KEY'),
     'photoshop': dict(name='Photoshop plagini', url='https://www.adobe.com/products/photoshop.html', link='Adobe Photoshop', plugin='photoshop',
         steps=['Photoshop shu kompyuterga o‘rnatilgan bo‘lsa, kalit kerak emas - Ali uni o‘zi topadi.', 'Ali kerak bo‘lganda Photoshop’ni o‘zi ochadi va dizaynni PSD/PNG qilib yuboradi.', 'Faqat Ali serveri shu Windows kompyuterda ishlaganda ishlaydi.']),
@@ -92,6 +92,18 @@ def catalog(telegram_live=False):
             status=plug.status if plug else 'Plagin o‘chirilgan (PLUGINS_DISABLED)'
             configured=bool(plug and plug.ready)
         result.append(dict(id=key,name=p['name'],status=status,url=p['url'],link=p['link'],steps=p['steps'],action=p.get('action',''),action_label=p.get('action_label',''),can_save='field' in p or p.get('json',False),json=p.get('json',False),configured=configured))
+        if key in ('gemini', 'chatgpt'):
+            from . import image_connections, local_ai
+            account_key = 'codex' if key == 'chatgpt' else 'gemini'
+            image_status = image_connections.status(key)
+            api_configured = bool(getattr(config, p['field']))
+            result[-1]['status'] = ('API kalit saqlangan · ' if api_configured else 'API kalit kerak · ') + image_status['message']
+            result[-1]['ai'] = dict(account_key=account_key,
+                account_url='https://chatgpt.com/' if key == 'chatgpt' else 'https://gemini.google.com/',
+                account_connected=bool(local_ai.app_state().get(account_key, {}).get('connected')),
+                account_installed=bool(local_ai.app_exe(account_key)),
+                api_configured=api_configured, quality=config.image_quality, image_status=image_status,
+                models={name: getattr(config, field) for name, (field, _) in image_connections.FIELDS[key].items()})
     return result
 
 async def connect(key, token):
@@ -132,6 +144,9 @@ async def connect(key, token):
         setattr(config,p['field'],token)
         os.environ[p['env']]=token
     if 'plugin' in p:
+        if key in ('gemini', 'chatgpt'):
+            from .image_connections import reset
+            reset(key)
         from . import plugins
         await asyncio.to_thread(plugins.restart,p['plugin'])
     return {'ok':True,'message':'Token tekshirildi va saqlandi.'+(' Botni yangilash uchun Ali serverini qayta ishga tushiring.' if key=='telegram' else '')}

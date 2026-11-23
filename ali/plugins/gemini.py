@@ -8,7 +8,7 @@ from . import Plugin
 def _start() -> tuple[bool, str]:
     if not config.gemini_api_key:
         return False, "GEMINI_API_KEY kiritilmagan"
-    return True, f"Ulangan ({config.gemini_chat_model})"
+    return True, f"API kalit sozlangan ({config.gemini_chat_model}); rasm alohida tekshiriladi"
 
 
 PLUGIN = Plugin(key="gemini", name="Gemini", icon="✦", start=_start,

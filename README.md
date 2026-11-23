@@ -352,6 +352,21 @@ sahna davomiyligiga kesilib, kadrma-kadr sinxronlashtiriladi.
 
 ## YouTube kunlik videolari
 
+### Gemini va ChatGPT akkaunti hamda rasm ulanishi
+
+`Ruxsatlar → Ulanishlar → Google Gemini / ChatGPT Pro` ichida akkaunt saytiga
+kirish, CLI akkauntini ulash va tekshirish, API kalitini saqlash, rasm modelini
+tanlash va bitta haqiqiy sinov rasmini yaratish mavjud. Sinov API kredit/kvotasini
+ishlatishi mumkin. Natija faqat ochiladigan rasm olinganda muvaffaqiyatli deb
+saqlanadi; kalit, model yoki sifat o'zgarsa oldingi tasdiq eskiradi.
+
+CLI akkaunti matn/ssenariy uchun; saytda kirish avtomatik video rasm API'siga
+ruxsat bermaydi. [Gemini Google login](https://geminicli.com/docs/get-started/authentication/)
+akkauntga qarab tekshiriladi. [Mos ChatGPT Pro obunalari API kredit imtiyozi](https://developers.openai.com/api/docs/guides/chatgpt-api-credits)
+mavjudligini API tashkilotiga alohida ulab tekshirish mumkin. API limitlari
+alohida amal qiladi. Parol saytning o'zida, API kaliti esa Ali'ning himoyalangan
+sozlash oynasida kiritiladi. Kalitlar GitHub'ga yuborilmaydi.
+
 Ali backend ishga tushganda YouTube navbati har kuni **10:00, 13:00 va 17:00,
 Asia/Tashkent (UTC+5)** da video tayyorlashni boshlaydi. Bu tayyor bo'lish vaqti
 emas: ssenariy, rasmlar, ovoz va render vaqt talab qiladi. Kompyuter va backend
