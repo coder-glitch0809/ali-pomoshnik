@@ -24,7 +24,7 @@ class ImageConnectionsTests(unittest.TestCase):
                                  (connections, 'ENV_FILE', self.root/'.env'),
                                  (outbox, 'DIR', self.root/'outbox'),
                                  (config, 'openai_api_key', 'fixture-secret-key'),
-                                 (config, 'image_quality', 'pro')]:
+                                 (config, 'image_source', 'auto'), (config, 'image_quality', 'pro')]:
             patcher = patch.object(obj, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -40,6 +40,19 @@ class ImageConnectionsTests(unittest.TestCase):
         self.assertTrue(images.status('chatgpt')['ok'])
         with patch.object(config, 'openai_api_key', 'replacement'):
             self.assertIsNone(images.status('chatgpt')['ok'])
+
+    def test_account_source_needs_no_api_key_and_invalidates_proof(self):
+        from ali import account_images
+        buffer = io.BytesIO()
+        Image.new('RGB', (512,512), 'blue').save(buffer, 'PNG')
+        with patch.object(config, 'openai_api_key', ''), patch.object(account_images, 'generate', return_value=buffer.getvalue()) as generate:
+            asyncio.run(images.configure('chatgpt', {'source':'chatgpt_account'}))
+            self.assertTrue(images.test_image('chatgpt')['ok'])
+            generate.assert_called_once()
+            asyncio.run(images.configure('chatgpt', {'source':'auto'}))
+            self.assertIsNone(images.status('chatgpt')['ok'])
+            with self.assertRaises(ValueError):
+                asyncio.run(images.configure('gemini', {'source':'chatgpt_account'}))
 
     def test_error_is_useful_but_never_echoes_provider_secret(self):
         with patch.object(providers, '_openai_image', side_effect=RuntimeError('429 fixture-secret-key')):

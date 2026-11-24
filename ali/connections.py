@@ -97,12 +97,12 @@ def catalog(telegram_live=False):
             account_key = 'codex' if key == 'chatgpt' else 'gemini'
             image_status = image_connections.status(key)
             api_configured = bool(getattr(config, p['field']))
-            result[-1]['status'] = ('API kalit saqlangan · ' if api_configured else 'API kalit kerak · ') + image_status['message']
+            result[-1]['status'] = ('ChatGPT akkaunti · ' if key == 'chatgpt' and config.image_source == 'chatgpt_account' else 'API kalit saqlangan · ' if api_configured else 'API kalit kerak · ') + image_status['message']
             result[-1]['ai'] = dict(account_key=account_key,
                 account_url='https://chatgpt.com/' if key == 'chatgpt' else 'https://gemini.google.com/',
                 account_connected=bool(local_ai.app_state().get(account_key, {}).get('connected')),
                 account_installed=bool(local_ai.app_exe(account_key)),
-                api_configured=api_configured, quality=config.image_quality, image_status=image_status,
+                api_configured=api_configured, source=config.image_source, quality=config.image_quality, image_status=image_status,
                 models={name: getattr(config, field) for name, (field, _) in image_connections.FIELDS[key].items()})
     return result
 

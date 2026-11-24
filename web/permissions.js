@@ -48,9 +48,9 @@
       button.onclick=()=>aiAppAction(c.ai.account_key,action,state,Array.from(actions.querySelectorAll('button')));
       actions.append(button);
     }
-    panel.append(actions,state,node('p','CLI orqali Ali matn va ssenariy oladi. Tugmalar faqat server ishlayotgan kompyuterda ochiladi.'));
+    panel.append(actions,state,node('p','CLI orqali Ali matn va ssenariy oladi; ChatGPT akkaunti rasm manbasi sifatida ham tanlanadi. Tugmalar faqat server ishlayotgan kompyuterda ochiladi.'));
     panel.append(node('h3','2. Videolar uchun avtomatik rasmlar'));
-    panel.append(node('p','Quyidagi API kaliti va rasm modeli ishlashi kerak. Akkaunt yoki model ro‘yxati ochilishi rasm yaratish huquqini tasdiqlamaydi.'));
+    panel.append(node('p','ChatGPT uchun akkaunt yoki API manbasini tanlang. Gemini uchun API kaliti kerak. Akkaunt yoki model ro‘yxati ochilishi rasm yaratish huquqini tasdiqlamaydi.'));
     if(c.id==='chatgpt'){
       const credits=node('a','Pro obunangiz uchun API kredit imtiyozini tekshirish ↗','connection-link');
       credits.href='https://developers.openai.com/api/docs/guides/chatgpt-api-credits';credits.target='_blank';credits.rel='noopener noreferrer';
@@ -58,6 +58,11 @@
     }else{
       const billing=node('a','Google AI Studio: loyiha va billing ↗','connection-link');billing.href='https://aistudio.google.com/projects';billing.target='_blank';billing.rel='noopener noreferrer';panel.append(billing);
     }
+    const source=node('select');
+    for(const [value,title] of [['auto','API xizmatlari va zaxira rasmlar'],['chatgpt_account','ChatGPT akkaunti — Codex ichki rasm generatsiyasi']]){const option=node('option',title);option.value=value;source.append(option);}
+    source.value=c.ai.source||'auto';
+    if(c.id==='chatgpt'){const label=node('label','Videolarning rasm manbasi');label.append(source);panel.append(label,node('p','Akkaunt rejimi ChatGPT obuna limitini ishlatadi. Rasm olinmasa video xato haqida xabar beradi; oddiy chizma bilan almashtirilmaydi. Avval saqlang, keyin sinang.'));}
+    const canTest=()=>c.id==='chatgpt'&&c.ai.source==='chatgpt_account'?c.ai.account_installed:c.ai.api_configured;
     const inputs={};
     for(const [name,value] of Object.entries(c.ai.models)){
       const label=node('label',name==='pro_model'?'Pro rasm modeli':'Rasm modeli'),input=node('input');
@@ -68,19 +73,19 @@
     quality.value=c.ai.quality;qualityLabel.append(quality);panel.append(qualityLabel);
     const feedback=node('p','Oxirgi rasm sinovi: '+c.ai.image_status.message,'connection-feedback');feedback.setAttribute('role','status');
     const save=node('button','Rasm sozlamalarini saqlash','connection-button'),test=node('button','Sinov rasmini yaratish','connection-button primary');
-    save.type=test.type='button';test.dataset.imageTest='';test.disabled=!c.ai.api_configured;
+    save.type=test.type='button';test.dataset.imageTest='';test.disabled=!canTest();
     const resultLink=node('a','Sinov rasmini ochish ↗','connection-link');resultLink.target='_blank';resultLink.rel='noopener';resultLink.hidden=true;
     const showResult=file=>{resultLink.hidden=!file;if(file)resultLink.href='/api/outbox/'+encodeURIComponent(file);};
     showResult(c.ai.image_status.file);
     const invoke=async(action,body)=>{
       save.disabled=test.disabled=true;feedback.textContent=action==='test'?'Haqiqiy rasm yaratilmoqda…':'Saqlanmoqda…';
       try{const response=await fetch(`/api/image-connections/${c.id}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
-        const data=await response.json();showResult(data.file);if(!response.ok)throw Error(data.error||data.message||'Bajarilmadi');feedback.textContent=data.message;await refresh();
-      }catch(error){feedback.textContent=error.message;}finally{save.disabled=false;test.disabled=!c.ai.api_configured;}
+        const data=await response.json();showResult(data.file);if(!response.ok)throw Error(data.error||data.message||'Bajarilmadi');if(action==='configure'&&body.source)c.ai.source=body.source;feedback.textContent=data.message;await refresh();
+      }catch(error){feedback.textContent=error.message;}finally{save.disabled=false;test.disabled=!canTest();}
     };
-    save.onclick=()=>invoke('configure',{...Object.fromEntries(Object.entries(inputs).map(([k,v])=>[k,v.value.trim()])),quality:quality.value});
+    save.onclick=()=>invoke('configure',{...Object.fromEntries(Object.entries(inputs).map(([k,v])=>[k,v.value.trim()])),quality:quality.value,...(c.id==='chatgpt'?{source:source.value}:{})});
     test.onclick=()=>invoke('test');
-    panel.append(save,test,node('p','Sinov saqlangan modelda bitta haqiqiy rasm yaratadi va API krediti/kvotasini sarflashi mumkin. Modelni o‘zgartirsangiz, avval saqlang.'),feedback,resultLink);
+    panel.append(save,test,node('p','Sinov saqlangan modelda bitta haqiqiy rasm yaratadi va tanlangan manbaning limitini sarflaydi. Modelni o‘zgartirsangiz, avval saqlang.'),feedback,resultLink);
     return panel;
   }
   async function request(options) {const r=await fetch('/api/permissions',options);if(!r.ok)throw Error(r.status===401?'Avval tizimga kiring.':'Ruxsatlar saqlanmadi yoki yuklanmadi.');return r.json();}

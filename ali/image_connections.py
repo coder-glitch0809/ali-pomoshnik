@@ -22,7 +22,7 @@ FIELDS = {
 
 def _identity(key):
     token = config.openai_api_key if key == 'chatgpt' else config.gemini_api_key
-    values = [token, config.image_quality, *[getattr(config, field) for field, _ in FIELDS[key].values()]]
+    values = [token, config.image_source, config.image_quality, *[getattr(config, field) for field, _ in FIELDS[key].values()]]
     return hashlib.sha256(json.dumps(values).encode()).hexdigest()
 
 
@@ -55,11 +55,15 @@ def reset(key):
 async def configure(key, values):
     if key not in FIELDS or not isinstance(values, dict):
         raise ValueError('Rasm provayderi yoki sozlamasi noto‘g‘ri')
-    if set(values) - (set(FIELDS[key]) | {'quality'}):
+    if set(values) - (set(FIELDS[key]) | {'quality', 'source'}):
         raise ValueError('Noma’lum rasm sozlamasi')
     updates = []
     for name, value in values.items():
-        if name == 'quality':
+        if name == 'source':
+            if key != 'chatgpt' or value not in ('auto', 'chatgpt_account'):
+                raise ValueError('Rasm manbasi noto‘g‘ri')
+            updates.append(('image_source', 'IMAGE_SOURCE', value))
+        elif name == 'quality':
             if value not in ('pro', 'standard'):
                 raise ValueError('Sifat: pro yoki standard bo‘lishi kerak')
             updates.append(('image_quality', 'IMAGE_QUALITY', value))
@@ -80,7 +84,8 @@ def test_image(key):
     if key not in FIELDS:
         raise ValueError('Noma’lum rasm provayderi')
     token = config.openai_api_key if key == 'chatgpt' else config.gemini_api_key
-    if not token:
+    account = key == 'chatgpt' and config.image_source == 'chatgpt_account'
+    if not token and not account:
         raise ValueError('Avval shu xizmatning API kalitini tekshirib saqlang')
     if not TEST_LOCK.acquire(blocking=False):
         raise ValueError('Rasm sinovi davom etmoqda; tugashini kuting')
@@ -90,7 +95,10 @@ def test_image(key):
         from . import providers, outbox
         from PIL import Image
         prompt = 'A small blue ceramic cup beside a green plant on a wooden desk, daylight, detailed illustration, no text.'
-        if key == 'chatgpt':
+        if account:
+            from .account_images import generate
+            data = generate(prompt, (1024, 1024))
+        elif key == 'chatgpt':
             data = providers._openai_image(prompt, 'high' if config.image_quality == 'pro' else 'medium')
         else:
             model = config.gemini_image_pro_model if config.image_quality == 'pro' else config.gemini_image_model

@@ -14,7 +14,7 @@ class ImageSourcesTest(unittest.TestCase):
     def test_pro_tries_pro_models_first_and_falls_back(self):
         with patch.object(config, "openai_api_key", "k"), patch.object(config, "gemini_api_key", "k"):
             names = [n for n, _ in providers.image_sources("pro")]
-            self.assertTrue(names[0].startswith("ChatGPT pro"))
+            self.assertTrue(names[0].startswith("OpenAI API"))
             self.assertTrue(names[1].startswith("Gemini pro"))
             std = [n for n, _ in providers.image_sources("standard")]
             self.assertTrue(std[0].startswith("Gemini ("))

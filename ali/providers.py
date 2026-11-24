@@ -320,14 +320,17 @@ def _openai_image(prompt: str, quality: str) -> bytes:
     return base64.b64decode(item["b64_json"]) if item.get("b64_json") else httpx.get(item["url"], timeout=120).content
 
 
-def image_sources(quality: str = "") -> list[tuple[str, object]]:
+def image_sources(quality: str = "", size=(1080, 1920)) -> list[tuple[str, object]]:
     """Rasm manbalari tartibi: pro - avval eng kuchli modellar, standard - avval tez modellar.
     Claude rasm chizmaydi - u faqat mavzuga mos tavsif (prompt) yozadi."""
+    if config.image_source == "chatgpt_account":
+        from .account_images import generate
+        return [("ChatGPT akkaunti (Codex)", lambda prompt: generate(prompt, size))]
     pro = (quality or config.image_quality) != "standard"
     gpt_pro, gpt_std, gem_pro, gem_std = [], [], [], []
     if config.openai_api_key:
-        gpt_pro = [(f"ChatGPT pro ({config.openai_image_model}, high)", lambda p: _openai_image(p, "high"))]
-        gpt_std = [(f"ChatGPT ({config.openai_image_model}, medium)", lambda p: _openai_image(p, "medium"))]
+        gpt_pro = [(f"OpenAI API ({config.openai_image_model}, high)", lambda p: _openai_image(p, "high"))]
+        gpt_std = [(f"OpenAI API ({config.openai_image_model}, medium)", lambda p: _openai_image(p, "medium"))]
     if config.gemini_api_key:
         if config.gemini_image_pro_model:
             gem_pro = [(f"Gemini pro ({config.gemini_image_pro_model})",

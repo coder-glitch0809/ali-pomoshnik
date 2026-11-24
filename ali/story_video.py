@@ -192,6 +192,10 @@ def refine(prompt: str, size: tuple = (1080, 1920)) -> str:
     style = "vertical 9:16, no text, no watermark" if "Visual direction:" in p else STYLE
     if size[0] > size[1]:
         style = "cinematic landscape 16:9 composition, no text, no watermark"
+    if config.image_source == "chatgpt_account":
+        style = ("Premium editorial photography, coherent real-world scene, natural materials and lighting, "
+                 "clear focal subject, realistic anatomy, uncluttered composition, no text, no watermark. "
+                 + ("Landscape 16:9." if size[0] > size[1] else "Vertical 9:16."))
     return f"{p}. Sharp focus, professional composition, high detail. {style}"
 
 
@@ -241,13 +245,13 @@ def image(prompt: str, seed: int = 7, size: tuple = (1080, 1920)) -> tuple[Path 
     Tartib: Gemini/ChatGPT -> Pollinations (flux, turbo; kichikroq o'lcham bilan ham) - yaroqsiz rasm keyingisiga o'tkazadi."""
     full = refine(prompt, size)
     ART.mkdir(parents=True, exist_ok=True)
-    path = ART / (hashlib.sha1(f"{full}|{seed}|{size}".encode()).hexdigest()[:16] + ".jpg")
+    path = ART / (hashlib.sha1(f"{config.image_source}|{full}|{seed}|{size}".encode()).hexdigest()[:16] + ".jpg")
     if path.exists() and good(path.read_bytes()):
         return path, "kesh"
     from . import providers
     sources = []
     try:
-        sources = providers.image_sources(config.image_quality)
+        sources = providers.image_sources(config.image_quality, size=size)
     except Exception:
         pass
     for name, fn in sources:
@@ -262,6 +266,8 @@ def image(prompt: str, seed: int = 7, size: tuple = (1080, 1920)) -> tuple[Path 
         except Exception as e:
             _image_cooldowns[name] = time.monotonic() + 900
             log.info("Rasm %s: %s", name, str(e)[:120])
+    if config.image_source == "chatgpt_account":
+        return None, "ChatGPT rasmi olinmadi; akkaunt va limitni tekshiring"
     tries = [(m, sz) for sz in (size, (1344, 768) if size[0] > size[1] else (768, 1344)) for m in POLL_MODELS]
     for attempt, (model, request_size) in enumerate(tries):
         try:
@@ -301,6 +307,8 @@ def images(scenes: list[dict], seed: int, size: tuple = (1080, 1920)) -> list[tu
     for t in threads:
         t.join()
     missing = [k for k, result in enumerate(out) if not result or not result[0]]
+    if missing and config.image_source == "chatgpt_account":
+        raise RuntimeError("ChatGPT sahna rasmlari olinmadi; Ruxsatlar bo‘limida rasm sinovini tekshiring")
     if missing:
         from .scene_art import illustrate
         for k, path in zip(missing, illustrate([scenes[k] for k in missing], ART, size)):

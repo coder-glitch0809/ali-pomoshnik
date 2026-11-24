@@ -66,6 +66,7 @@ class Config:
     # Pro rasm modeli (Nano Banana Pro) - bo'lsa avval shu ishlatiladi, bo'lmasa standart model
     gemini_image_pro_model: str = field(default_factory=lambda: _env("GEMINI_IMAGE_PRO_MODEL", "gemini-3-pro-image-preview"))
     # Rasm sifati: pro (avval eng kuchli model) | standard (avval tez/arzon model)
+    image_source: str = field(default_factory=lambda: _env("IMAGE_SOURCE", "auto").lower())
     image_quality: str = field(default_factory=lambda: _env("IMAGE_QUALITY", "pro").lower())
     gemini_fast_model: str = field(default_factory=lambda: _env("GEMINI_FAST_MODEL", "gemini-flash-latest"))
     # Bepul suhbat uchun Gemini modeli (bepul API limiti bor)
