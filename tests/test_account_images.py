@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import test_runtime  # Initialize isolated test state before importing Ali.
 from ali import account_images, local_ai, providers, story_video
 from ali.config import config
 
