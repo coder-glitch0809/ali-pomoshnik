@@ -323,8 +323,15 @@ def run_codex(command: list[str], **options) -> subprocess.CompletedProcess:
         return subprocess.run([*command[:2], "--model", model, *command[2:]], **options)
     result = subprocess.run(command, **options)
     output = (result.stdout or "") + (result.stderr or "")
-    if result.returncode and "model_not_in_accessible_catalog" in output:
-        return subprocess.run([*command[:2], "--model", "gpt-5.4", *command[2:]], **options)
+    # Newer Codex versions describe unavailable account models differently.
+    model_unavailable = (
+        "model_not_in_accessible_catalog" in output
+        or ("not supported" in output.lower() and "chatgpt account" in output.lower())
+    )
+    if result.returncode and model_unavailable:
+        # This model is available to ChatGPT-account Codex CLI sessions in the
+        # current account catalog. A future catalog refresh can replace it.
+        return subprocess.run([*command[:2], "--model", "gpt-6-luna", *command[2:]], **options)
     return result
 
 
