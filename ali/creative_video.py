@@ -1,4 +1,4 @@
-"""Web creative studio: idea -> storyboard -> ChatGPT account images -> MP4."""
+"""Creative studio: idea, storyboard, generated illustrations and MP4."""
 import threading
 import uuid
 from pathlib import Path
@@ -17,12 +17,13 @@ def create(idea: str, style: str, fmt: str) -> str:
     if style not in ("2D serial", "Anime", "Fantaziya", "Kino-ertak", "3D multfilm", "Ertak kitobi", "Plastilin", "Realistik"):
         style = "2D serial"
     from . import local_ai
-    if local_ai.access() is not True or "codex" not in local_ai.connected():
-        raise ValueError("ChatGPT Plus akkauntini Ruxsatlar bo‘limida ulang va mahalliy AI ruxsatini yoqing")
+    use_openai = bool(config.openai_api_key)
+    if not use_openai and (local_ai.access() is not True or "codex" not in local_ai.connected()):
+        raise ValueError("Serverda OPENAI_API_KEY ni sozlang yoki Ruxsatlarda mahalliy ChatGPT akkauntini ulang.")
     job_id = uuid.uuid4().hex
     with _lock:
         _jobs[job_id] = {"id": job_id, "status": "queued", "message": "Navbatda…", "story": None, "video": None}
-    thread = threading.Thread(target=_run, args=(job_id, idea[:1200], style[:40], fmt), daemon=True)
+    thread = threading.Thread(target=_run, args=(job_id, idea[:1200], style[:40], fmt, use_openai), daemon=True)
     thread.start()
     return job_id
 
@@ -39,9 +40,9 @@ def _update(job_id: str, **values) -> None:
             _jobs[job_id].update(values)
 
 
-def _run(job_id: str, idea: str, style: str, fmt: str) -> None:
+def _run(job_id: str, idea: str, style: str, fmt: str, use_openai: bool) -> None:
     import logging
-    from . import account_images, daily_video, outbox, service, story_video
+    from . import account_images, daily_video, outbox, providers, service, story_video
 
     log = logging.getLogger("ali.creative_video")
     try:
@@ -58,12 +59,13 @@ def _run(job_id: str, idea: str, style: str, fmt: str) -> None:
                   "FAQAT JSON: {\"title\":\"...\",\"hook\":\"...\",\"character\":\"...\",\"scenes\":[{\"voice\":\"...\","
                   "\"big\":\"...\",\"image\":\"...\",\"layout\":\"full\"}],\"caption\":\"...\","
                   "\"hashtags\":\"\",\"mood\":\"cinematic\"}\nG‘oya: " + idea[:1200])
-        story = service._ask_json(prompt, daily_video._ready(), 240)
+        ready = [] if use_openai else daily_video._ready()
+        story = service._ask_json(prompt, ready, 240)
         scenes = [s for s in story.get("scenes", []) if isinstance(s, dict) and str(s.get("voice", "")).strip()]
         if not scenes:
             raise RuntimeError("Ali g‘oyaga mos ssenariy yarata olmadi")
         story["scenes"] = scenes[:6]
-        source = "ChatGPT akkaunti"
+        source = "OpenAI API" if use_openai else "ChatGPT akkaunti"
         story["style"] = style
         last_voice = str(story["scenes"][-1].get("voice", "")).casefold()
         cta_words = ("obuna", "ulashing", "ulash", "izoh", "fikr", "davomini", "davomida", "like", "kuzat")
@@ -79,7 +81,7 @@ def _run(job_id: str, idea: str, style: str, fmt: str) -> None:
         if not story["scenes"]:
             raise RuntimeError("Ssenariyda sahnalar topilmadi")
         character = str(story.get("character") or story["scenes"][0].get("image", idea))[:500]
-        story_video.design_plan(story, daily_video._ready())
+        story_video.design_plan(story, ready)
         style_visual = {
             "2D serial": "2D animated series, clean outlines, expressive characters",
             "3D multfilm": "polished 3D animated family film, soft cinematic lighting",
@@ -98,14 +100,21 @@ def _run(job_id: str, idea: str, style: str, fmt: str) -> None:
         folder.mkdir(parents=True, exist_ok=True)
         _update(job_id, status="images", message="Qahramon va sahna rasmlari ChatGPT’da yaratilmoqda…", story=story)
         width, height = ((1920, 1080) if fmt == "16:9" else (1080, 1080) if fmt == "1:1" else (1080, 1920))
+        size = (width, height)
+
+        def generate_image(prompt: str) -> bytes:
+            if use_openai:
+                return providers._openai_image(prompt, "medium", size)
+            return account_images.generate(prompt, size)
+
         portrait = folder / "qahramon.png"
-        portrait.write_bytes(account_images.generate(portrait_prompt, (width, height)))
+        portrait.write_bytes(generate_image(portrait_prompt))
         _update(job_id, character=f"/api/creative-video/{job_id}/character", message="Qahramon tayyor. Sahnalar chizilmoqda…")
         image_paths = []
         for index, scene in enumerate(story["scenes"]):
             prompt = f"{style} illustration. Main character (keep this exact design in every scene): {character}. Scene: {scene.get('image', '')}. Story idea: {idea}. No text, no watermark."
             path = folder / f"scene-{index + 1}.png"
-            path.write_bytes(account_images.generate(prompt, (width, height)))
+            path.write_bytes(generate_image(prompt))
             image_paths.append(str(path))
             _update(job_id, message=f"Sahna rasmlari yaratilmoqda… {index + 1}/{len(story['scenes'])}")
         _update(job_id, status="rendering", message="Diktor ovozi va videoni yig‘yapman…")
@@ -113,14 +122,12 @@ def _run(job_id: str, idea: str, style: str, fmt: str) -> None:
                    "text": scene.get("big", ""), "narration": scene.get("voice", ""),
                    "image_prompt": scene.get("image", ""), "duration": 4}
                   for scene in story["scenes"]]
-        start = outbox.mark()
+        video = outbox.new_path(f"multik_{job_id}", "mp4")
         from .plugins.video_studio import make_content_video
         result = make_content_video(topic=idea, scenes=scenes, format=fmt, platform="reels",
-                                    voice=True, ai_images=False, images=image_paths)
-        videos = [p for p in outbox.since(start) if p.suffix.lower() == ".mp4"]
-        if not videos:
+                                    voice=True, ai_images=False, images=image_paths, _output_path=video)
+        if not video.is_file():
             raise RuntimeError(result or "MP4 fayli yaratilmadi")
-        video = videos[-1]
         _update(job_id, status="done", message="Video tayyor", video=video.name,
                 result=result, source=source, character=f"/api/creative-video/{job_id}/character")
     except Exception as error:

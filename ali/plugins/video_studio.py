@@ -340,7 +340,8 @@ def _srt(scenes: list[dict]) -> str:
 )
 def make_content_video(topic: str = "", scenes: list | None = None, format: str = "9:16", platform: str = "reels",
                        duration_s: int = 30, voice: bool = True, ai_images: bool = True, colors: list | None = None,
-                       audience: str = "", goal: str = "", images: list | None = None) -> str:
+                       audience: str = "", goal: str = "", images: list | None = None,
+                       *, _output_path: Path | None = None) -> str:
     import imageio_ffmpeg
     topic = _clean(topic, 500) or DEFAULT_TOPIC
     script = {"title": topic, "scenes": scenes or []}
@@ -357,7 +358,7 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
     title = _clean(script.get("title"), 80) or topic[:60]
     cols = [_hex(c, d) for c, d in zip((colors or []) + [None] * 3, BRAND_COLORS)][:3]
     w, h = FORMATS.get(format, FORMATS["9:16"])
-    path = outbox.new_path(title, "mp4")
+    path = _output_path if _output_path is not None else outbox.new_path(title, "mp4")
     stem = path.with_suffix("")
     notes = []
 

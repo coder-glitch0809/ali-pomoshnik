@@ -306,13 +306,15 @@ def generate_image(prompt: str, model: str = "") -> bytes:
     raise RuntimeError("Gemini rasm qaytarmadi")
 
 
-def _openai_image(prompt: str, quality: str) -> bytes:
+def _openai_image(prompt: str, quality: str, dimensions: tuple[int, int] = (1, 1)) -> bytes:
     import base64
     import httpx
 
+    width, height = dimensions
+    size = "1536x1024" if width > height else "1024x1536" if width < height else "1024x1024"
     r = httpx.post("https://api.openai.com/v1/images/generations", timeout=300,
                    headers={"Authorization": f"Bearer {config.openai_api_key}"},
-                   json={"model": config.openai_image_model, "prompt": prompt[:4000], "size": "1024x1024",
+                   json={"model": config.openai_image_model, "prompt": prompt[:4000], "size": size,
                          "n": 1, "quality": quality})
     if r.status_code != 200:
         raise RuntimeError(f"HTTP {r.status_code}")

@@ -1246,7 +1246,7 @@ class TelegramBot(PublicTelegram, Listener):
 
     async def team_text(self, update: Update, ctx, spoken: str | None = None) -> bool:
         """«Ali jamoasi» guruhidagi xabar: agent mavzusi - o'sha agent javob beradi, Maslahat - kengash,
-        Telegram nazorati — guruhlarni tekshirish; sinf kuzatuvi o‘chirilgan.
+        Telegram nazorati — guruhlarni tekshirish."""
         from . import team_hub
         chat = update.effective_chat
         if not chat or chat.type == "private" or chat.id != team_hub.chat_id():

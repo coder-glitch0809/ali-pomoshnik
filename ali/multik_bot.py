@@ -111,7 +111,8 @@ class MultikBot:
             "Ssenariy yoki g‘oyangizni yuboring. Men mazmunidan uslubni taxmin qilaman, "
             "keyin 2D, 3D, anime, fantaziya, kino-ertak, ertak kitobi yoki plastilindan tanlatasiz.\n\n"
             "Tanlovdan keyin ChatGPT qahramon va sahna rasmlarini yaratadi, ovoz, subtitr va yakuniy CTA bilan "
-            "videoni tayyorlab Ali guruhiga yuboradi. Bekor qilish: /cancel"
+            "videoni shu chatga yuboraman. Ali jamoasi guruhi sozlangan bo‘lsa, videoni u yerga ham yuboraman. "
+            "Bekor qilish: /cancel"
         )
 
     async def make_video(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -163,7 +164,7 @@ class MultikBot:
         await query.edit_message_text(
             f"Tanlandi: {choice[0]}. Ssenariy, qahramon rasmlari, ovoz, subtitr va CTA bilan video tayyorlanmoqda…"
         )
-        context.application.create_task(self._deliver(job_id, query.message.chat_id, user_id, context))
+        context.application.create_task(self._deliver(job_id, query.message.chat_id, context))
 
     async def cancel(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._authorized(update):
@@ -179,9 +180,9 @@ class MultikBot:
             await update.effective_message.reply_text("Bu bot faqat Ali egasi uchun.")
         return False
 
-    async def _deliver(self, job_id: str, requester_chat: int, requester_id: int,
+    async def _deliver(self, job_id: str, requester_chat: int,
                        context: ContextTypes.DEFAULT_TYPE) -> None:
-        from . import creative_video, outbox, team_hub
+        from . import creative_video, outbox, team_hub, video_delivery
         try:
             while True:
                 await asyncio.sleep(2)
@@ -192,23 +193,31 @@ class MultikBot:
                     raise RuntimeError(job.get("message") or "Video yaratilmadi")
                 if job["status"] == "done":
                     break
-            group_id = team_hub.chat_id()
-            if not group_id:
-                raise RuntimeError("Ali jamoasi guruhi topilmadi. Multik botni guruhga qo‘shing.")
             video = outbox.resolve(job.get("video", ""))
             if video is None:
                 raise RuntimeError("Tayyor MP4 topilmadi")
+            video = await asyncio.to_thread(video_delivery.telegram_video, video)
             story = job.get("story") or {}
             caption = f"🎬 {story.get('title', 'Ali multik')}\nUslub: {story.get('style', '')}. Subtitr va CTA bilan."[:900]
             with video.open("rb") as stream:
-                await context.bot.send_video(chat_id=group_id, video=stream, caption=caption,
-                                             supports_streaming=True)
-            await context.bot.send_message(chat_id=requester_chat, text="✅ Video Ali jamoasi guruhiga yuborildi.")
+                await context.bot.send_video(chat_id=requester_chat, video=stream, caption=caption,
+                                             supports_streaming=True, write_timeout=120)
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            log.exception("Multik video yetkazilmadi")
+            log.warning("Multik video yetkazilmadi: %s", type(error).__name__)
             try:
-                await context.bot.send_message(chat_id=requester_chat, text=f"Video yuborilmadi: {str(error)[:800]}")
+                detail = str(error)[:800] if isinstance(error, RuntimeError) else "Telegram orqali yuborishda xatolik."
+                await context.bot.send_message(chat_id=requester_chat, text=f"Video yuborilmadi: {detail}")
             except Exception:
-                log.exception("Multik xato xabari yuborilmadi")
+                log.warning("Multik xato xabari yuborilmadi")
+            return
+
+        group_id = team_hub.chat_id()
+        if group_id and group_id != requester_chat:
+            try:
+                with video.open("rb") as stream:
+                    await context.bot.send_video(chat_id=group_id, video=stream, caption=caption,
+                                                 supports_streaming=True, write_timeout=120)
+            except Exception as error:
+                log.warning("Multik video guruhga yuborilmadi: %s", type(error).__name__)

@@ -11,7 +11,14 @@ ishga tushirishdan oldin amaldagi tarifni tasdiqlang.
    `ACCESS_PASSWORD` ni mahalliy `.env` dan kiriting. Kalitlarni Git'ga yubormang.
    `TELEGRAM_ALLOWED_USERS` ixtiyoriy: bo'sh bo'lsa, botdagi `/login PAROL` orqali kiriladi.
    Kerak bo'lsa `GEMINI_API_KEY`, ovoz va boshqa sozlamalarni ham kiriting.
-3. `/healthz`, saytga kirish, WebSocket va botdagi `/start` ni tekshiring.
+3. ChatGPT javoblari va multik rasmlari uchun Render servisida `CHAT_PROVIDER=openai`
+   va `OPENAI_API_KEY` ni sozlang. Kalit OpenAI platformasidan olinadi va tanlangan
+   matn hamda rasm modellariga ruxsatga ega bo‘lishi kerak.
+   Yangi video botning BotFather tokenini `MULTIK_BOT_TOKEN` ga, Telegram foydalanuvchi
+   ID raqamingizni `TELEGRAM_OWNER_ID` ga kiriting.
+   `/healthz`, saytga kirish, WebSocket va asosiy botdagi `/start` ni tekshiring.
+   Yangi botni shaxsiy chatda ochib `/start` ni bosing, ssenariy yuboring va uslubni tanlang.
+   Tayyor MP4 shu chatga keladi. Guruhga ham yuborish uchun video botni Ali jamoasi guruhiga qo‘shing.
    Render `RENDER_EXTERNAL_URL` orqali botning Mini App manzilini avtomatik belgilaydi.
 4. Vercel loyihasida `ALI_BACKEND_URL=https://<render-server>.onrender.com` ni o'rnating
    va yangi kodni qayta deploy qiling. `server.py` Vercel'da diskka yozmaydigan gateway'ni
