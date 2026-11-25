@@ -3,11 +3,22 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from ali import account_images, providers, story_video
+from ali import account_images, local_ai, providers, story_video
 from ali.config import config
 
 
 class AccountImageTests(unittest.TestCase):
+    def test_inaccessible_codex_model_retries_with_compatible_model(self):
+        command = ["codex", "exec", "--sandbox", "read-only", "-"]
+        rejected = SimpleNamespace(returncode=1, stdout="", stderr="model_not_in_accessible_catalog")
+        accepted = SimpleNamespace(returncode=0, stdout="OK", stderr="")
+        with patch.dict("os.environ", {"ALI_CODEX_MODEL": ""}), patch.object(
+            local_ai.subprocess, "run", side_effect=[rejected, accepted]
+        ) as run:
+            self.assertIs(local_ai.run_codex(command, input="test"), accepted)
+        self.assertEqual(run.call_args.args[0], ["codex", "exec", "--model", "gpt-5.4", *command[2:]])
+        self.assertEqual(run.call_args.kwargs["input"], "test")
+
     def test_requires_chatgpt_login_and_local_permission(self):
         with patch('ali.local_ai.app_exe', return_value='codex'), patch('ali.local_ai.access', return_value=False), patch.object(account_images.subprocess, 'run') as run:
             with self.assertRaises(RuntimeError):

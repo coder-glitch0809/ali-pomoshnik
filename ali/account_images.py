@@ -52,7 +52,7 @@ def generate(prompt, size=(1080, 1920)):
                 'Return a short completion message only.\n' + json.dumps({'scene': prompt}, ensure_ascii=False)
             )
             try:
-                result = subprocess.run([exe, 'exec', '--sandbox', 'workspace-write', '--skip-git-repo-check',
+                result = local_ai.run_codex([exe, 'exec', '--sandbox', 'workspace-write', '--skip-git-repo-check',
                     '--ephemeral', '-c', 'model_provider="openai"', '-C', str(root), '-'],
                     input=task, capture_output=True, text=True, encoding='utf8', errors='replace',
                     env=env, timeout=600, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))

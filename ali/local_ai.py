@@ -316,6 +316,18 @@ def verify(key: str) -> tuple[bool, str]:
 
 
 # --- so'rov ---
+def run_codex(command: list[str], **options) -> subprocess.CompletedProcess:
+    """Keep Codex settings and auth, overriding only an inaccessible model."""
+    model = os.getenv("ALI_CODEX_MODEL", "").strip()
+    if model:
+        return subprocess.run([*command[:2], "--model", model, *command[2:]], **options)
+    result = subprocess.run(command, **options)
+    output = (result.stdout or "") + (result.stderr or "")
+    if result.returncode and "model_not_in_accessible_catalog" in output:
+        return subprocess.run([*command[:2], "--model", "gpt-5.4", *command[2:]], **options)
+    return result
+
+
 def _command(key: str, exe: str, images: list[str] | None = None) -> list[str]:
     if key == "claude":
         # bilmagan narsani internetdan qidirib aniqlasin; rasm bo'lsa - Read bilan ko'radi (faqat o'qish vositalari)
@@ -416,7 +428,8 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
     if images and key == "claude":  # Claude Code rasmni fayl sifatida o'qib ko'radi
         prompt += "\n\nBiriktirilgan rasm(lar) - Read vositasi bilan ochib, diqqat bilan ko'r:\n" + "\n".join(images)
     try:
-        proc = subprocess.run(_command(key, exe, images), input=prompt, cwd=WORKDIR, capture_output=True, text=True,
+        run = run_codex if key == "codex" else subprocess.run
+        proc = run(_command(key, exe, images), input=prompt, cwd=WORKDIR, capture_output=True, text=True,
                               encoding="utf-8", errors="replace", timeout=timeout, env=clean_env(),
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:
@@ -427,7 +440,10 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
     if proc.returncode != 0 or not answer:
         raw = (proc.stderr or "") + answer
         detail = re.sub(r"\x1b\[[0-9;]*m", "", proc.stderr or answer).strip()[-400:]
-        if "IneligibleTierError" in raw:
+        if key == "codex" and "model_not_in_accessible_catalog" in raw:
+            detail = ("ChatGPT akkauntida model mavjud emas. Codex’da /model orqali mavjud modelni tanlang, "
+                      "Ali .env faylida ALI_CODEX_MODEL ni shu modelga sozlang va Ali’ni qayta ishga tushiring.")
+        elif "IneligibleTierError" in raw:
             detail = ("Shu Google akkaunti uchun Gemini CLI ruxsati tasdiqlanmadi. Akkaunt turi, hudud yoki "
                       "tashkilot sozlamalarini tekshiring; boshqa akkaunt yoki API ulanishini tanlash mumkin.")
         elif _AUTH_RE.search(raw):  # ilovaga qayta kirish kerak - 1 soat chetlab o'tiladi, boshqa ilova ishlaydi
@@ -454,7 +470,8 @@ def ask(system: str, history: list[dict], text: str) -> tuple[str, str] | None:
         if paused_until(key):
             continue
         try:
-            proc = subprocess.run(_command(key, exe), input=prompt, cwd=WORKDIR, capture_output=True, text=True,
+            run = run_codex if key == "codex" else subprocess.run
+            proc = run(_command(key, exe), input=prompt, cwd=WORKDIR, capture_output=True, text=True,
                                   encoding="utf-8", errors="replace", timeout=TIMEOUT, env=env,
                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except (OSError, subprocess.TimeoutExpired) as e:
