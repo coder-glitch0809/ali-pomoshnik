@@ -32,7 +32,7 @@ def generate(prompt, size=(1080, 1920)):
     if not exe or local_ai.access() is not True:
         raise RuntimeError('Ruxsatlar → ChatGPT akkauntini ulang va mahalliy AI ruxsatini yoqing')
     with LOCK:
-        env = local_ai.clean_env()
+        env = local_ai.clean_env("codex")
         check = subprocess.run([exe, 'login', 'status'], capture_output=True, text=True,
                                encoding='utf8', errors='replace', env=env, timeout=30,
                                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))

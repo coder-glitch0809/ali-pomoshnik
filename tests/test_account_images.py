@@ -10,6 +10,37 @@ from ali.config import config
 
 
 class AccountImageTests(unittest.TestCase):
+    def test_readonly_codex_database_switches_login_and_verification_to_writable_home(self):
+        failed = SimpleNamespace(returncode=1, stdout="", stderr=(
+            "attempt to write a readonly database\n"
+            "Error: failed to initialize in-process app-server client: Отказано в доступе. (os error 5)"
+        ))
+        success = SimpleNamespace(returncode=0, stdout="OK", stderr="")
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            original = str(root / "existing-codex")
+            with (
+                patch.object(config, "data_dir", root),
+                patch.object(local_ai, "STATE", root / "apps.json"),
+                patch.object(local_ai, "LIMITS", root / "limits.json"),
+                patch.object(local_ai, "WORKDIR", root / "work"),
+                patch.object(local_ai, "app_exe", return_value="codex"),
+                patch.dict("os.environ", {"CODEX_HOME": original, "ALI_CODEX_MODEL": ""}),
+                patch.object(local_ai.subprocess, "run", side_effect=[failed, success]) as run,
+                patch.object(local_ai.subprocess, "Popen") as launch,
+            ):
+                ok, message = local_ai.verify("codex")
+                self.assertFalse(ok)
+                self.assertIn("«Kirish»", message)
+                self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], original)
+                home = root / "codex-home"
+                self.assertTrue(home.is_dir())
+                local_ai.open_login("codex")
+                self.assertEqual(launch.call_args.kwargs["env"]["CODEX_HOME"], str(home))
+                self.assertTrue(local_ai.verify("codex")[0])
+                self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], str(home))
+                self.assertEqual(run.call_args.kwargs["env"]["CODEX_SQLITE_HOME"], str(home))
+
     def test_inaccessible_codex_model_retries_with_compatible_model(self):
         command = ["codex", "exec", "--sandbox", "read-only", "-"]
         rejected = SimpleNamespace(returncode=1, stdout="", stderr="model_not_in_accessible_catalog")
