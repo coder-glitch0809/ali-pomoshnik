@@ -90,9 +90,21 @@ async def lifespan(_app):
             log.exception("Telegram bot ishga tushmadi")
             print(f"  Telegram:    xato - {e}")
             bot = None
+    multik_bot = None
+    if config.multik_bot_token:
+        from ali.multik_bot import MultikBot
+        multik_bot = MultikBot()
+        try:
+            await multik_bot.start()
+        except Exception as e:
+            log.exception("Multik Telegram bot ishga tushmadi")
+            print(f"  Multik bot:  xato - {e}")
+            multik_bot = None
     try:
         yield
     finally:
+        if multik_bot:
+            await multik_bot.stop()
         if bot:
             await bot.stop()
         hub.loop = None
@@ -409,6 +421,44 @@ async def image_connection_action(provider: str, action: str, request: Request):
         return JSONResponse({'error': str(error)}, status_code=400)
     except OSError:
         return JSONResponse({'error': 'Rasm sozlamasi yoki natijasini saqlab bo‘lmadi'}, status_code=500)
+
+
+@app.post('/api/creative-video')
+async def creative_video_start(request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if foreign_origin(request):
+        return JSONResponse({'error': 'Boshqa manbadan so‘rov rad etildi'}, status_code=403)
+    from ali import creative_video
+    body = await json_object(request)
+    try:
+        job_id = creative_video.create(str(body.get('idea', '')), str(body.get('style', '2D serial')),
+                                       str(body.get('format', '9:16')))
+        return {'id': job_id}
+    except ValueError as error:
+        return JSONResponse({'error': str(error)}, status_code=400)
+
+
+@app.get('/api/creative-video/{job_id}')
+async def creative_video_status(job_id: str, request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if not re.fullmatch(r'[0-9a-f]{32}', job_id):
+        return JSONResponse({}, status_code=404)
+    from ali import creative_video
+    item = creative_video.get(job_id)
+    return item if item else JSONResponse({}, status_code=404)
+
+
+@app.get('/api/creative-video/{job_id}/character')
+async def creative_video_character(job_id: str, request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if not re.fullmatch(r'[0-9a-f]{32}', job_id):
+        return JSONResponse({}, status_code=404)
+    from ali import creative_video
+    path = creative_video.character_path(job_id)
+    return FileResponse(path) if path else JSONResponse({}, status_code=404)
 
 
 def is_local(request: Request) -> bool:

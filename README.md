@@ -8,7 +8,7 @@ va Instagram akkauntlaringizni tahlil qilib kontent reja tuzadi.
 
 | | |
 |---|---|
-| **Super miya** | Claude — asosiy miya. Barcha savol va vazifalarni o'zi bajaradi; Gemini faqat ovozni matnga aylantirish va rasm uchun |
+| **Super miya** | ChatGPT Plus (Codex) — egasining asosiy shaxsiy modeli; Claude muqobil model sifatida qoladi |
 | **Chuqur fikrlash** | Murakkab vazifalar uchun chuqurroq o'ylash rejimi; fikrlash jarayoni ekranda jonli ko'rinadi |
 | **Veb-sayt** | Telefon va kompyuterda bir xil, Jarvis HUD dizayni, bosh ekranga ilova sifatida o'rnatiladi |
 | **Telegram bot** | Matn, ovozli xabar, rasm, joylashuv; javob matn + ovoz bilan; xavfli amallarni tugma bilan tasdiqlash |
@@ -61,6 +61,10 @@ Administrator huquqi kerak bo'lsa — `start-full.bat` ni "Run as administrator"
 2. `.env` ga yozing: `TELEGRAM_BOT_TOKEN=...`
 3. Serverni qayta ishga tushiring, botga `/login PAROL` yozing (parol xabari avtomatik o'chiriladi)
 
+Ssenariy asosida video uchun alohida BotFather botini yarating, yangi tokenni `MULTIK_BOT_TOKEN` ga saqlang,
+`TELEGRAM_OWNER_ID` ni belgilang va multik botini Ali jamoasi guruhiga qo'shing. Unga `/video G‘oya yoki ssenariy`
+yuborilsa, ChatGPT Plus orqali personaj/sahna rasmlarini yaratib, MP4'ni Ali jamoasiga joylaydi.
+
 Buyruqlar: `/new` yangi suhbat · `/chuqur` · `/super` · `/ovozli` ovozli javob · `/holat` ·
 `/ovoz` `/ovoz_tayyor` `/ovoz_standart` — shaxsiy ovoz.
 
@@ -70,14 +74,14 @@ Ovozli xabarlarni tushunish uchun `GEMINI_API_KEY` kerak.
 
 `/jamoa` (yoki «jamoa guruhini och») - shaxsiy Telegram akkaunt orqali «🤖 Ali jamoasi» forum-guruhi ochiladi,
 Ali boti admin bo'ladi. Mavzular: 👑 Ali (eng muhim topilmalar, kunlik nazorat - bekorchi agentlar ham),
-🤝 Maslahat kengashi, 🔎 Telegram nazorati, 🏫 5-D sinf va har bir agent (Sardor - Treyder, Dilnoza - Dizayner,
+🤝 Maslahat kengashi, 🔎 Telegram nazorati, har bir agent (Sardor - Treyder, Dilnoza - Dizayner,
 Otabek - Video montajchi, Ulug'bek - Telegram nazoratchi...). Agent mavzusiga yozsangiz - o'sha agent javob beradi;
 agentlarning har bir ishi va o'rgangan bilimi o'z mavzusiga chiqadi.
 
 - `/maslahat MASALA` - mos agentlar navbat bilan maslahatlashadi, Ali qaror chiqaradi.
 - `/nazorat` - kim qancha ishladi, kim maslahatda qatnashmadi, kim bekorchi (har kuni 21:30 da avtomatik).
 - `/tekshir GURUH` yoki «X guruhini tekshir» - guruh to'liq ko'rib chiqiladi (rasm va video kadrlari bilan).
-- `/sinf` - sinf (`CLASS_NAME=5-D`) guruhlaridagi muammolar; dars jadvali kelsa - sinf guruhiga tashlash eslatiladi.
+- /sinf — sinf rahbarlik kuzatuvi o‘chirilgan; Telegram botlar va media umumiy kuzatuvi davom etadi.
   Har soatda avtomatik; botlar va sizga kelgan rasm/videolar 3 soatda bir ko'rib chiqilib, bilimga qo'shiladi.
 - Agent mavzusiga yozsangiz, javobda agentning ismi va roli ko'rinadi; Ali mavzusida yoki «Ali, ...» deb murojaat
   qilsangiz Ali javob beradi. Agentga uning xatosi yoki keyingi safar nima o'zgartirishi kerakligini aytsangiz,
@@ -111,6 +115,10 @@ So'rash misollari: *"Instagramimni tahlil qil va keyingi haftaga 5 ta reels g'oy
 *"@raqobatchi akkauntini o'rgan, ular nimasi bilan yutyapti?"*
 
 ## Video montaj
+
+### Multik bot
+
+`MULTIK_BOT_TOKEN` qiymatini `.env` fayliga kiriting va yangi multik botni Ali jamoasi Telegram guruhiga qo‘shing. Botga `/start` yuboring, so‘ng shaxsiy chatda ssenariy yoki g‘oyani yuboring. Ali mazmunga qarab uslub tavsiya qiladi; 2D serial, 3D, anime, fantaziya, kino-ertak, ertak kitobi yoki plastilindan tanlang. Tanlovdan keyin ChatGPT akkaunti personaj va sahna rasmlarini yaratadi, diktor ovozi, subtitr va CTA bilan vertikal MP4 tayyorlaydi hamda jamoa guruhiga yuboradi. Bot faqat `TELEGRAM_OWNER_ID` yoki `TELEGRAM_ALLOWED_USERS` dagi foydalanuvchilarga javob beradi. ChatGPT akkaunti Ali dasturidagi Ruxsatlar bo‘limida ulangan bo‘lishi kerak.
 
 Telegram kanaliga yuborilgan video mahalliy FFmpeg vositalari bilan montaj qilinib, natija kanalga va egasiga
 yuboriladi. Reja uchun ulangan AI ilovasi ixtiyoriy; AI ilovasi javob bermasa yoki limiti tugasa, montaj mahalliy

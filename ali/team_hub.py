@@ -7,7 +7,6 @@ Mavzular:
   👑 Ali - eng muhim topilmalar, kunlik nazorat hisoboti (bekorchi agentlar ham shu yerda)
   🤝 Maslahat kengashi - agentlar bir-biri bilan maslahatlashadi, Ali xulosa qiladi
   🔎 Telegram nazorati - kanal, guruh, bot va yozishmalarni tekshirish natijalari
-  🏫 5-D sinf - sinf rahbariga oid xabarlar, muammolar, dars jadvali
   har bir agent - u nima qilyapti (vazifa va natija); treyderda signallar va treyding yangiliklari
 Egasi agent mavzusiga yozsa - o'sha agent javob beradi; Maslahat mavzusiga yozsa - kengash yig'iladi.
 """
@@ -30,8 +29,7 @@ STATE = config.data_dir / "team_hub.json"
 LOCK = threading.RLock()
 TITLE = "🤖 Ali jamoasi"
 ABOUT = "Ali va uning agentlari: har agentning o'z mavzusi, maslahat kengashi va nazorat."
-FIXED = {"ali": "👑 Ali — asosiy", "maslahat": "🤝 Maslahat kengashi", "telegram": "🔎 Telegram nazorati",
-         "sinf": "🏫 5-D sinf"}
+FIXED = {"ali": "👑 Ali — asosiy", "maslahat": "🤝 Maslahat kengashi", "telegram": "🔎 Telegram nazorati"}
 # Agentlarning ismlari (yangi agentga POOL dan bo'sh ism beriladi)
 NAMES = {"treyder": "Sardor", "dizayner": "Dilnoza", "dasturchi": "Jasur", "kontent": "Sevara",
          "video_montajchi": "Otabek", "informatika": "Nodira", "office": "Kamola", "murabbiy": "Bobur",
@@ -566,7 +564,6 @@ def setup(agents: dict) -> str:
          agents)
     post("telegram", "🔎 Telegram nazorati: kanal, guruh, bot va yozishmalarni tekshirish natijalari shu yerda.\n"
                      "«X guruhini tekshir» deb yozing - darhol ko'rib chiqaman.", agents)
-    post("sinf", "🏫 5-D sinf: guruhlardan sinfga oid muammo, rasm va dars jadvali shu yerga keladi.", agents)
     return (f"✅ «{TITLE}» guruhi ochildi: {len(FIXED) + len(agents)} ta mavzu. Telegram'da guruhlar ro'yxatida "
             "ko'rinadi. Agent mavzusiga yozsangiz - o'sha agent javob beradi.")
 

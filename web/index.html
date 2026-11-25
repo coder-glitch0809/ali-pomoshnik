@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="/static/vault.css">
   <link rel="stylesheet" href="/static/permissions.css">
   <link rel="stylesheet" href="/static/glass.css">
+  <link rel="stylesheet" href="/static/creative.css">
   <script>try { document.documentElement.dataset.glass = localStorage.getItem('ali.glass') !== 'false' ? 'on' : 'off'; } catch { document.documentElement.dataset.glass = 'on'; }</script>
 </head>
 <body>
@@ -45,6 +46,7 @@
       <button class="nav-item" data-view="chat">
         <svg viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 3V6a1 1 0 0 1 1-1z"/></svg><span id="navChat">Ali Chat</span>
       </button>
+      <button class="nav-item" data-view="video"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="3"/><path d="m16 10 5-3v10l-5-3z"/></svg>AI video</button>
       <button class="nav-item" data-view="monitor">
         <svg viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>Monitoring<span class="badge" id="runBadge" hidden>0</span>
       </button>
@@ -164,6 +166,16 @@
         </aside><article class="vault-reader" id="vaultReader"><div class="vault-placeholder">Chapdan yozuv tanlang</div></article></div>
       </div>
     </section>
+    <section class="view" id="view-video" hidden><div class="page creative-page">
+      <div class="page-head"><div><span class="creative-kicker">ALI CREATIVE STUDIO</span><h1>G‘oyangizdan video</h1><p class="page-sub">G‘oyani ayting — Ali ssenariy, qahramon rasmlari va tayyor videoni yaratadi.</p></div><span class="creative-credit">✦ ChatGPT Plus</span></div>
+      <div class="creative-layout">
+        <section class="creative-panel creative-brief"><label for="creativeIdea">G‘oyangizni yozing</label><textarea id="creativeIdea" maxlength="1200" placeholder="Masalan: Beshariqdagi novvoy tongda issiq nonni qanday tayyorlaydi — samimiy, qisqa hikoya…"></textarea>
+          <div class="creative-controls"><label>Video uslubi<select id="creativeStyle"><option value="2D serial">2D serial</option><option value="Anime">Anime</option><option value="Fantaziya">Fantaziya</option><option value="Kino-ertak">Kino-ertak</option><option value="3D multfilm">3D multfilm</option><option value="Realistik">Realistik</option></select></label><label>Format<select id="creativeFormat"><option value="9:16">TikTok / Reels · 9:16</option><option value="16:9">YouTube · 16:9</option><option value="1:1">Kvadrat · 1:1</option></select></label></div>
+          <button class="btn primary creative-action" id="creativePlan">✦ Ssenariy va qahramon yaratish</button><p class="creative-hint">Rasm yaratish uchun shu kompyuterda ChatGPT akkauntingiz va mahalliy AI ruxsati yoqilgan bo‘lishi kerak. Plus API kaliti talab qilinmaydi.</p>
+        </section>
+        <section class="creative-panel creative-result" id="creativeResult"><div class="creative-empty"><div class="creative-orb">✦</div><h2>Hikoyangiz shu yerda jonlanadi</h2><p>G‘oya kiriting. Ali sahnalarni rejalashtiradi va bir xil personaj uslubini saqlaydi.</p></div></section>
+      </div>
+    </div></section>
     <section class="view" id="view-permissions" hidden><div class="page">
       <div class="page-head"><div><h1>Ruxsatlar</h1><p class="page-sub">Ali qaysi amallarni sizdan so‘ramasdan bajara olishini belgilang.</p></div><button class="btn primary" id="permissionsSave" disabled>Saqlash</button></div>
       <p id="permissionsStatus" role="status">Sozlamalar yuklanmoqda…</p>
@@ -355,6 +367,7 @@
 <script src="/static/vault.js"></script>
 <script src="/static/brand-icons.js"></script>
 <script src="/static/permissions.js"></script>
+<script src="/static/creative.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

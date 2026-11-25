@@ -111,6 +111,7 @@ class Config:
 
     # Telegram bot
     telegram_token: str = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))
+    multik_bot_token: str = field(default_factory=lambda: _env("MULTIK_BOT_TOKEN"))
     public_url: str = field(default_factory=lambda: (_env("PUBLIC_URL") or _env("RENDER_EXTERNAL_URL")).rstrip("/"))
     telegram_name: str = field(default_factory=lambda: _env("TELEGRAM_BOT_NAME", "Ali Pomoshnik"))
     telegram_owner_id: int = field(default_factory=lambda: int(_env("TELEGRAM_OWNER_ID", "0") or 0))

@@ -1,7 +1,5 @@
 """Telegram nazoratchisi (Ulug'bek): guruhlar, botlar va kelgan rasm/videolarni doim kuzatadi (faqat o'qish).
 
-- 5-D sinf: sinf guruhi va maktab guruhlaridagi sinfga oid xabar, rasm va muammolar - egasiga xabar va
-  «🏫 5-D sinf» mavzusiga; dars jadvali (расписание) kelsa - sinf guruhiga tashlashni eslatadi.
 - Talab bo'yicha: «X guruhini tekshir» / /tekshir X - guruh to'liq ko'rib chiqiladi, foydali bilimlar bazaga.
 - Botlar: botlardan kelgan foydali ma'lumot bilimga qo'shiladi.
 - Shaxsiy yozishmalarda kelgan rasm va videolar (video - kadri) ko'rib chiqiladi va o'rganiladi.
@@ -21,12 +19,12 @@ log = logging.getLogger("ali.tg_watch")
 
 STATE = config.data_dir / "tg_watch.json"
 MEDIA = config.data_dir / "inbox" / "tg_watch"
-CLASS_NAME = os.getenv("CLASS_NAME", "5-D").strip() or "5-D"
+CLASS_NAME = os.getenv("CLASS_NAME", "").strip()
+CLASS_ENABLED = bool(CLASS_NAME)
 _num, _, _letter = CLASS_NAME.replace("«", "-").replace("»", "").replace(" ", "-").partition("-")
 _letters = {"d": "dд", "д": "dд", "a": "aа", "а": "aа", "b": "bб", "б": "bб", "v": "vв", "в": "vв", "g": "gг",
             "г": "gг", "e": "eе", "е": "eе"}.get(_letter.lower(), _letter.lower() or "dд")
-# 5-D, 5Д, 5 «Д», 5"D", 5-d sinf... ("5 dan" kabi so'zlar mos kelmaydi)
-CLASS_RE = re.compile(rf"(?<!\d){re.escape(_num or '5')}\s*[-«\"'“ʻ‘`]?\s*[{_letters}](?![a-zа-яёўқғҳ])", re.I)
+CLASS_RE = re.compile(re.escape(CLASS_NAME), re.I) if CLASS_ENABLED else re.compile(chr(94)+chr(36))
 TEACHER_WORDS = ("sinf rahbar", "синф раҳбар", "синф рахбар", "классный руковод", "классн. рук", "кл. рук")
 SCHEDULE_WORDS = ("расписани", "dars jadval", "дарс жадвал", "jadval", "жадвал", "raspisaniye", "raspisanie")
 CLASS_HOURS = 1     # sinf guruhlari tekshiruvi
@@ -66,6 +64,8 @@ def _save(data: dict) -> None:
 
 
 def is_class(text: str) -> bool:
+    if not CLASS_ENABLED:
+        return False
     low = (text or "").lower()
     return bool(CLASS_RE.search(text or "")) or any(w in low for w in TEACHER_WORDS)
 
@@ -180,6 +180,8 @@ def _ready_apps() -> list[str]:
 
 def review_class(hours: float = 24, notify=None, remind=None, ask_json=None, groups=None) -> dict:
     """Sinf rahbari uchun: yangi (oldin ko'rilmagan) sinfga oid xabarlar, muammolar va dars jadvali."""
+    if not CLASS_ENABLED:
+        return {"issues": [], "schedules": [], "summary": "Sinf rahbarlik kuzatuvi o‘chirilgan."}
     from . import team_hub, tg_account
     from .memory import memory
     state = _state()
@@ -330,7 +332,7 @@ def tick(notify=None, now: float | None = None) -> None:
         return
     now = now or time.time()
     state = _state()
-    if now - state.get("class_at", 0) >= CLASS_HOURS * 3600:
+    if CLASS_ENABLED and now - state.get("class_at", 0) >= CLASS_HOURS * 3600:
         state["class_at"] = now
         _save(state)
         try:

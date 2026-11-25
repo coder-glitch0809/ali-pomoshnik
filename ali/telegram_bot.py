@@ -1213,9 +1213,12 @@ class TelegramBot(PublicTelegram, Listener):
         await query.edit_message_text(text, reply_markup=kb)
 
     async def cmd_class(self, update: Update, ctx):
-        """/sinf - sinfga oid yangi xabarlar, muammolar va dars jadvali (hozir)."""
+        """/sinf - yoqilgan bo'lsa, sinf kuzatuvini ishga tushiradi."""
         from . import tg_watch
         if not self._team_owner(update):
+            return
+        if not tg_watch.CLASS_ENABLED:
+            await update.message.reply_text("Sinf rahbarlik kuzatuvi o‘chirilgan.")
             return
         msg = await update.message.reply_text(f"🏫 {tg_watch.CLASS_NAME} sinf guruhlarini tekshiryapman…")
         try:
@@ -1243,7 +1246,7 @@ class TelegramBot(PublicTelegram, Listener):
 
     async def team_text(self, update: Update, ctx, spoken: str | None = None) -> bool:
         """«Ali jamoasi» guruhidagi xabar: agent mavzusi - o'sha agent javob beradi, Maslahat - kengash,
-        Telegram nazorati - guruh tekshirish, 5-D sinf - sinf tekshiruvi, Ali/umumiy - Ali javob beradi."""
+        Telegram nazorati — guruhlarni tekshirish; sinf kuzatuvi o‘chirilgan.
         from . import team_hub
         chat = update.effective_chat
         if not chat or chat.type == "private" or chat.id != team_hub.chat_id():

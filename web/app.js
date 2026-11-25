@@ -704,7 +704,7 @@
   $('#localDeny').onclick = () => answerLocal(false);
 
   // ---------- Bo'limlar va menyu ----------
-  const VIEW_TITLES = { home: 'Bosh sahifa', chat: 'Chat', monitor: 'Monitoring', agents: 'Agentlar', vault: 'Vault · Xotira', permissions: 'Ruxsatlar' };
+  const VIEW_TITLES = { home: 'Bosh sahifa', chat: 'Chat', video: 'AI video', monitor: 'Monitoring', agents: 'Agentlar', vault: 'Vault · Xotira', permissions: 'Ruxsatlar' };
   let view = 'home';
   function showView(name) {
     if (!VIEW_TITLES[name]) name = 'home';

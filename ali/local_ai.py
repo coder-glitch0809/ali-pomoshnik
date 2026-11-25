@@ -323,6 +323,7 @@ def _command(key: str, exe: str, images: list[str] | None = None) -> list[str]:
                 *(["Read"] if images else [])]
     if key == "codex":
         return [exe, "exec", "--sandbox", "read-only", "--skip-git-repo-check",
+                "--ephemeral", "-c", 'model_provider="openai"',
                 *[arg for img in images or [] for arg in ("-i", img)], "-"]
     return [exe, "-p", "Quyidagi ko'rsatma va savolga javob ber."]
 
