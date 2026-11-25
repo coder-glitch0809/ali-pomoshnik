@@ -17,8 +17,11 @@ def create(idea: str, style: str, fmt: str) -> str:
     if style not in ("2D serial", "Anime", "Fantaziya", "Kino-ertak", "3D multfilm", "Ertak kitobi", "Plastilin", "Realistik"):
         style = "2D serial"
     from . import local_ai
-    use_openai = bool(config.openai_api_key)
-    if not use_openai and (local_ai.access() is not True or "codex" not in local_ai.connected()):
+    account_ready = local_ai.access() is True and "codex" in local_ai.connected()
+    if config.image_source == "chatgpt_account" and not account_ready:
+        raise ValueError("Ruxsatlarda ChatGPT akkauntini ulang, tekshiring va mahalliy AI ruxsatini yoqing.")
+    use_openai = not account_ready and bool(config.openai_api_key)
+    if not account_ready and not use_openai:
         raise ValueError("Serverda OPENAI_API_KEY ni sozlang yoki Ruxsatlarda mahalliy ChatGPT akkauntini ulang.")
     job_id = uuid.uuid4().hex
     with _lock:
@@ -41,8 +44,9 @@ def _update(job_id: str, **values) -> None:
 
 
 def _run(job_id: str, idea: str, style: str, fmt: str, use_openai: bool) -> None:
+    import json
     import logging
-    from . import account_images, daily_video, outbox, providers, service, story_video
+    from . import account_images, local_ai, outbox, providers, service, story_video
 
     log = logging.getLogger("ali.creative_video")
     try:
@@ -59,8 +63,17 @@ def _run(job_id: str, idea: str, style: str, fmt: str, use_openai: bool) -> None
                   "FAQAT JSON: {\"title\":\"...\",\"hook\":\"...\",\"character\":\"...\",\"scenes\":[{\"voice\":\"...\","
                   "\"big\":\"...\",\"image\":\"...\",\"layout\":\"full\"}],\"caption\":\"...\","
                   "\"hashtags\":\"\",\"mood\":\"cinematic\"}\nG‘oya: " + idea[:1200])
-        ready = [] if use_openai else daily_video._ready()
-        story = service._ask_json(prompt, ready, 240)
+        if use_openai:
+            story = service._ask_json(prompt, [], 240)
+        else:
+            reply = local_ai.ask_pro(prompt, timeout=240, only="codex")
+            if not reply:
+                raise RuntimeError("ChatGPT ssenariy qaytarmadi. Codex akkaunti va obuna limitini tekshiring.")
+            raw = reply[1]
+            try:
+                story = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+            except ValueError:
+                raise RuntimeError("ChatGPT ssenariyni kutilgan JSON formatida qaytarmadi.") from None
         scenes = [s for s in story.get("scenes", []) if isinstance(s, dict) and str(s.get("voice", "")).strip()]
         if not scenes:
             raise RuntimeError("Ali g‘oyaga mos ssenariy yarata olmadi")
@@ -81,7 +94,8 @@ def _run(job_id: str, idea: str, style: str, fmt: str, use_openai: bool) -> None
         if not story["scenes"]:
             raise RuntimeError("Ssenariyda sahnalar topilmadi")
         character = str(story.get("character") or story["scenes"][0].get("image", idea))[:500]
-        story_video.design_plan(story, ready)
+        if use_openai:
+            story_video.design_plan(story, [])
         style_visual = {
             "2D serial": "2D animated series, clean outlines, expressive characters",
             "3D multfilm": "polished 3D animated family film, soft cinematic lighting",

@@ -41,6 +41,13 @@ kompyuterga avtomatik ulanmaydi. Ular uchun alohida kompyuter ulanishi kerak.
 
 ## Mahalliy tekshirish
 
+ChatGPT Pro obunasidan foydalanish uchun Ali va Telegram botlarini Codex o‘rnatilgan
+kompyuterda, Codex’ga obuna egasi sifatida kirgan foydalanuvchi nomidan ishga tushiring.
+Ali’da Ruxsatlar → ChatGPT orqali ulanishni tekshiring, mahalliy AI ruxsatini yoqing va
+ChatGPT’ni asosiy ilova sifatida tanlang. Multik uchun `IMAGE_SOURCE=chatgpt_account`
+qo‘yilsa, ssenariy va rasmlar ChatGPT akkaunti orqali olinadi. Render alohida server
+bo‘lgani uchun kompyuteringizdagi Codex sessiyasidan foydalana olmaydi.
+
 `python -m unittest discover -s tests -v`
 
 `python server.py` → http://localhost:8000
