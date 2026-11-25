@@ -37,6 +37,13 @@ Qolganlari ixtiyoriy — qo'shgan sari imkoniyat ko'payadi.
 
 ## Ishga tushirish
 
+`start-local.bat` Ali’ni Windows kompyuteringizda ishga tushiradi va brauzerda
+`http://127.0.0.1:8000` ni ochadi (port `PORT` orqali sozlanadi). O‘rnatilgan
+Ali uchun `Ali.exe --localhost` ni ishlatish mumkin. Eski sayt yorlig‘i qora ekran
+ko‘rsatsa, brauzerning yangi tabida shu mahalliy manzilni oching.
+Oldingi sozlamalar va xotirani ishlatish uchun mavjud `ALI_STATE_DIR` ni belgilang.
+Standart papka `%LOCALAPPDATA%\Ali`.
+
 ```bash
 start.bat          # yoki: python server.py
 start-full.bat     # TO'LIQ RUXSAT: barcha vositalar tasdiqsiz (faqat o'z kompyuteringizda)
