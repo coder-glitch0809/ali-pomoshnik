@@ -165,13 +165,17 @@ def write_video_script(topic: str, platform: str = "reels", duration_s: int = 30
 
 
 # ------------------------------------------------------------------ ovoz
-def _tts(text: str) -> bytes:
+def _tts(text: str, *, voice_id=None, emotion="neutral") -> bytes:
     """Sinxron vositadan async TTS: alohida oqimda (ishlayotgan event loop bilan to'qnashmaydi)."""
     out: dict = {}
 
     def run():
         try:
-            out["data"] = asyncio.run(tts.synthesize(text))
+            if voice_id is None:
+                out["data"] = asyncio.run(tts.synthesize(text))
+            else:
+                from .. import studio_voice
+                out["data"] = asyncio.run(studio_voice.speak(text, voice_id, emotion))
         except Exception as e:
             out["error"] = e
     th = threading.Thread(target=run, daemon=True)
@@ -341,7 +345,7 @@ def _srt(scenes: list[dict]) -> str:
 def make_content_video(topic: str = "", scenes: list | None = None, format: str = "9:16", platform: str = "reels",
                        duration_s: int = 30, voice: bool = True, ai_images: bool = True, colors: list | None = None,
                        audience: str = "", goal: str = "", images: list | None = None,
-                       *, _output_path: Path | None = None) -> str:
+                       *, _output_path: Path | None = None, _progress=None, _voice_cast=None) -> str:
     import imageio_ffmpeg
     topic = _clean(topic, 500) or DEFAULT_TOPIC
     script = {"title": topic, "scenes": scenes or []}
@@ -352,6 +356,7 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
         if isinstance(s, dict) and _clean(s.get("title") or s.get("narration")):
             clean.append({"title": _clean(s.get("title") or s.get("narration"), 70), "text": _clean(s.get("text"), 160),
                           "narration": _clean(s.get("narration"), 400), "image_prompt": _clean(s.get("image_prompt"), 600),
+                          "speaker": str(s.get("speaker") or "Hikoyachi"), "emotion": str(s.get("emotion") or "neutral"),
                           "duration": max(2.0, min(float(s.get("duration") or 4), 15.0))})
     if not clean:
         return "Ssenariyda sahna yo'q: scenes ga kamida bitta {title, narration} bering."
@@ -369,7 +374,10 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
         for i, sc in enumerate(clean):
             if sc["narration"]:
                 try:
-                    data = _tts(sc["narration"])
+                    if _progress:
+                        _progress("voice", i, len(clean))
+                    data = (_tts(sc["narration"], voice_id=_voice_cast.get(sc["speaker"], "expressive"), emotion=sc["emotion"])
+                            if _voice_cast is not None else _tts(sc["narration"]))
                     if not data:
                         raise RuntimeError("TTS bo'sh audio qaytardi")
                     a = stem.parent / f"{stem.name}_ovoz{i}.{'wav' if data[:4] == b'RIFF' else 'mp3'}"
@@ -382,6 +390,8 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
                         audio.unlink(missing_ok=True)
                     raise RuntimeError(f"{i + 1}-sahna uchun diktor ovozi tayyorlanmadi: {e}") from e
             start += sc["duration"]
+    if _progress:
+        _progress("voice", len(clean), len(clean))
     for sc in clean:  # emoji shriftda yo'q (bo'sh kvadrat) - subtitrdan olib tashlanadi, ovozda qoladi
         bare = re.sub("[𐀀-􏿿☀-➿️‍]", "", sc["narration"] or "").strip()
         sc["subs"] = _chunks(bare) if bare else []
@@ -420,6 +430,8 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
     t_global = 0.0
     try:
         for i, sc in enumerate(clean):
+            if _progress:
+                _progress("frames", i, len(clean))
             for f in range(int(math.ceil(sc["duration"] * FPS))):
                 t = f / FPS
                 if i in backgrounds:
@@ -435,6 +447,9 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
         writer.close()
     total = sum(sc["duration"] for sc in clean)
 
+    if _progress:
+        _progress("frames", len(clean), len(clean))
+        _progress("mux", 0, 1)
     # 4) Ovozni qo'shish
     voiced = False
     if audios:

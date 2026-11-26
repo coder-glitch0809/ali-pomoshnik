@@ -68,6 +68,7 @@ class MultikBotTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(config, "data_dir", state),
                 patch.object(outbox, "DIR", state / "outbox"),
                 patch.object(config, "openai_api_key", "fixture-key"),
+                patch.object(config, "image_source", "auto"),
                 patch.object(service, "_ask_json", return_value=story) as plan,
                 patch.object(story_video, "design_plan"),
                 patch.object(providers, "_openai_image", return_value=image.getvalue()) as generate,

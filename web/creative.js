@@ -1,67 +1,36 @@
-(() => {
-  'use strict';
-  const $ = (id) => document.getElementById(id);
-  const idea = $('creativeIdea'), result = $('creativeResult'), button = $('creativePlan');
-  if (!idea || !result || !button) return;
-  let timer = 0, active = false, shownStory = '';
-  const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  function render(job) {
-    const story = job.story;
-    const key = JSON.stringify(story || null);
-    if (story && shownStory !== key) {
-      shownStory = key;
-      result.innerHTML = `<div class="creative-story-head"><div><span class="creative-kicker">${esc(story.style || 'AI video')} · ${story.scenes.length} SAHNA</span><h2>${esc(story.title || 'Ssenariyingiz')}</h2><p>${esc(story.hook || '')}</p></div>${job.character ? `<img class="creative-character" src="${esc(job.character)}" alt="Yaratilgan qahramon">` : ''}</div><div class="creative-scenes">${story.scenes.map((scene, i) => `<article class="creative-scene"><span class="creative-scene-no">${String(i + 1).padStart(2, '0')}</span><div><b>${esc(scene.big || `Sahna ${i + 1}`)}</b><p>${esc(scene.voice || '')}</p></div></article>`).join('')}</div><div class="creative-progress" role="status"><span class="creative-spinner"></span><span id="creativeMessage">${esc(job.message)}</span></div><div id="creativeVideo"></div>`;
-    } else {
-      const msg = $('creativeMessage'); if (msg) msg.textContent = job.message || '';
-      const portrait = result.querySelector('.creative-character');
-      if (portrait && job.character && portrait.getAttribute('src') !== job.character) portrait.src = job.character;
-      if (!portrait && job.character) {
-        const head = result.querySelector('.creative-story-head');
-        if (head) head.insertAdjacentHTML('beforeend', `<img class="creative-character" src="${esc(job.character)}" alt="Yaratilgan qahramon">`);
-      }
-    }
-    if (job.status === 'done') {
-      result.querySelector('.creative-progress')?.remove();
-      const box = $('creativeVideo');
-      if (box && !box.dataset.ready) {
-        box.dataset.ready = 'yes';
-        const url = '/api/outbox/' + encodeURIComponent(job.video);
-        box.innerHTML = `<div class="creative-done"><b>✓ Video tayyor</b><a class="creative-download" href="${url}" download>⬇ Yuklab olish</a></div><video class="creative-player" controls playsinline src="${url}"></video>`;
-      }
-    }
-    if (job.status === 'error') {
-      const progress = result.querySelector('.creative-progress');
-      if (progress) progress.outerHTML = `<div class="creative-error" role="alert">${esc(job.message || 'Video yaratishda xatolik yuz berdi')}</div>`;
-    }
-  }
-  async function poll(id) {
-    if (!active) return;
-    try {
-      const response = await fetch('/api/creative-video/' + encodeURIComponent(id));
-      const job = await response.json();
-      if (!response.ok) throw new Error(job.error || 'Ish holatini olib bo‘lmadi');
-      render(job);
-      if (job.status === 'done' || job.status === 'error') { active = false; button.disabled = false; button.textContent = '✦ Yana video yaratish'; return; }
-    } catch (error) {
-      result.innerHTML = `<div class="creative-error" role="alert">${esc(error.message)}</div>`;
-      active = false; button.disabled = false; button.textContent = '✦ Qayta urinish'; return;
-    }
-    timer = window.setTimeout(() => poll(id), 1800);
-  }
-  button.addEventListener('click', async () => {
-    if (active) return;
-    if (!idea.value.trim()) { idea.focus(); return; }
-    clearTimeout(timer); active = true; shownStory = '';
-    button.disabled = true; button.textContent = 'Ali g‘oyani tushunyapti…';
-    result.innerHTML = '<div class="creative-empty"><span class="creative-spinner"></span><h2>Ali hikoyangizni rejalashtiryapti</h2><p>Ssenariy va qahramonlar tayyorlanmoqda…</p></div>';
-    try {
-      const response = await fetch('/api/creative-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idea: idea.value.trim(), style: $('creativeStyle').value, format: $('creativeFormat').value }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Video yaratishni boshlash imkoni bo‘lmadi');
-      button.textContent = 'Video tayyorlanmoqda…'; poll(data.id);
-    } catch (error) {
-      result.innerHTML = `<div class="creative-error" role="alert">${esc(error.message)}</div>`;
-      active = false; button.disabled = false; button.textContent = '✦ Qayta urinish';
-    }
-  });
+﻿(() => {
+'use strict';
+const $=id=>document.getElementById(id), idea=$('creativeIdea'), result=$('creativeResult'), button=$('creativePlan');
+if(!idea||!result||!button)return;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let timer,jobId,active=false,cast={},audioUrl;
+let voices=[{id:'expressive',name:'Ifodali aktyor · ElevenLabs'},{id:'sardor',name:'Sardor · o‘zbekcha erkak'},{id:'madina',name:'Madina · o‘zbekcha ayol'}];
+async function api(url,body){const r=await fetch(url,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||(r.status===401?'Avval Ali tizimiga kiring.':'So‘rov bajarilmadi.'));return data;}
+const action=(name,body={})=>api(`/api/creative-video/${encodeURIComponent(jobId)}/${name}`,body);
+function error(message){let box=$('creativeActionError');if(!box){box=document.createElement('p');box.id='creativeActionError';box.className='creative-error';box.setAttribute('role','alert');result.append(box);}box.textContent=message;}
+function render(job){
+const story=job.story, scenes=story?.scenes||[], images=job.scene_images||[], ready=job.status==='ready', done=job.status==='done', failed=job.status==='error';
+const speakers=[...new Set(scenes.map(s=>s.speaker||'Hikoyachi'))];cast={...(job.voices||{}),...cast};
+const progress=Math.max(0,Math.min(100,Number(job.progress)||0));
+const steps=job.status==='rendering'||done?[['Ovoz','Diktor va qahramonlar',done||['frames','mux'].includes(job.stage)],['Kadrlar','Sahnalar yig‘ilmoqda',done||job.stage==='mux'],['Video','Ovoz, subtitr va MP4',done]]:[['Matn yozildi',`${scenes.length} sahna`,!!story],['Qahramon chizildi','Qahramon ko‘rinishi',!!job.character],['Kadrlar',`${images.length} / ${scenes.length||'…'}`,!!scenes.length&&images.length===scenes.length]];
+let current=false;
+result.innerHTML=`<div class="creative-story-head"><div><span class="creative-kicker">${esc(story?.style||'ALI CREATIVE STUDIO')} ${scenes.length?`· ${scenes.length} SAHNA`:''}</span><h2>${esc(story?.title||'Hikoya tayyorlanmoqda')}</h2><p>${esc(story?.hook||'')}</p></div>${job.character?`<img class="creative-character" src="${esc(job.character)}" alt="Hikoya qahramoni">`:''}</div>
+${!ready&&!done&&!failed?`<div class="creative-meter" role="progressbar" aria-label="Video tayyorlash bosqichlari" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress}" style="--progress:${progress}%"><b>${progress}%</b><span>Bosqichlar bo‘yicha</span></div>`:''}
+<ol class="creative-steps">${steps.map(([title,detail,complete],i)=>{const running=!complete&&!current&&!failed;if(running)current=true;return `<li><span class="creative-step-icon ${complete?'complete':running?'running':''}">${complete?'✓':i+1}</span><div><b>${title}</b><small>${esc(detail)}</small></div></li>`;}).join('')}</ol><p class="creative-status" role="status">${esc(job.message||'')}</p>
+${scenes.length?`<div class="creative-thumbnails">${scenes.map((s,i)=>`<div>${images[i]?`<img src="${esc(images[i])}" alt="${i+1}-sahna: ${esc(s.big||'')}">`:`<span class="creative-placeholder">${i+1}</span>`}</div>`).join('')}</div>`:''}
+${ready?`<section class="creative-cast"><h3>Ovozlar</h3><p class="creative-hint">Har rol uchun ovoz tanlang va namunani eshiting. Namuna tanlangan xizmat limitidan foydalanadi.</p>${speakers.map((speaker,i)=>`<div class="creative-voice-row"><label for="voice-${i}">${esc(speaker)}</label><select id="voice-${i}" data-speaker="${esc(speaker)}">${voices.map(v=>`<option value="${esc(v.id)}" ${(cast[speaker]||'expressive')===v.id?'selected':''}>${esc(v.name)}</option>`).join('')}</select><button type="button" class="connection-button" data-preview="${i}">▶ Eshitish</button></div>`).join('')}<audio id="creativeVoiceAudio" controls hidden></audio><p class="creative-hint">Ifodali aktyor sahna hissiyotini ijro etadi. Sardor va Madina — oddiy o‘zbekcha ovozlar. Ovoz sun’iy intellekt orqali yaratiladi.</p></section>`:''}
+<div class="creative-scenes">${scenes.map((s,i)=>`<article class="creative-scene">${images[i]?`<img class="creative-scene-image" src="${esc(images[i])}" alt="${i+1}-sahna">`:`<span class="creative-scene-no">${i+1}</span>`}<div><b>${esc(s.big||`Sahna ${i+1}`)}</b><p>${esc(s.voice)}</p><small>${esc(s.speaker||'Hikoyachi')}</small></div></article>`).join('')}</div>
+${ready?'<div class="creative-render-bar"><button type="button" id="creativeRender" class="btn primary creative-action">▶ Videoni yasash</button><p>Tanlangan ovozlar bilan yig‘iladi. Sahifadan chiqsangiz ham davom etadi.</p></div>':''}
+${!done&&!failed&&!ready?'<p class="creative-hint">Sahifadan chiqsangiz ham tayyorlanadi. Qaytganingizda jarayon shu yerdan ko‘rinadi.</p>':''}
+${failed?`<div class="creative-error" role="alert">${esc(job.message)}</div>`:''}
+${done?`<div class="creative-done"><b>✓ Video tayyor</b><div class="creative-delivery"><button type="button" class="creative-download" id="creativeTelegram" ${job.telegram_status==='sent'?'disabled':''}>${job.telegram_status==='sent'?'✓ Telegram’ga yuborilgan':'Telegram botga yuborish'}</button><a class="creative-download" href="/api/outbox/${encodeURIComponent(job.video)}" download>↓ Yuklab olish</a></div></div><p class="creative-hint">Telegram tugmasi videoni botdagi shaxsiy chattingizga yuboradi.</p><video class="creative-player" controls playsinline src="/api/outbox/${encodeURIComponent(job.video)}"></video>`:''}`;
+result.querySelectorAll('[data-speaker]').forEach(s=>s.onchange=()=>{cast[s.dataset.speaker]=s.value;});
+result.querySelectorAll('[data-preview]').forEach(b=>b.onclick=async()=>{b.disabled=true;try{const s=$('voice-'+b.dataset.preview);const r=await fetch(`/api/creative-video/${encodeURIComponent(jobId)}/preview`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({speaker:s.dataset.speaker,voice:s.value})});if(!r.ok){const d=await r.json();throw Error(d.error||'Ovoz namunasi olinmadi');}if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(await r.blob());const player=$('creativeVoiceAudio');player.src=audioUrl;player.hidden=false;await player.play();}catch(e){error(e.message);}finally{b.disabled=false;}});
+if($('creativeRender'))$('creativeRender').onclick=async()=>{$('creativeRender').disabled=true;try{result.querySelectorAll('[data-speaker]').forEach(s=>cast[s.dataset.speaker]=s.value);await action('render',{voices:cast});active=true;button.disabled=true;poll(jobId);}catch(e){error(e.message);$('creativeRender').disabled=false;}};
+if($('creativeTelegram'))$('creativeTelegram').onclick=async()=>{const b=$('creativeTelegram');b.disabled=true;b.textContent='Yuborilmoqda…';try{const d=await action('telegram');b.textContent=d.message;}catch(e){error(e.message);b.disabled=false;b.textContent='Telegram botga yuborish';}};
+}
+async function poll(id){clearTimeout(timer);try{const job=await api('/api/creative-video/'+encodeURIComponent(id));jobId=id;render(job);active=!['ready','done','error'].includes(job.status);button.disabled=active;button.textContent=active?'Video tayyorlanmoqda…':'✦ Yangi video yaratish';if(active)timer=setTimeout(()=>poll(id),2000);}catch(e){error(e.message+' Holat qayta tekshiriladi.');button.disabled=false;timer=setTimeout(()=>poll(id),10000);}}
+button.onclick=async()=>{if(active||!idea.value.trim()){idea.focus();return;}clearTimeout(timer);active=true;cast={};button.disabled=true;result.innerHTML='<div class="creative-empty"><span class="creative-spinner"></span><h2>Ali hikoyani rejalashtiryapti</h2></div>';try{const data=await api('/api/creative-video',{idea:idea.value.trim(),style:$('creativeStyle').value,format:$('creativeFormat').value});jobId=data.id;try{localStorage.setItem('aliCreativeJob',jobId);}catch(_){}poll(jobId);}catch(e){error(e.message);active=false;button.disabled=false;}};
+api('/api/creative-voices').then(d=>{voices=d.voices;}).catch(()=>{});
+try{const id=localStorage.getItem('aliCreativeJob');if(/^[0-9a-f]{32}$/.test(id||''))poll(id);else api('/api/creative-latest').then(d=>{if(d.id)poll(d.id);}).catch(()=>{});}catch(_){}
 })();

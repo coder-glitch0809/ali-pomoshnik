@@ -433,7 +433,7 @@ async def creative_video_start(request: Request):
     body = await json_object(request)
     try:
         job_id = creative_video.create(str(body.get('idea', '')), str(body.get('style', '2D serial')),
-                                       str(body.get('format', '9:16')))
+                                       str(body.get('format', '9:16')), review=True)
         return {'id': job_id}
     except ValueError as error:
         return JSONResponse({'error': str(error)}, status_code=400)
@@ -459,6 +459,64 @@ async def creative_video_character(job_id: str, request: Request):
     from ali import creative_video
     path = creative_video.character_path(job_id)
     return FileResponse(path) if path else JSONResponse({}, status_code=404)
+
+
+@app.get('/api/creative-voices')
+async def creative_voices(request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    from ali import studio_voice
+    return {'voices': studio_voice.options()}
+
+
+@app.get('/api/creative-latest')
+async def creative_latest(request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    paths = [p for p in (config.data_dir / 'creative_videos').glob('*/job.json')
+             if re.fullmatch(r'[0-9a-f]{32}', p.parent.name)]
+    latest = max(paths, key=lambda p: p.stat().st_mtime) if paths else None
+    return {'id': latest.parent.name if latest else None}
+
+
+@app.get('/api/creative-video/{job_id}/scene/{index}')
+async def creative_scene(job_id: str, index: int, request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    from ali import creative_video
+    path = creative_video.scene_path(job_id, index)
+    return FileResponse(path) if path else JSONResponse({}, status_code=404)
+
+
+@app.post('/api/creative-video/{job_id}/{action}')
+async def creative_action(job_id: str, action: str, request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if foreign_origin(request):
+        return JSONResponse({}, status_code=403)
+    from ali import creative_video, studio_voice
+    job = creative_video.get(job_id)
+    if not job:
+        return JSONResponse({}, status_code=404)
+    try:
+        if action == 'telegram':
+            return {'message': await creative_video.send_telegram(job_id)}
+        body = await json_object(request)
+        if action == 'render':
+            creative_video.start_render(job_id, body.get('voices', {}))
+            return {'message': 'Video yig‘ish boshlandi'}
+        if action == 'preview':
+            if job.get('status') != 'ready':
+                raise ValueError('Avval sahnalar tayyor bo‘lishini kuting')
+            speaker = str(body.get('speaker', 'Hikoyachi'))
+            scene = next((s for s in job['story']['scenes'] if (s.get('speaker') or 'Hikoyachi') == speaker), None)
+            if not scene:
+                raise ValueError('Qahramon topilmadi')
+            data = await studio_voice.speak(str(scene['voice'])[:200], str(body.get('voice', 'expressive')), scene.get('emotion', 'neutral'))
+            return Response(data, media_type='audio/mpeg', headers={'Cache-Control': 'no-store'})
+        return JSONResponse({}, status_code=404)
+    except (ValueError, RuntimeError) as error:
+        return JSONResponse({'error': str(error)}, status_code=400)
 
 
 def is_local(request: Request) -> bool:
