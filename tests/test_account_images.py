@@ -10,6 +10,40 @@ from ali.config import config
 
 
 class AccountImageTests(unittest.TestCase):
+    def test_codex_state_database_open_failure_prepares_a_new_home(self):
+        failure = SimpleNamespace(returncode=1, stdout="", stderr=(
+            "Failed to initialize state runtime: failed to open state DB at state_5.sqlite: "
+            "(code: 14) unable to open database file"
+        ))
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            with (
+                patch.object(config, "data_dir", root),
+                patch.object(local_ai, "STATE", root / "apps.json"),
+                patch.object(local_ai, "WORKDIR", root / "work"),
+                patch.object(local_ai, "app_exe", return_value="codex"),
+                patch.object(local_ai.subprocess, "run", return_value=failure),
+            ):
+                ok, message = local_ai.verify("codex")
+                self.assertFalse(ok)
+                self.assertIn("«Kirish»", message)
+                self.assertEqual(local_ai.clean_env("codex")["CODEX_HOME"], str(root / "codex-home"))
+
+    def test_windows_gemini_login_and_prompt_use_direct_cli(self):
+        with tempfile.TemporaryDirectory() as folder, patch.object(local_ai, "WORKDIR", Path(folder)):
+            with (
+                patch.object(local_ai.os, "name", "nt"),
+                patch.object(local_ai, "app_exe", return_value="gemini.cmd"),
+                patch.object(local_ai.subprocess, "Popen") as launch,
+                patch.object(local_ai.subprocess, "run", return_value=SimpleNamespace(
+                    returncode=0, stdout="OK", stderr=""
+                )) as run,
+            ):
+                local_ai.open_login("gemini")
+                self.assertEqual(local_ai.ask_one("gemini", "gemini.cmd", "Verify", account_only=True), "OK")
+                self.assertEqual(launch.call_args.kwargs["env"]["GEMINI_CLI_NO_RELAUNCH"], "1")
+                self.assertEqual(run.call_args.kwargs["env"]["GEMINI_CLI_NO_RELAUNCH"], "1")
+
     def test_readonly_codex_database_switches_login_and_verification_to_writable_home(self):
         failed = SimpleNamespace(returncode=1, stdout="", stderr=(
             "attempt to write a readonly database\n"

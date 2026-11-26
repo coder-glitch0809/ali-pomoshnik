@@ -316,7 +316,7 @@ def verify(key: str) -> tuple[bool, str]:
             try:
                 _codex_local_home().mkdir(mode=0o700, parents=True, exist_ok=True)
                 set_option("_codex_local_home", True)
-                message = ("Eski Codex papkasiga yozib bo‘lmadi. Ali alohida Codex papkasini tayyorladi. "
+                message = ("Eski Codex bazasiga kirib bo‘lmadi. Ali alohida Codex papkasini tayyorladi. "
                            "«Kirish» orqali ChatGPT akkauntingizga kiring, keyin «Tekshirish»ni bosing.")
             except OSError:
                 message = "Ali yangi Codex papkasini yarata olmadi. Ali ma’lumotlar papkasiga yozish ruxsatini tekshiring."
@@ -384,6 +384,9 @@ def clean_env(key: str | None = None) -> dict:
            if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY")}
     # Gemini CLI faqat "ishonchli" papkada ishlaydi; WORKDIR - Ali'ning o'z bo'sh ish papkasi
     env["GEMINI_CLI_TRUST_WORKSPACE"] = "true"
+    if key == "gemini" and os.name == "nt":
+        # Run the CLI directly when the Windows launcher cannot spawn its Node child.
+        env["GEMINI_CLI_NO_RELAUNCH"] = "1"
     if key == "codex" and option("_codex_local_home"):
         home = str(_codex_local_home())
         env.update(CODEX_HOME=home, CODEX_SQLITE_HOME=home)
@@ -471,8 +474,11 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
     if proc.returncode != 0 or not answer:
         raw = (proc.stderr or "") + answer
         detail = re.sub(r"\x1b\[[0-9;]*m", "", proc.stderr or answer).strip()[-400:]
-        if key == "codex" and "attempt to write a readonly database" in raw.lower():
-            raise CodexStorageError("Codex ma’lumotlar bazasiga yoza olmadi.")
+        if key == "codex":
+            diagnostic = raw.lower()
+            if ("attempt to write a readonly database" in diagnostic
+                    or "failed to open state db" in diagnostic and "unable to open database file" in diagnostic):
+                raise CodexStorageError("Codex ma’lumotlar bazasini ochib yoki yoza olmadi.")
         if key == "codex" and "model_not_in_accessible_catalog" in raw:
             detail = ("ChatGPT akkauntida model mavjud emas. Codex’da /model orqali mavjud modelni tanlang, "
                       "Ali .env faylida ALI_CODEX_MODEL ni shu modelga sozlang va Ali’ni qayta ishga tushiring.")
