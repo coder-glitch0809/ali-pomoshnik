@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS messages (
     content    TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS recorded_events (
+    event_key TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS knowledge (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     topic      TEXT NOT NULL,
@@ -125,6 +129,18 @@ class Memory:
             (session_id, role, content, _now()),
         )
         journal(role, content)
+
+    def log_event(self, event_key: str, session_id: str, role: str, content: str) -> bool:
+        """Persist a transport event once, even if Telegram redelivers it after restart."""
+        with self._lock, self.conn:
+            inserted = self.conn.execute('INSERT OR IGNORE INTO recorded_events VALUES (?,?)',
+                                         (event_key, _now())).rowcount
+            if inserted:
+                self.conn.execute('INSERT INTO messages(session_id,role,content,created_at) VALUES (?,?,?,?)',
+                                  (session_id, role, content, _now()))
+        if inserted:
+            journal(role, content)
+        return bool(inserted)
 
     def recall(self, question: str, min_ratio: float = 0.9, scan: int = 3000) -> dict | None:
         """Avval aynan shunday (yoki deyarli shunday) savol berilgan bo'lsa - o'shanda berilgan javob.

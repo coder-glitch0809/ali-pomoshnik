@@ -226,7 +226,7 @@ def _render(job_id: str) -> None:
 
 
 async def send_telegram(job_id: str) -> str:
-    from telegram import Bot
+    from .telegram_memory import MemoryBot
     from . import outbox
     job = get(job_id)
     if not job or job.get("status") != "done":
@@ -244,7 +244,7 @@ async def send_telegram(job_id: str) -> str:
         _jobs[job_id]["telegram_status"] = "sending"
     _update(job_id, telegram_status="sending")
     try:
-        async with Bot(token) as bot:
+        async with MemoryBot(token, source='Multik' if config.multik_bot_token else 'Ali') as bot:
             with path.open("rb") as stream:
                 await bot.send_video(chat_id=config.telegram_owner_id, video=stream,
                     caption=str(job.get("story", {}).get("title", "Ali videosi"))[:900],

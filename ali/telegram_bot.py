@@ -144,8 +144,10 @@ class TelegramBot(PublicTelegram, Listener):
         from . import instance
         if not instance.acquire(instance.bot_lock(config.telegram_token)):  # bitta token - bitta so'rovchi (Conflict yo'q)
             raise RuntimeError("bu bot shu kompyuterdagi boshqa Ali nusxasida ishlayapti")
-        self.app = Application.builder().token(config.telegram_token).concurrent_updates(8).build()
+        from .telegram_memory import MemoryBot, observe
+        self.app = Application.builder().bot(MemoryBot(config.telegram_token, source='Ali')).concurrent_updates(8).build()
         a = self.app
+        a.add_handler(observe('Ali', lambda: self.users | {self.owner_id, config.telegram_owner_id}), group=-100)
         a.add_error_handler(self.on_error)
         a.add_handler(CommandHandler("start", self.cmd_start))
         a.add_handler(CommandHandler("menu", self.cmd_start))

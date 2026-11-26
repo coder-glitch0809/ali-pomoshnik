@@ -87,7 +87,7 @@ class CreativeTests(unittest.TestCase):
         studio._update(JOB,status='done',video='clip.mp4')
         bot=AsyncMock()
         bot.__aenter__.return_value=bot
-        with patch('telegram.Bot',return_value=bot), patch.object(outbox,'resolve',return_value=path), patch.object(config,'telegram_token','test'), patch.object(config,'telegram_owner_id',42):
+        with patch('ali.telegram_memory.MemoryBot',return_value=bot), patch.object(outbox,'resolve',return_value=path), patch.object(config,'telegram_token','test'), patch.object(config,'telegram_owner_id',42):
             asyncio.run(studio.send_telegram(JOB))
             asyncio.run(studio.send_telegram(JOB))
         bot.send_video.assert_awaited_once()

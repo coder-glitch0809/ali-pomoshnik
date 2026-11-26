@@ -72,8 +72,10 @@ class MultikBot:
             raise RuntimeError("Multik bot shu kompyuterda allaqachon ishlayapti")
         self._locked = True
         try:
-            app = Application.builder().token(config.multik_bot_token).build()
+            from .telegram_memory import MemoryBot, observe
+            app = Application.builder().bot(MemoryBot(config.multik_bot_token, source='Multik')).build()
             self.app = app
+            app.add_handler(observe('Multik', lambda: self.allowed), group=-100)
             app.add_handler(CommandHandler("start", self.start_chat))
             app.add_handler(CommandHandler("video", self.make_video))
             app.add_handler(CommandHandler("cancel", self.cancel))
