@@ -1,4 +1,5 @@
 import tempfile
+import json
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -147,17 +148,41 @@ class AccountImageTests(unittest.TestCase):
     def test_native_image_output_and_workspace_cleanup(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            session = '01a21614-ee9b-7082-93e2-d440286ea894'
+            home = root / 'codex-home'
+            artifact = home / 'generated_images' / session / 'exec-image.png'
             def run(args, **kwargs):
                 if 'login' in args:
                     return SimpleNamespace(returncode=0, stdout='Logged in using ChatGPT', stderr='')
                 self.assertNotIn('OPENAI_API_KEY', kwargs['env'])
                 self.assertIn('1:1', kwargs['input'])
-                self.assertIn('workspace-write', args)
-                (Path(args[args.index('-C')+1])/'scene.png').write_bytes(b'image')
-                return SimpleNamespace(returncode=0, stdout='', stderr='')
-            with patch.object(config, 'data_dir', root), patch('ali.local_ai.app_exe', return_value='codex'), patch('ali.local_ai.access', return_value=True), patch.object(account_images.subprocess, 'run', side_effect=run), patch.object(story_video, 'good', return_value=True):
+                self.assertIn('read-only', args)
+                self.assertIn('--json', args)
+                artifact.parent.mkdir(parents=True)
+                artifact.write_bytes(b'image')
+                return SimpleNamespace(returncode=0, stdout=json.dumps({'type':'thread.started','thread_id':session}), stderr='')
+            with patch.object(config, 'data_dir', root), patch('ali.local_ai.app_exe', return_value='codex'), patch('ali.local_ai.access', return_value=True), patch.object(local_ai, 'clean_env', return_value={'CODEX_HOME':str(home)}), patch.object(account_images.subprocess, 'run', side_effect=run), patch.object(story_video, 'good', return_value=True):
                 self.assertEqual(account_images.generate('subject', (512,512)), b'image')
                 self.assertEqual(list((root/'account_images').iterdir()), [])
+                self.assertTrue(artifact.is_file())
+
+    def test_image_lookup_rejects_unrelated_and_ambiguous_artifacts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            session = '01a21614-ee9b-7082-93e2-d440286ea894'
+            folder = home / 'generated_images' / session
+            folder.mkdir(parents=True)
+            (folder / 'one.png').write_bytes(b'one')
+            env = {'CODEX_HOME':str(home)}
+            event = json.dumps({'type':'thread.started','thread_id':session})
+            self.assertIsNone(account_images.generated_image('not json', env))
+            self.assertIsNone(account_images.generated_image(json.dumps({'type':'thread.started','thread_id':'../../other'}), env))
+            other = event.replace(session, '01a21614-ee9b-7082-93e2-d440286ea895')
+            self.assertIsNone(account_images.generated_image(other, env))
+            self.assertIsNone(account_images.generated_image(event+'\n'+other, env))
+            self.assertEqual(account_images.generated_image(event, env), (folder / 'one.png').resolve())
+            (folder / 'two.png').write_bytes(b'two')
+            self.assertIsNone(account_images.generated_image(event, env))
 
     def test_selected_account_route_preserves_aspect_and_no_fallback(self):
         with patch.object(config, 'image_source', 'chatgpt_account'), patch.object(account_images, 'generate', return_value=b'image') as generate:
