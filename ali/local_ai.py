@@ -297,8 +297,19 @@ def open_login(key: str) -> None:
     exe = app_exe(key)
     if not exe:
         raise RuntimeError(f"{NAMES[key]} o'rnatilmagan")
-    subprocess.Popen(["cmd", "/k", exe, *LOGIN_ARGS[key]], env=clean_env(key),
-                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+    WORKDIR.mkdir(parents=True, exist_ok=True)
+    options = {}
+    if os.name == "nt":
+        # Ali runs hidden at startup; login must open a visible interactive window.
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.wShowWindow = 1  # SW_SHOWNORMAL
+        options["startupinfo"] = startup
+    try:
+        subprocess.Popen(["cmd", "/d", "/k", exe, *LOGIN_ARGS[key]], env=clean_env(key), cwd=WORKDIR,
+                         creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0), **options)
+    except OSError as e:
+        raise RuntimeError(f"{NAMES[key]} kirish oynasi ochilmadi: {e}") from e
 
 
 def verify(key: str) -> tuple[bool, str]:
@@ -476,8 +487,17 @@ def ask_one(key: str, exe: str, prompt: str, timeout: int = TIMEOUT, images: lis
         detail = re.sub(r"\x1b\[[0-9;]*m", "", proc.stderr or answer).strip()[-400:]
         if key == "codex":
             diagnostic = raw.lower()
+            startup_permission_error = (
+                "os error 5" in diagnostic
+                and any(marker in diagnostic for marker in (
+                    "failed to clean up stale arg0 temp dirs",
+                    "could not create path aliases",
+                    "failed to initialize in-process app-server client",
+                ))
+            )
             if ("attempt to write a readonly database" in diagnostic
-                    or "failed to open state db" in diagnostic and "unable to open database file" in diagnostic):
+                    or "failed to open state db" in diagnostic and "unable to open database file" in diagnostic
+                    or startup_permission_error):
                 raise CodexStorageError("Codex ma’lumotlar bazasini ochib yoki yoza olmadi.")
         if key == "codex" and "model_not_in_accessible_catalog" in raw:
             detail = ("ChatGPT akkauntida model mavjud emas. Codex’da /model orqali mavjud modelni tanlang, "

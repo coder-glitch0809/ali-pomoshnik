@@ -10,13 +10,37 @@ from ali.config import config
 
 
 class AccountImageTests(unittest.TestCase):
+    def test_codex_windows_startup_permission_failure_prepares_home(self):
+        failure = SimpleNamespace(returncode=1, stdout="", stderr=(
+            "WARNING: failed to clean up stale arg0 temp dirs: (os error 5)\n"
+            "WARNING: proceeding, even though we could not create PATH aliases: (os error 5)\n"
+            "Error: failed to initialize in-process app-server client: (os error 5)"
+        ))
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            with (
+                patch.object(config, "data_dir", root),
+                patch.object(local_ai, "STATE", root / "apps.json"),
+                patch.object(local_ai, "WORKDIR", root / "work"),
+                patch.object(local_ai, "app_exe", return_value="codex"),
+                patch.object(local_ai.subprocess, "run", return_value=failure),
+            ):
+                ok, message = local_ai.verify("codex")
+                self.assertFalse(ok)
+                self.assertIn("Kirish", message)
+                self.assertTrue((root / "codex-home").is_dir())
+                self.assertEqual(local_ai.clean_env("codex")["CODEX_HOME"], str(root / "codex-home"))
+                ok, message = local_ai.verify("codex")
+                self.assertFalse(ok)
+                self.assertIn("ruxsatini", message)
+
     def test_codex_state_database_open_failure_prepares_a_new_home(self):
         failure = SimpleNamespace(returncode=1, stdout="", stderr=(
             "Failed to initialize state runtime: failed to open state DB at state_5.sqlite: "
             "(code: 14) unable to open database file"
         ))
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
+            root = Path(folder).resolve()
             with (
                 patch.object(config, "data_dir", root),
                 patch.object(local_ai, "STATE", root / "apps.json"),
@@ -33,6 +57,9 @@ class AccountImageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, patch.object(local_ai, "WORKDIR", Path(folder)):
             with (
                 patch.object(local_ai.os, "name", "nt"),
+                patch.object(local_ai.subprocess, "STARTUPINFO", create=True,
+                             return_value=SimpleNamespace(dwFlags=0, wShowWindow=0)),
+                patch.object(local_ai.subprocess, "STARTF_USESHOWWINDOW", 1, create=True),
                 patch.object(local_ai, "app_exe", return_value="gemini.cmd"),
                 patch.object(local_ai.subprocess, "Popen") as launch,
                 patch.object(local_ai.subprocess, "run", return_value=SimpleNamespace(
@@ -40,9 +67,21 @@ class AccountImageTests(unittest.TestCase):
                 )) as run,
             ):
                 local_ai.open_login("gemini")
+                self.assertEqual(launch.call_args.kwargs["startupinfo"].wShowWindow, 1)
+                self.assertEqual(launch.call_args.kwargs["cwd"], Path(folder))
                 self.assertEqual(local_ai.ask_one("gemini", "gemini.cmd", "Verify", account_only=True), "OK")
                 self.assertEqual(launch.call_args.kwargs["env"]["GEMINI_CLI_NO_RELAUNCH"], "1")
                 self.assertEqual(run.call_args.kwargs["env"]["GEMINI_CLI_NO_RELAUNCH"], "1")
+
+    def test_login_launch_failure_is_reported(self):
+        with (
+            tempfile.TemporaryDirectory() as folder,
+            patch.object(local_ai, "WORKDIR", Path(folder)),
+            patch.object(local_ai, "app_exe", return_value="codex.cmd"),
+            patch.object(local_ai.subprocess, "Popen", side_effect=OSError("Access denied")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "kirish oynasi ochilmadi"):
+                local_ai.open_login("codex")
 
     def test_readonly_codex_database_switches_login_and_verification_to_writable_home(self):
         failed = SimpleNamespace(returncode=1, stdout="", stderr=(
@@ -51,7 +90,7 @@ class AccountImageTests(unittest.TestCase):
         ))
         success = SimpleNamespace(returncode=0, stdout="OK", stderr="")
         with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
+            root = Path(folder).resolve()
             original = str(root / "existing-codex")
             with (
                 patch.object(config, "data_dir", root),

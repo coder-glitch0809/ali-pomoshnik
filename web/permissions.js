@@ -111,7 +111,7 @@
     buttons.forEach(b=>b.disabled=true);
     status.textContent={install:'O‘rnatilmoqda… (bir necha daqiqa)',login:'Kirish oynasi ochilmoqda…',verify:'Tekshirilmoqda… (1-3 daqiqa)',forget:'Unutilmoqda…'}[action];
     try{const r=await fetch(`/api/ai-apps/${key}/${action}`,{method:'POST'});const data=await r.json();
-      if(!r.ok)throw Error(data.error||'Bajarilmadi');status.textContent=data.message;renderAiApps(data);buttons.forEach(b=>b.disabled=false);
+      if(!r.ok)throw Error(data.error||(r.status===401?'Avval Ali tizimiga kiring.':'Bajarilmadi'));status.textContent=data.message;renderAiApps(data);buttons.forEach(b=>b.disabled=false);
       const row=document.querySelector(`[data-ai-app="${key}"] .ai-app-status`);if(row&&action!=='verify')row.textContent=data.message;}
     catch(e){status.textContent=e.message;buttons.forEach(b=>b.disabled=false);}
   }
@@ -120,7 +120,7 @@
     const note=info.local?[]:[node('p','Ulash uchun saytni shu kompyuterda oching: http://localhost:8000','ai-apps-note')];
     root.replaceChildren(...note,...info.apps.map(a=>{
       const row=node('div',undefined,'permission-connection');row.dataset.aiApp=a.key;
-      const state=!a.installed?'O‘rnatilmagan':a.connected?`✅ Ulangan · ${a.at}`:a.connected===false?`⚠️ Ulanmagan — ${APP_HINTS[a.key]}`:`O‘rnatilgan · ${APP_HINTS[a.key]}`;
+      const state=!a.installed?'O‘rnatilmagan':a.connected?`✅ Ulangan · ${a.at}`:a.connected===false?`⚠️ Ulanmagan — ${a.error||APP_HINTS[a.key]}`:`O‘rnatilgan · ${APP_HINTS[a.key]}`;
       const status=node('span',state,'ai-app-status'),box=node('div',undefined,'ai-app-actions'),buttons=[];
       const add=(label,action,primary)=>{const b=node('button',label,'connection-button'+(primary?' primary':''));b.type='button';b.disabled=!info.local;b.onclick=()=>aiAppAction(a.key,action,status,buttons);buttons.push(b);box.append(b);};
       if(!a.installed)add('O‘rnatish','install',true);
