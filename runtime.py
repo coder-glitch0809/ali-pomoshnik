@@ -501,6 +501,9 @@ async def creative_action(job_id: str, action: str, request: Request):
     try:
         if action == 'telegram':
             return {'message': await creative_video.send_telegram(job_id)}
+        if action == 'aistudio':
+            from ali import studio_audio
+            return studio_audio.use_aistudio(job_id)
         body = await json_object(request)
         if action == 'render':
             creative_video.start_render(job_id, body.get('voices', {}))
@@ -512,11 +515,42 @@ async def creative_action(job_id: str, action: str, request: Request):
             scene = next((s for s in job['story']['scenes'] if (s.get('speaker') or 'Hikoyachi') == speaker), None)
             if not scene:
                 raise ValueError('Qahramon topilmadi')
+            if body.get('voice') == 'aistudio':
+                from ali import studio_audio
+                path = studio_audio.path(job_id, job['story']['scenes'].index(scene)+1)
+                if path is None:
+                    raise ValueError('Shu sahnaning AI Studio WAV faylini yuklang')
+                return FileResponse(path, media_type='audio/wav')
             data = await studio_voice.speak(str(scene['voice'])[:200], str(body.get('voice', 'expressive')), scene.get('emotion', 'neutral'))
             return Response(data, media_type='audio/mpeg', headers={'Cache-Control': 'no-store'})
         return JSONResponse({}, status_code=404)
     except (ValueError, RuntimeError) as error:
         return JSONResponse({'error': str(error)}, status_code=400)
+
+
+@app.post('/api/creative-video/{job_id}/audio/{index}')
+async def creative_audio_upload(job_id: str, index: int, request: Request, file: UploadFile = File(...)):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    if foreign_origin(request):
+        return JSONResponse({}, status_code=403)
+    from ali import studio_audio
+    try:
+        data = await file.read(studio_audio.MAX_BYTES + 1)
+        return await asyncio.to_thread(studio_audio.save, job_id, index, data)
+    except ValueError as error:
+        return JSONResponse({'error': str(error)}, status_code=400)
+    finally:
+        await file.close()
+
+
+@app.get('/api/creative-video/{job_id}/audio/{index}')
+async def creative_audio_file(job_id: str, index: int, request: Request):
+    if not is_authed(request.cookies):
+        return JSONResponse({}, status_code=401)
+    from ali import studio_audio
+    path = studio_audio.path(job_id, index)
+    return FileResponse(path, media_type='audio/wav') if path else JSONResponse({}, status_code=404)
 
 
 def is_local(request: Request) -> bool:

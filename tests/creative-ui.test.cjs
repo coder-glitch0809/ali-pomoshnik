@@ -28,6 +28,8 @@ test('ready job restores storyboard, previews, cast and explicit render action',
   assert.match(ui.html(),/Eshitish/);
   assert.match(ui.html(),/data-speaker="Jasur"/);
   assert.match(ui.html(),/src="\/scene\/1"/);
+  assert.match(ui.html(),/data-scene-audio="1"/);
+  assert.match(ui.html(),/aistudio.google.com\/generate-speech/);
   assert.doesNotMatch(ui.html(),/<script>bad/);
   assert.equal(ui.requests.filter(r=>r.options?.method==='POST').length,0);
 });

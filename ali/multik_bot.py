@@ -159,7 +159,7 @@ class MultikBot:
             return
         try:
             from . import creative_video
-            job_id = creative_video.create(idea, choice[1], "9:16")
+            job_id = creative_video.create(idea, choice[1], "9:16", review=True)
         except (ValueError, RuntimeError) as error:
             await query.edit_message_text(str(error)[:900])
             return
@@ -193,6 +193,13 @@ class MultikBot:
                     raise RuntimeError("Video vazifasi topilmadi")
                 if job["status"] == "error":
                     raise RuntimeError(job.get("message") or "Video yaratilmadi")
+                if job["status"] == "ready" and job.get('review'):
+                    base = config.public_url.rstrip('/') or 'http://localhost:8000'
+                    await context.bot.send_message(chat_id=requester_chat, text=(
+                        'Ssenariy va rasmlar tayyor. API kalitisiz ovoz uchun Ali’da har sahnaning '
+                        'matnini AI Studio’ga nusxalang, yaratilgan WAV’larni yuklang va «Videoni yasash»ni bosing.\n'
+                        f'{base}/?creative_job={job_id}#video'))
+                    return
                 if job["status"] == "done":
                     break
             video = outbox.resolve(job.get("video", ""))

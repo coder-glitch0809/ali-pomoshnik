@@ -17,6 +17,14 @@ from ali.skills.video_edit import info
 
 
 class MultikBotTests(unittest.IsolatedAsyncioTestCase):
+    async def test_prepared_job_offers_voice_import_without_tts_or_upload(self):
+        job = {'status':'ready','review':True}
+        bot = SimpleNamespace(send_message=AsyncMock(), send_video=AsyncMock())
+        with patch.object(creative_video,'get',return_value=job), patch('ali.multik_bot.asyncio.sleep',AsyncMock()):
+            await MultikBot()._deliver('a'*32,42,SimpleNamespace(bot=bot))
+        bot.send_video.assert_not_awaited()
+        self.assertIn('creative_job='+'a'*32,bot.send_message.call_args.kwargs['text'])
+
     def test_connected_chatgpt_takes_priority_over_openai_key(self):
         with (
             patch.object(config, "openai_api_key", "fixture-key"),

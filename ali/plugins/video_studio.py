@@ -345,7 +345,7 @@ def _srt(scenes: list[dict]) -> str:
 def make_content_video(topic: str = "", scenes: list | None = None, format: str = "9:16", platform: str = "reels",
                        duration_s: int = 30, voice: bool = True, ai_images: bool = True, colors: list | None = None,
                        audience: str = "", goal: str = "", images: list | None = None,
-                       *, _output_path: Path | None = None, _progress=None, _voice_cast=None) -> str:
+                       *, _output_path: Path | None = None, _progress=None, _voice_cast=None, _scene_audio=None) -> str:
     import imageio_ffmpeg
     topic = _clean(topic, 500) or DEFAULT_TOPIC
     script = {"title": topic, "scenes": scenes or []}
@@ -376,14 +376,15 @@ def make_content_video(topic: str = "", scenes: list | None = None, format: str 
                 try:
                     if _progress:
                         _progress("voice", i, len(clean))
-                    data = (_tts(sc["narration"], voice_id=_voice_cast.get(sc["speaker"], "expressive"), emotion=sc["emotion"])
+                    supplied = (_scene_audio or [])[i] if i < len(_scene_audio or []) else None
+                    data = Path(supplied).read_bytes() if supplied else (_tts(sc["narration"], voice_id=_voice_cast.get(sc["speaker"], "expressive"), emotion=sc["emotion"])
                             if _voice_cast is not None else _tts(sc["narration"]))
                     if not data:
                         raise RuntimeError("TTS bo'sh audio qaytardi")
                     a = stem.parent / f"{stem.name}_ovoz{i}.{'wav' if data[:4] == b'RIFF' else 'mp3'}"
                     a.write_bytes(data)
                     sc["speak"] = _audio_seconds(a) or sc["duration"]
-                    sc["duration"] = max(sc["duration"], min(sc["speak"] + .6, 20.0))
+                    sc["duration"] = max(sc["duration"], sc["speak"] + .6)
                     audios.append((a, start))
                 except Exception as e:
                     for audio, _ in audios:

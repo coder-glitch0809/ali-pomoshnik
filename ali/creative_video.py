@@ -186,7 +186,11 @@ def start_render(job_id: str, voices: dict) -> None:
     if not isinstance(voices, dict) or any(not isinstance(v, str) or v not in allowed for v in voices.values()):
         raise ValueError("Ro‘yxatdagi ovozlardan tanlang")
     speakers = {str(s.get("speaker") or "Hikoyachi") for s in job["story"]["scenes"]}
-    selected = {speaker: voices.get(speaker, "expressive") for speaker in speakers}
+    selected = {speaker: voices.get(speaker, "aistudio") for speaker in speakers}
+    from . import studio_audio
+    for index, scene in enumerate(job['story']['scenes']):
+        if selected[str(scene.get('speaker') or 'Hikoyachi')] == 'aistudio' and studio_audio.path(job_id, index+1) is None:
+            raise ValueError(f'{index+1}-sahna uchun AI Studio WAV faylini yuklang. API kaliti kerak emas.')
     with _lock:
         if _jobs[job_id].get("status") != "ready":
             raise ValueError("Video allaqachon yig‘ilmoqda")
@@ -212,10 +216,13 @@ def _render(job_id: str) -> None:
                     progress=base + round(span * done / max(total, 1)),
                     message={"voice": "Diktor ovozi", "frames": "Kadrlar yig‘ilmoqda", "mux": "Ovoz va video birlashtirilmoqda"}[stage])
         video = outbox.new_path(f"multik_{job_id}", "mp4")
+        from . import studio_audio
+        uploads = [studio_audio.path(job_id, i+1) if (job.get('voices') or {}).get(s['speaker']) == 'aistudio' else None
+                   for i, s in enumerate(scenes)]
         result = make_content_video(topic=job.get("idea", story.get("title", "Video")), scenes=scenes,
                     format=job.get("format", "9:16"), platform="reels", voice=True, ai_images=False,
                     images=[str(folder / f"scene-{i+1}.png") for i in range(len(scenes))],
-                    _output_path=video, _progress=progress, _voice_cast=job.get("voices") or {})
+                    _output_path=video, _progress=progress, _voice_cast=job.get("voices") or {}, _scene_audio=uploads)
         if not video.is_file():
             raise RuntimeError(result or "MP4 fayli yaratilmadi")
         _update(job_id, status="done", stage="done", progress=100, message="Video tayyor", video=video.name, result=result)

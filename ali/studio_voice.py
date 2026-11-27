@@ -9,7 +9,8 @@ EMOTIONS = {"neutral": "", "happy": "[happy]", "excited": "[excited]",
 
 
 def options():
-    return [{"id": "expressive", "name": "Ifodali aktyor · ElevenLabs"},
+    return [{"id": "aistudio", "name": "Google AI Studio · WAV, API kalitisiz"},
+            {"id": "expressive", "name": "Ifodali aktyor · ElevenLabs"},
             {"id": "sardor", "name": "Sardor · o‘zbekcha erkak"},
             {"id": "madina", "name": "Madina · o‘zbekcha ayol"}]
 
@@ -25,6 +26,8 @@ async def speak(text, voice="expressive", emotion="neutral"):
     text = prepare(text)
     if not text:
         raise ValueError("Ovoz matni bo‘sh")
+    if voice == 'aistudio':
+        raise ValueError('AI Studio rejimida shu sahna uchun yaratilgan WAV faylini yuklang')
     if voice == "expressive":
         voice_id = tts.current_voice().get("voice_id") or config.elevenlabs_voice_id
         if not config.elevenlabs_api_key or not voice_id:
