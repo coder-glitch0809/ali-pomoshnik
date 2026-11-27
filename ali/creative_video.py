@@ -177,6 +177,35 @@ def scene_path(job_id: str, index: int) -> Path | None:
     return path if path.is_file() and not path.is_symlink() else None
 
 
+def redraw_scene(job_id: str, index: int) -> None:
+    """Replace one illustration atomically, retaining narration and other scenes."""
+    job = get(job_id)
+    scenes = ((job or {}).get('story') or {}).get('scenes', [])
+    if not job or job.get('status') != 'ready' or not 1 <= index <= len(scenes):
+        raise ValueError('Qayta chizish uchun sahnalar tayyor bo‘lishi kerak')
+    with _lock:
+        if _jobs[job_id]['status'] != 'ready':
+            raise ValueError('Boshqa ish bajarilmoqda')
+        _jobs[job_id]['status'] = 'images'
+    _update(job_id, message=f'{index}-sahna qayta chizilmoqda…')
+    try:
+        from . import providers, account_images
+        fmt = job.get('format')
+        size = (1920, 1080) if fmt == '16:9' else (1080, 1080) if fmt == '1:1' else (1080, 1920)
+        prompt = (f"Character: {job['story'].get('character', '')}. "
+                  f"Scene: {scenes[index-1].get('image', '')}. No text, no watermark.")
+        data = (providers._openai_image(prompt, 'medium', size) if job.get('source') == 'OpenAI API'
+                else account_images.generate(prompt, size))
+        target = config.data_dir / 'creative_videos' / job_id / f'scene-{index}.png'
+        temp = target.with_suffix('.tmp')
+        temp.write_bytes(data)
+        temp.replace(target)
+        _update(job_id, status='ready', message=f'{index}-sahna yangilandi.')
+    except Exception:
+        _update(job_id, status='ready', message=f'{index}-sahna qayta chizilmadi. Oldingi rasm saqlandi.')
+        raise
+
+
 def start_render(job_id: str, voices: dict) -> None:
     from . import studio_voice
     job = get(job_id)

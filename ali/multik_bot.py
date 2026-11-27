@@ -7,6 +7,7 @@ from telegram.ext import (Application, CallbackQueryHandler, CommandHandler, Con
                           MessageHandler, filters)
 
 from .config import config
+from .multik_panel import StudioPanel
 
 log = logging.getLogger("ali.multik_bot")
 
@@ -54,7 +55,7 @@ def _style_keyboard(suggested: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
-class MultikBot:
+class MultikBot(StudioPanel):
     def __init__(self):
         self.app: Application | None = None
         self._locked = False
@@ -77,6 +78,9 @@ class MultikBot:
             self.app = app
             app.add_handler(observe('Multik', lambda: self.allowed), group=-100)
             app.add_handler(CommandHandler("start", self.start_chat))
+            app.add_handler(CommandHandler("panel", self.panel))
+            app.add_handler(CallbackQueryHandler(self.studio_action, pattern=r"^studio:"))
+            app.add_handler(MessageHandler(filters.Document.ALL | filters.AUDIO, self.receive_audio))
             app.add_handler(CommandHandler("video", self.make_video))
             app.add_handler(CommandHandler("cancel", self.cancel))
             app.add_handler(CallbackQueryHandler(self.choose_style, pattern=r"^multik_(?:style:|cancel$)"))
@@ -107,15 +111,7 @@ class MultikBot:
             self._locked = False
 
     async def start_chat(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        if not await self._authorized(update):
-            return
-        await update.effective_message.reply_text(
-            "Ssenariy yoki g‘oyangizni yuboring. Men mazmunidan uslubni taxmin qilaman, "
-            "keyin 2D, 3D, anime, fantaziya, kino-ertak, ertak kitobi yoki plastilindan tanlatasiz.\n\n"
-            "Tanlovdan keyin ChatGPT qahramon va sahna rasmlarini yaratadi, ovoz, subtitr va yakuniy CTA bilan "
-            "videoni shu chatga yuboraman. Ali jamoasi guruhi sozlangan bo‘lsa, videoni u yerga ham yuboraman. "
-            "Bekor qilish: /cancel"
-        )
+        await self.panel(update, _context)
 
     async def make_video(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._authorized(update):
@@ -131,6 +127,7 @@ class MultikBot:
             return
         user_id = update.effective_user.id
         self.pending[user_id] = idea[:1200]
+        self._remember(user_id, idea=idea[:1200])
         guess = _guess_style(idea)
         guess_label = STYLE_BY_KEY[guess][0]
         await message.reply_text(
@@ -149,17 +146,22 @@ class MultikBot:
         user_id = update.effective_user.id
         if query.data == "multik_cancel":
             self.pending.pop(user_id, None)
+            self._remember(user_id, idea=None)
             await query.edit_message_text("Video yaratish bekor qilindi. Yangi ssenariy uchun matn yuboring.")
             return
         key = query.data.split(":", 1)[-1]
         choice = STYLE_BY_KEY.get(key)
-        idea = self.pending.pop(user_id, None)
+        prefs = self._state().get(str(user_id), {})
+        idea = self.pending.pop(user_id, None) or prefs.get('idea')
         if not choice or not idea:
             await query.edit_message_text("Ssenariy topilmadi yoki eskirgan. Iltimos, qaytadan yuboring.")
             return
         try:
             from . import creative_video
-            job_id = creative_video.create(idea, choice[1], "9:16", review=True)
+            job_id = creative_video.create(idea, choice[1], prefs.get('format', '9:16'), review=True)
+            creative_video._update(job_id, bot_user=user_id, bot_chat=query.message.chat_id,
+                                   bot_voice=prefs.get('voice', 'aistudio'))
+            self._remember(user_id, job=job_id, idea=None, upload=None)
         except (ValueError, RuntimeError) as error:
             await query.edit_message_text(str(error)[:900])
             return
@@ -172,7 +174,8 @@ class MultikBot:
         if not await self._authorized(update):
             return
         self.pending.pop(update.effective_user.id, None)
-        await update.effective_message.reply_text("Bekor qilindi. Yangi ssenariy yuborishingiz mumkin.")
+        self._remember(update.effective_user.id, idea=None, upload=None)
+        await update.effective_message.reply_text("Kutilayotgan tanlov bekor qilindi. Boshlangan video davom etadi. /panel — holati.")
 
     async def _authorized(self, update: Update) -> bool:
         user = update.effective_user
@@ -185,15 +188,37 @@ class MultikBot:
     async def _deliver(self, job_id: str, requester_chat: int,
                        context: ContextTypes.DEFAULT_TYPE) -> None:
         from . import creative_video, outbox, team_hub, video_delivery
+        progress_message = None
+        last_text = None
         try:
             while True:
                 await asyncio.sleep(2)
                 job = creative_video.get(job_id)
                 if not job:
                     raise RuntimeError("Video vazifasi topilmadi")
+                if job.get('bot_user'):
+                    text = self._progress_text(job)
+                    if text != last_text:
+                        try:
+                            if progress_message:
+                                await context.bot.edit_message_text(chat_id=requester_chat,
+                                    message_id=progress_message.message_id, text=text,
+                                    reply_markup=self._controls(job_id, job))
+                            else:
+                                progress_message = await context.bot.send_message(chat_id=requester_chat,
+                                    text=text, reply_markup=self._controls(job_id, job))
+                            last_text = text
+                        except Exception:
+                            log.warning('Multik progress update failed')
                 if job["status"] == "error":
                     raise RuntimeError(job.get("message") or "Video yaratilmadi")
                 if job["status"] == "ready" and job.get('review'):
+                    if job.get('bot_voice') in ('sardor', 'madina') and not job.get('bot_auto_started'):
+                        voices = {str(s.get('speaker') or 'Hikoyachi'): job['bot_voice']
+                                  for s in job['story']['scenes']}
+                        creative_video.start_render(job_id, voices)
+                        creative_video._update(job_id, bot_auto_started=True)
+                        continue
                     base = config.public_url.rstrip('/') or 'http://localhost:8000'
                     await context.bot.send_message(chat_id=requester_chat, text=(
                         'Ssenariy va rasmlar tayyor. API kalitisiz ovoz uchun Ali’da har sahnaning '
